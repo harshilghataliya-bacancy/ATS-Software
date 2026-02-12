@@ -8,7 +8,7 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { updateJobSchema, type UpdateJobInput } from '@/lib/validators/job'
 import { useUser } from '@/lib/hooks/use-user'
 import { createClient } from '@/lib/supabase/client'
-import { getJobById, updateJob } from '@/lib/services/jobs'
+import { getJobById, updateJob, getScorecardCriteria, upsertScorecardCriteria } from '@/lib/services/jobs'
 import { EMPLOYMENT_TYPES, CURRENCIES, JOB_STATUS_CONFIG } from '@/lib/constants'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -28,6 +28,8 @@ export default function JobDetailPage() {
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [success, setSuccess] = useState(false)
+  const [criteria, setCriteria] = useState<Array<{ name: string; description: string; weight: number }>>([])
+  const [criteriaLoaded, setCriteriaLoaded] = useState(false)
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const { register, handleSubmit, formState: { errors }, setValue, reset } = useForm<UpdateJobInput>({
@@ -59,6 +61,19 @@ export default function JobDetailPage() {
         salary_currency: data.salary_currency ?? 'USD',
         status: data.status,
       })
+
+      // Load scorecard criteria
+      if (!criteriaLoaded) {
+        const { data: criteriaData } = await getScorecardCriteria(supabase, params.id as string, organization.id)
+        if (criteriaData && criteriaData.length > 0) {
+          setCriteria(criteriaData.map((c: Record<string, unknown>) => ({
+            name: c.name as string,
+            description: (c.description as string) ?? '',
+            weight: c.weight as number,
+          })))
+        }
+        setCriteriaLoaded(true)
+      }
     }
     setLoading(false)
   }
@@ -88,6 +103,11 @@ export default function JobDetailPage() {
       setError(updateError.message)
     } else {
       setJob(updated)
+
+      // Save scorecard criteria
+      const validCriteria = criteria.filter((c) => c.name.trim())
+      await upsertScorecardCriteria(supabase, params.id as string, organization.id, validCriteria)
+
       setSuccess(true)
       setTimeout(() => setSuccess(false), 3000)
     }
@@ -241,6 +261,71 @@ export default function JobDetailPage() {
                 </Select>
               </div>
             </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-lg">Evaluation Criteria</CardTitle>
+            <p className="text-sm text-gray-500">Define criteria interviewers will rate candidates on</p>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {criteria.map((c, idx) => (
+              <div key={idx} className="flex gap-3 items-start">
+                <div className="flex-1 space-y-1">
+                  <Input
+                    placeholder="Criteria name"
+                    value={c.name}
+                    onChange={(e) => {
+                      const updated = [...criteria]
+                      updated[idx] = { ...updated[idx], name: e.target.value }
+                      setCriteria(updated)
+                    }}
+                  />
+                  <Input
+                    placeholder="Description (optional)"
+                    value={c.description}
+                    className="text-sm"
+                    onChange={(e) => {
+                      const updated = [...criteria]
+                      updated[idx] = { ...updated[idx], description: e.target.value }
+                      setCriteria(updated)
+                    }}
+                  />
+                </div>
+                <div className="w-20">
+                  <Label className="text-xs text-gray-500">Weight</Label>
+                  <Input
+                    type="number"
+                    min={1}
+                    max={10}
+                    value={c.weight}
+                    onChange={(e) => {
+                      const updated = [...criteria]
+                      updated[idx] = { ...updated[idx], weight: Number(e.target.value) }
+                      setCriteria(updated)
+                    }}
+                  />
+                </div>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="mt-1 text-red-500 hover:text-red-700"
+                  onClick={() => setCriteria(criteria.filter((_, i) => i !== idx))}
+                >
+                  X
+                </Button>
+              </div>
+            ))}
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setCriteria([...criteria, { name: '', description: '', weight: 5 }])}
+            >
+              Add Criteria
+            </Button>
           </CardContent>
         </Card>
 

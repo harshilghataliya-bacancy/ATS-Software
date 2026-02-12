@@ -7,6 +7,7 @@ import { useUser } from '@/lib/hooks/use-user'
 import { createClient } from '@/lib/supabase/client'
 import { getInterviewById, updateInterview, cancelInterview } from '@/lib/services/interviews'
 import { submitFeedback } from '@/lib/services/feedback'
+import { getScorecardCriteria } from '@/lib/services/jobs'
 import { INTERVIEW_TYPES, RECOMMENDATION_OPTIONS, RATING_LABELS } from '@/lib/constants'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -85,6 +86,10 @@ export default function InterviewDetailPage() {
   const [fbNotes, setFbNotes] = useState('')
   const [fbSaving, setFbSaving] = useState(false)
 
+  // Scorecard criteria
+  const [scorecardCriteria, setScorecardCriteria] = useState<Array<{ id: string; name: string; description?: string; weight: number }>>([])
+  const [criteriaRatings, setCriteriaRatings] = useState<Record<string, number>>({})
+
   const loadInterview = useCallback(async () => {
     if (!organization) return
     const supabase = createClient()
@@ -94,6 +99,14 @@ export default function InterviewDetailPage() {
       setError(fetchError.message)
     } else if (data) {
       setInterview(data as InterviewDetail)
+      // Load scorecard criteria for this job
+      const jobId = (data as InterviewDetail).application?.job?.id
+      if (jobId) {
+        const { data: criteriaData } = await getScorecardCriteria(supabase, jobId, organization.id)
+        if (criteriaData) {
+          setScorecardCriteria(criteriaData as Array<{ id: string; name: string; description?: string; weight: number }>)
+        }
+      }
     } else {
       setError('Interview not found or you do not have access.')
     }
@@ -165,18 +178,29 @@ export default function InterviewDetailPage() {
     setError(null)
 
     const supabase = createClient()
+    const feedbackData: Record<string, unknown> = {
+      interview_id: interview.id,
+      application_id: interview.application_id,
+      overall_rating: fbRating,
+      recommendation: fbRecommendation,
+      strengths: fbStrengths || undefined,
+      weaknesses: fbWeaknesses || undefined,
+      notes: fbNotes || undefined,
+    }
+
+    // Add criteria ratings if any were filled
+    const filledRatings = Object.entries(criteriaRatings)
+      .filter(([, rating]) => rating > 0)
+      .map(([criteria_id, rating]) => ({ criteria_id, rating }))
+    if (filledRatings.length > 0) {
+      feedbackData.criteria_ratings = filledRatings
+    }
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const { error: fbError } = await submitFeedback(
       supabase,
       organization.id,
-      {
-        interview_id: interview.id,
-        application_id: interview.application_id,
-        overall_rating: fbRating,
-        recommendation: fbRecommendation,
-        strengths: fbStrengths || undefined,
-        weaknesses: fbWeaknesses || undefined,
-        notes: fbNotes || undefined,
-      },
+      feedbackData as any,
       user.id
     )
 
@@ -189,6 +213,7 @@ export default function InterviewDetailPage() {
       setFbStrengths('')
       setFbWeaknesses('')
       setFbNotes('')
+      setCriteriaRatings({})
       loadInterview()
     }
     setFbSaving(false)
@@ -399,6 +424,34 @@ export default function InterviewDetailPage() {
                       </Select>
                     </div>
                   </div>
+                  {scorecardCriteria.length > 0 && (
+                    <div className="space-y-3 border rounded-lg p-4 bg-gray-50">
+                      <Label className="text-sm font-medium">Evaluation Criteria</Label>
+                      {scorecardCriteria.map((c) => (
+                        <div key={c.id} className="flex items-center gap-3">
+                          <div className="flex-1">
+                            <span className="text-sm text-gray-700">{c.name}</span>
+                            <Badge variant="outline" className="ml-2 text-[10px]">w:{c.weight}</Badge>
+                          </div>
+                          <Select
+                            value={String(criteriaRatings[c.id] ?? 0)}
+                            onValueChange={(v) => setCriteriaRatings((prev) => ({ ...prev, [c.id]: Number(v) }))}
+                          >
+                            <SelectTrigger className="w-32 h-8 text-xs">
+                              <SelectValue placeholder="Rate" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="0">Not rated</SelectItem>
+                              {[1, 2, 3, 4, 5].map((r) => (
+                                <SelectItem key={r} value={String(r)}>{r} - {RATING_LABELS[r]}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
                   <div className="space-y-2">
                     <Label>Strengths</Label>
                     <Textarea rows={3} value={fbStrengths} onChange={(e) => setFbStrengths(e.target.value)} placeholder="What went well?" />

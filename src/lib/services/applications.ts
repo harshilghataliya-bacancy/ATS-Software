@@ -38,7 +38,7 @@ export async function getApplicationsForJob(
     .select(
       `
       *,
-      candidate:candidates(id, first_name, last_name, email, phone, resume_url, tags),
+      candidate:candidates(id, first_name, last_name, email, phone, resume_url, tags, resume_parsed_data),
       current_stage:pipeline_stages(id, name, stage_type, display_order),
       interviews(id, status, scheduled_at, interview_type, duration_minutes),
       offer_letters(id, status)

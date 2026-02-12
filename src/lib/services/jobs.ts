@@ -274,3 +274,56 @@ export async function updatePipelineStages(
 
   return { data: updatedStages, error: fetchError }
 }
+
+// ---------------------------------------------------------------------------
+// Scorecard Criteria
+// ---------------------------------------------------------------------------
+
+export async function getScorecardCriteria(
+  supabase: SupabaseClient,
+  jobId: string,
+  orgId: string
+) {
+  const { data, error } = await supabase
+    .from('scorecard_criteria')
+    .select('*')
+    .eq('job_id', jobId)
+    .eq('organization_id', orgId)
+    .order('weight', { ascending: false })
+
+  return { data, error }
+}
+
+export async function upsertScorecardCriteria(
+  supabase: SupabaseClient,
+  jobId: string,
+  orgId: string,
+  criteria: Array<{ name: string; description?: string; weight: number }>
+) {
+  // Delete existing criteria for this job
+  await supabase
+    .from('scorecard_criteria')
+    .delete()
+    .eq('job_id', jobId)
+    .eq('organization_id', orgId)
+
+  if (criteria.length === 0) {
+    return { data: [], error: null }
+  }
+
+  // Insert new criteria
+  const { data, error } = await supabase
+    .from('scorecard_criteria')
+    .insert(
+      criteria.map((c) => ({
+        job_id: jobId,
+        organization_id: orgId,
+        name: c.name,
+        description: c.description || null,
+        weight: c.weight,
+      }))
+    )
+    .select()
+
+  return { data, error }
+}

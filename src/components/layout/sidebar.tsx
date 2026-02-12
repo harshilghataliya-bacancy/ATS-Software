@@ -14,6 +14,7 @@ const mainNav = [
   { href: '/candidates', label: 'Candidates', icon: '⊡' },
   { href: '/interviews', label: 'Interviews', icon: '◷' },
   { href: '/offers', label: 'Offers', icon: '✉' },
+  { href: '/reports', label: 'Reports', icon: '◈' },
 ]
 
 const secondaryNav = [

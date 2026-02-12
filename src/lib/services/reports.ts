@@ -25,7 +25,6 @@ export async function getTimeToHire(
     .eq('status', 'hired')
     .not('hired_at', 'is', null)
     .not('applied_at', 'is', null)
-    .is('deleted_at', null)
 
   if (dateRange) {
     query = query
@@ -130,7 +129,6 @@ export async function getPipelineConversion(
     .select('current_stage_id')
     .eq('organization_id', orgId)
     .eq('status', 'active')
-    .is('deleted_at', null)
 
   if (jobId) {
     appsQuery = appsQuery.eq('job_id', jobId)
@@ -214,9 +212,8 @@ export async function getSourceBreakdown(
 ) {
   let query = supabase
     .from('applications')
-    .select('source, status')
+    .select('status, candidate:candidates(source)')
     .eq('organization_id', orgId)
-    .is('deleted_at', null)
 
   if (dateRange) {
     query = query
@@ -237,7 +234,8 @@ export async function getSourceBreakdown(
   >()
 
   data?.forEach((app) => {
-    const source = app.source ?? 'unknown'
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const source = (app.candidate as any)?.source ?? 'unknown'
     const existing = sourceMap.get(source) ?? {
       total: 0,
       hired: 0,
@@ -297,8 +295,7 @@ export async function getDashboardStats(
         .from('applications')
         .select('candidate_id', { count: 'exact', head: true })
         .eq('organization_id', orgId)
-        .eq('status', 'active')
-        .is('deleted_at', null),
+        .eq('status', 'active'),
 
       // Interviews this week
       supabase
@@ -311,7 +308,7 @@ export async function getDashboardStats(
 
       // Pending offers (sent but not responded)
       supabase
-        .from('offers')
+        .from('offer_letters')
         .select('id', { count: 'exact', head: true })
         .eq('organization_id', orgId)
         .eq('status', 'sent'),
@@ -336,4 +333,81 @@ export async function getDashboardStats(
     },
     error: null,
   }
+}
+
+// ---------------------------------------------------------------------------
+// Offer Acceptance Rate
+// ---------------------------------------------------------------------------
+
+export async function getOfferAcceptanceRate(
+  supabase: SupabaseClient,
+  orgId: string
+) {
+  const { data, error } = await supabase
+    .from('offer_letters')
+    .select('status')
+    .eq('organization_id', orgId)
+    .in('status', ['sent', 'accepted', 'declined', 'expired'])
+
+  if (error) {
+    return { data: null, error }
+  }
+
+  const total_sent = data?.length ?? 0
+  const accepted = data?.filter((o) => o.status === 'accepted').length ?? 0
+  const declined = data?.filter((o) => o.status === 'declined').length ?? 0
+
+  return {
+    data: {
+      total_sent,
+      accepted,
+      declined,
+      acceptance_rate_pct: total_sent > 0 ? Math.round((accepted / total_sent) * 100) : 0,
+    },
+    error: null,
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Hiring Velocity (monthly hires)
+// ---------------------------------------------------------------------------
+
+export async function getHiringVelocity(
+  supabase: SupabaseClient,
+  orgId: string,
+  months = 6
+) {
+  const since = new Date()
+  since.setMonth(since.getMonth() - months)
+
+  const { data, error } = await supabase
+    .from('applications')
+    .select('hired_at')
+    .eq('organization_id', orgId)
+    .eq('status', 'hired')
+    .not('hired_at', 'is', null)
+    .gte('hired_at', since.toISOString())
+
+  if (error) {
+    return { data: null, error }
+  }
+
+  // Group by year-month
+  const monthMap = new Map<string, number>()
+  data?.forEach((app) => {
+    const d = new Date(app.hired_at)
+    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+    monthMap.set(key, (monthMap.get(key) ?? 0) + 1)
+  })
+
+  // Fill in missing months with 0
+  const result: Array<{ month: string; hires: number }> = []
+  for (let i = months - 1; i >= 0; i--) {
+    const d = new Date()
+    d.setMonth(d.getMonth() - i)
+    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+    result.push({ month: key, hires: monthMap.get(key) ?? 0 })
+  }
+
+  return { data: result, error: null }
 }

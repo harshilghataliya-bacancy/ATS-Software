@@ -124,6 +124,13 @@ export function ApplyForm({ jobId, orgId }: ApplyFormProps) {
       }
     }
 
+    // 2b. Fire-and-forget resume parsing
+    fetch('/api/resumes/parse', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ candidate_id: candidateId, organization_id: orgId }),
+    }).catch(() => {})
+
     // 3. Find first pipeline stage
     const { data: firstStage } = await supabase
       .from('pipeline_stages')
