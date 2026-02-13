@@ -25,7 +25,7 @@ export default async function CareersPage({ params }: Props) {
   const { organization, jobs } = data
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gray-50 flex flex-col">
       {/* Header */}
       <header className="bg-white border-b">
         <div className="max-w-4xl mx-auto px-6 py-8">
@@ -46,7 +46,7 @@ export default async function CareersPage({ params }: Props) {
       </header>
 
       {/* Jobs List */}
-      <main className="max-w-4xl mx-auto px-6 py-8">
+      <main className="max-w-4xl mx-auto px-6 py-8 flex-1 w-full">
         {jobs.length === 0 ? (
           <div className="text-center py-16">
             <h2 className="text-xl font-semibold text-gray-700 mb-2">No open positions</h2>
@@ -77,7 +77,7 @@ export default async function CareersPage({ params }: Props) {
       </main>
 
       {/* Footer */}
-      <footer className="border-t bg-white mt-12">
+      <footer className="border-t bg-white mt-auto">
         <div className="max-w-4xl mx-auto px-6 py-6 text-center text-sm text-gray-400">
           Powered by HireFlow
         </div>

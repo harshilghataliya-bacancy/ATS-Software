@@ -51,7 +51,7 @@ export default async function JobDetailPage({ params }: Props) {
         : null
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gray-50 flex flex-col">
       {/* Header */}
       <header className="bg-white border-b">
         <div className="max-w-4xl mx-auto px-6 py-6">
@@ -68,7 +68,7 @@ export default async function JobDetailPage({ params }: Props) {
         </div>
       </header>
 
-      <main className="max-w-4xl mx-auto px-6 py-8">
+      <main className="max-w-4xl mx-auto px-6 py-8 flex-1 w-full">
         <div className="grid grid-cols-3 gap-8">
           {/* Job details */}
           <div className="col-span-2 space-y-6">
@@ -97,7 +97,7 @@ export default async function JobDetailPage({ params }: Props) {
         </div>
       </main>
 
-      <footer className="border-t bg-white mt-12">
+      <footer className="border-t bg-white mt-auto">
         <div className="max-w-4xl mx-auto px-6 py-6 text-center text-sm text-gray-400">
           Powered by HireFlow
         </div>
