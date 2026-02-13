@@ -63,6 +63,31 @@ export default function JobsPage() {
     setJobs((prev) => prev.filter((j) => j.id !== jobId))
   }
 
+  const employmentLabel = (val: string) =>
+    EMPLOYMENT_TYPES.find((t) => t.value === val)?.label ?? val
+
+  function downloadCSV() {
+    if (jobs.length === 0) return
+    const headers = ['Title', 'Department', 'Location', 'Employment Type', 'Status', 'Applicants', 'Created At']
+    const rows = jobs.map((job) => [
+      job.title,
+      job.department || '',
+      job.location || '',
+      employmentLabel(job.employment_type),
+      job.status,
+      String(job.application_count),
+      new Date(job.created_at).toLocaleDateString(),
+    ])
+    const csv = [headers, ...rows].map((r) => r.map((v) => `"${v.replace(/"/g, '""')}"`).join(',')).join('\n')
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `jobs-${new Date().toISOString().slice(0, 10)}.csv`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
   if (isLoading) {
     return (
       <div className="space-y-6">
@@ -72,9 +97,6 @@ export default function JobsPage() {
     )
   }
 
-  const employmentLabel = (val: string) =>
-    EMPLOYMENT_TYPES.find((t) => t.value === val)?.label ?? val
-
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -82,9 +104,14 @@ export default function JobsPage() {
           <h1 className="text-2xl font-bold text-gray-900">Jobs</h1>
           <p className="text-gray-500 mt-1">Manage your job postings</p>
         </div>
-        <Link href="/jobs/new">
-          <Button>+ New Job</Button>
-        </Link>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" onClick={downloadCSV} disabled={jobs.length === 0}>
+            Download CSV
+          </Button>
+          <Link href="/jobs/new">
+            <Button>+ New Job</Button>
+          </Link>
+        </div>
       </div>
 
       {/* Filters */}

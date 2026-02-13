@@ -81,6 +81,31 @@ export default function OffersPage() {
       })
     : offers
 
+  function downloadCSV() {
+    if (filtered.length === 0) return
+    const headers = ['Candidate', 'Email', 'Job Title', 'Department', 'Status', 'Salary', 'Start Date', 'Expiry Date', 'Sent At', 'Created At']
+    const rows = filtered.map((o) => [
+      o.application?.candidate ? `${o.application.candidate.first_name} ${o.application.candidate.last_name}` : 'Unknown',
+      o.application?.candidate?.email ?? '',
+      o.application?.job?.title ?? '',
+      o.application?.job?.department ?? '',
+      o.status,
+      formatSalary(o.salary, o.salary_currency),
+      o.start_date ? new Date(o.start_date).toLocaleDateString() : '',
+      o.expiry_date ? new Date(o.expiry_date).toLocaleDateString() : '',
+      o.sent_at ? new Date(o.sent_at).toLocaleDateString() : '',
+      new Date(o.created_at).toLocaleDateString(),
+    ])
+    const csv = [headers, ...rows].map((r) => r.map((v) => `"${v.replace(/"/g, '""')}"`).join(',')).join('\n')
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `offers-${new Date().toISOString().slice(0, 10)}.csv`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -88,6 +113,9 @@ export default function OffersPage() {
           <h1 className="text-2xl font-bold text-gray-900">Offers</h1>
           <p className="text-gray-500 mt-1">Manage offer letters for candidates</p>
         </div>
+        <Button variant="outline" onClick={downloadCSV} disabled={filtered.length === 0}>
+          Download CSV
+        </Button>
       </div>
 
       {/* Filters */}

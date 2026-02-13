@@ -65,7 +65,7 @@ export default function ReportCharts({ pipeline, offerRate, velocity, timeToHire
             {pipeline.length === 0 ? (
               <p className="text-sm text-gray-500 text-center py-12">No pipeline data yet</p>
             ) : (
-              <ResponsiveContainer width="100%" height={300}>
+              <ResponsiveContainer width="100%" height={Math.max(300, pipeline.length * 45)}>
                 <BarChart data={pipeline} layout="vertical" margin={{ left: 20 }}>
                   <CartesianGrid strokeDasharray="3 3" />
                   <XAxis type="number" />

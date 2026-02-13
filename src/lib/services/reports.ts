@@ -165,28 +165,34 @@ export async function getPipelineConversion(
     }
   })
 
-  // Deduplicate stages by display_order for aggregated view
+  // Group stages by display_order so we aggregate counts across all jobs
   type StageRow = NonNullable<typeof stages>[number]
-  const uniqueStages: StageRow[] = jobId
-    ? (stages ?? [])
-    : Array.from(
-        (stages ?? []).reduce<Map<number, StageRow>>((acc, stage) => {
-          if (!acc.has(stage.display_order)) {
-            acc.set(stage.display_order, stage)
-          }
-          return acc
-        }, new Map()).values()
-      )
+  const grouped = new Map<number, { name: string; stage_type: string; display_order: number; ids: string[] }>()
+  for (const stage of (stages ?? []) as StageRow[]) {
+    const existing = grouped.get(stage.display_order)
+    if (existing) {
+      existing.ids.push(stage.id)
+    } else {
+      grouped.set(stage.display_order, {
+        name: stage.name,
+        stage_type: stage.stage_type,
+        display_order: stage.display_order,
+        ids: [stage.id],
+      })
+    }
+  }
 
-  const conversion = uniqueStages.map((stage, index) => {
-    const currentCount = stageAppCounts.get(stage.id) ?? 0
-    const entryCount = stageEntryCounts.get(stage.id) ?? 0
+  // When a specific job is selected, each stage is unique (1 id per group)
+  // When viewing all jobs, ids array contains stage IDs from every job at that display_order
+  const conversion = Array.from(grouped.values()).map((group, index) => {
+    const currentCount = group.ids.reduce((sum, id) => sum + (stageAppCounts.get(id) ?? 0), 0)
+    const entryCount = group.ids.reduce((sum, id) => sum + (stageEntryCounts.get(id) ?? 0), 0)
     const totalReached = currentCount + entryCount
 
     return {
-      stage_name: stage.name,
-      stage_type: stage.stage_type,
-      display_order: stage.display_order,
+      stage_name: group.name,
+      stage_type: group.stage_type,
+      display_order: group.display_order,
       current_count: currentCount,
       total_reached: totalReached,
       conversion_rate:

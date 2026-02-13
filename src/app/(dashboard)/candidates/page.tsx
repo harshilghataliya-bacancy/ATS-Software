@@ -69,6 +69,34 @@ export default function CandidatesPage() {
     setCandidates((prev) => prev.filter((c) => c.id !== candidateId))
   }
 
+  const sourceLabel = (val: string) =>
+    CANDIDATE_SOURCES.find((s) => s.value === val)?.label ?? val
+
+  function downloadCSV() {
+    if (candidates.length === 0) return
+    const headers = ['First Name', 'Last Name', 'Email', 'Phone', 'Source', 'Current Title', 'Current Company', 'Location', 'Tags', 'Created At']
+    const rows = candidates.map((c) => [
+      c.first_name,
+      c.last_name,
+      c.email,
+      c.phone || '',
+      sourceLabel(c.source),
+      c.current_title || '',
+      c.current_company || '',
+      c.location || '',
+      (c.tags ?? []).join('; '),
+      new Date(c.created_at).toLocaleDateString(),
+    ])
+    const csv = [headers, ...rows].map((r) => r.map((v) => `"${v.replace(/"/g, '""')}"`).join(',')).join('\n')
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `candidates-${new Date().toISOString().slice(0, 10)}.csv`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
   if (isLoading) {
     return (
       <div className="space-y-6">
@@ -77,9 +105,6 @@ export default function CandidatesPage() {
       </div>
     )
   }
-
-  const sourceLabel = (val: string) =>
-    CANDIDATE_SOURCES.find((s) => s.value === val)?.label ?? val
 
   return (
     <div className="space-y-6">
@@ -90,9 +115,14 @@ export default function CandidatesPage() {
             {total > 0 ? `${total} total candidates` : 'Manage your candidate pool'}
           </p>
         </div>
-        <Link href="/candidates/new">
-          <Button>+ Add Candidate</Button>
-        </Link>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" onClick={downloadCSV} disabled={candidates.length === 0}>
+            Download CSV
+          </Button>
+          <Link href="/candidates/new">
+            <Button>+ Add Candidate</Button>
+          </Link>
+        </div>
       </div>
 
       {/* Filters */}
