@@ -172,11 +172,11 @@ export async function searchCandidates(
 
   const { data, error } = await supabase
     .from('candidates')
-    .select('id, first_name, last_name, email, phone, tags, avatar_url')
+    .select('id, first_name, last_name, email, phone, tags')
     .eq('organization_id', orgId)
     .is('deleted_at', null)
     .or(
-      `first_name.ilike.%${searchTerm}%,last_name.ilike.%${searchTerm}%,email.ilike.%${searchTerm}%,skills.cs.{${searchTerm}}`
+      `first_name.ilike.%${searchTerm}%,last_name.ilike.%${searchTerm}%,email.ilike.%${searchTerm}%,tags.cs.{${searchTerm}}`
     )
     .order('last_name', { ascending: true })
     .limit(20)

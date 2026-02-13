@@ -26,7 +26,7 @@ export function useRealtimeSubscription<T extends Record<string, unknown>>(
           table,
           filter: filter || `organization_id=eq.${organizationId}`,
         },
-        (payload) => {
+        (payload: unknown) => {
           callback(payload as RealtimePostgresChangesPayload<T>)
         }
       )

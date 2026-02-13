@@ -626,7 +626,7 @@ export default function ApplicationsPage() {
                 <TableHead>Phone</TableHead>
                 <TableHead>Current Stage</TableHead>
                 <TableHead>Interview</TableHead>
-                <TableHead>Scorecard</TableHead>
+                {/* <TableHead>Scorecard</TableHead> */}
                 <TableHead>Offer</TableHead>
                 <TableHead>Resume</TableHead>
                 <TableHead>Applied</TableHead>
@@ -726,6 +726,7 @@ export default function ApplicationsPage() {
                       )
                     })()}
                   </TableCell>
+                  {/* Scorecard column hidden
                   <TableCell>
                     {(() => {
                       const completed = app.interviews?.filter((i) => i.status === 'completed') ?? []
@@ -740,6 +741,7 @@ export default function ApplicationsPage() {
                       )
                     })()}
                   </TableCell>
+                  */}
                   <TableCell>
                     {renderOfferActions(app)}
                   </TableCell>

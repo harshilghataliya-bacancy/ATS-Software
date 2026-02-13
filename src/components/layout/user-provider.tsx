@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { getUserOrganizations } from '@/lib/services/organization'
@@ -9,6 +9,8 @@ import type { OrgRole } from '@/types/database'
 
 export function UserProvider({ children }: { children: React.ReactNode }) {
   const router = useRouter()
+  const routerRef = useRef(router)
+  routerRef.current = router
   const [isLoading, setIsLoading] = useState(true)
   const [user, setUser] = useState<{ id: string; email: string; full_name: string; avatar_url?: string } | null>(null)
   const [organization, setOrganization] = useState<{ id: string; name: string; slug: string; logo_url?: string } | null>(null)
@@ -20,7 +22,7 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
       const { data: { user: authUser } } = await supabase.auth.getUser()
 
       if (!authUser) {
-        router.push('/login')
+        routerRef.current.push('/login')
         return
       }
 
@@ -36,7 +38,7 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
 
       if (!orgs || orgs.length === 0) {
         // No organization — redirect to create one
-        router.push('/org/new')
+        routerRef.current.push('/org/new')
         return
       }
 
@@ -57,7 +59,7 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
     }
 
     loadUser()
-  }, [router])
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <UserContext.Provider value={{ user, organization, membership, isLoading }}>

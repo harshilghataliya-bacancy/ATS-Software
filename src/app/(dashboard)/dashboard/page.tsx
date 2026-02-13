@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState, useCallback } from 'react'
+import dynamic from 'next/dynamic'
 import Link from 'next/link'
 import { useUser } from '@/lib/hooks/use-user'
 import { createClient } from '@/lib/supabase/client'
@@ -8,6 +9,19 @@ import { getDashboardStats } from '@/lib/services/reports'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
+
+const DashboardCharts = dynamic(() => import('./dashboard-charts'), {
+  loading: () => (
+    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+      {[1, 2, 3].map((i) => (
+        <Card key={i}>
+          <div className="p-6"><Skeleton className="h-[220px] w-full" /></div>
+        </Card>
+      ))}
+    </div>
+  ),
+  ssr: false,
+})
 
 interface ActivityLog {
   id: string
@@ -190,6 +204,9 @@ export default function DashboardPage() {
           </Card>
         </Link>
       </div>
+
+      {/* Charts — lazy-loaded, won't block initial render */}
+      {organization && <DashboardCharts orgId={organization.id} />}
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <Card>
