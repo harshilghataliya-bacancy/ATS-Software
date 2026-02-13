@@ -8,6 +8,8 @@ import { ITEMS_PER_PAGE } from '@/lib/constants'
 interface CandidateFilters {
   search?: string
   source?: string
+  location?: string
+  current_title?: string
   tags?: string[]
   page?: number
   limit?: number
@@ -22,7 +24,7 @@ export async function getCandidates(
   orgId: string,
   filters: CandidateFilters = {}
 ) {
-  const { search, source, tags, page = 1, limit = ITEMS_PER_PAGE } = filters
+  const { search, source, location, current_title, tags, page = 1, limit = ITEMS_PER_PAGE } = filters
   const from = (page - 1) * limit
   const to = from + limit - 1
 
@@ -48,6 +50,14 @@ export async function getCandidates(
 
   if (source) {
     query = query.eq('source', source)
+  }
+
+  if (location) {
+    query = query.eq('location', location)
+  }
+
+  if (current_title) {
+    query = query.eq('current_title', current_title)
   }
 
   if (tags && tags.length > 0) {

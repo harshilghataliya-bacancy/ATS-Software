@@ -38,22 +38,36 @@ export default function CandidatesPage() {
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [sourceFilter, setSourceFilter] = useState<string>('all')
+  const [locationFilter, setLocationFilter] = useState<string>('all')
+  const [titleFilter, setTitleFilter] = useState<string>('all')
+  const [locations, setLocations] = useState<string[]>([])
+  const [titles, setTitles] = useState<string[]>([])
   const [total, setTotal] = useState(0)
 
   useEffect(() => {
     if (!organization) return
     loadCandidates()
-  }, [organization, sourceFilter])
+  }, [organization, sourceFilter, locationFilter, titleFilter])
 
   async function loadCandidates() {
     if (!organization) return
     setLoading(true)
     const supabase = createClient()
-    const filters: Record<string, unknown> = {}
+    const filters: Record<string, unknown> = { limit: 200 }
     if (sourceFilter !== 'all') filters.source = sourceFilter
+    if (locationFilter !== 'all') filters.location = locationFilter
+    if (titleFilter !== 'all') filters.current_title = titleFilter
     if (search) filters.search = search
     const { data, count } = await getCandidates(supabase, organization.id, filters)
-    if (data) setCandidates(data as Candidate[])
+    if (data) {
+      setCandidates(data as Candidate[])
+      if (sourceFilter === 'all' && locationFilter === 'all' && titleFilter === 'all' && !search) {
+        const locs = Array.from(new Set((data as Candidate[]).map((c) => c.location).filter(Boolean) as string[])).sort()
+        const tls = Array.from(new Set((data as Candidate[]).map((c) => c.current_title).filter(Boolean) as string[])).sort()
+        setLocations(locs)
+        setTitles(tls)
+      }
+    }
     if (count !== undefined && count !== null) setTotal(count)
     setLoading(false)
   }
@@ -126,8 +140,8 @@ export default function CandidatesPage() {
       </div>
 
       {/* Filters */}
-      <div className="flex gap-3">
-        <div className="flex-1">
+      <div className="flex flex-wrap gap-3">
+        <div className="flex-1 min-w-[200px]">
           <Input
             placeholder="Search candidates by name or email..."
             value={search}
@@ -136,7 +150,7 @@ export default function CandidatesPage() {
           />
         </div>
         <Select value={sourceFilter} onValueChange={setSourceFilter}>
-          <SelectTrigger className="w-44">
+          <SelectTrigger className="w-40">
             <SelectValue placeholder="Source" />
           </SelectTrigger>
           <SelectContent>
@@ -146,6 +160,32 @@ export default function CandidatesPage() {
             ))}
           </SelectContent>
         </Select>
+        {locations.length > 0 && (
+          <Select value={locationFilter} onValueChange={setLocationFilter}>
+            <SelectTrigger className="w-40">
+              <SelectValue placeholder="Location" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Locations</SelectItem>
+              {locations.map((l) => (
+                <SelectItem key={l} value={l}>{l}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
+        {titles.length > 0 && (
+          <Select value={titleFilter} onValueChange={setTitleFilter}>
+            <SelectTrigger className="w-44">
+              <SelectValue placeholder="Title" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Titles</SelectItem>
+              {titles.map((t) => (
+                <SelectItem key={t} value={t}>{t}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
       </div>
 
       {/* Candidates List */}

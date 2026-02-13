@@ -9,6 +9,8 @@ interface JobFilters {
   status?: string
   search?: string
   department?: string
+  location?: string
+  employment_type?: string
   page?: number
   limit?: number
 }
@@ -29,7 +31,7 @@ export async function getJobs(
   orgId: string,
   filters: JobFilters = {}
 ) {
-  const { status, search, department, page = 1, limit = ITEMS_PER_PAGE } = filters
+  const { status, search, department, location, employment_type, page = 1, limit = ITEMS_PER_PAGE } = filters
   const from = (page - 1) * limit
   const to = from + limit - 1
 
@@ -57,6 +59,14 @@ export async function getJobs(
 
   if (department) {
     query = query.eq('department', department)
+  }
+
+  if (location) {
+    query = query.eq('location', location)
+  }
+
+  if (employment_type) {
+    query = query.eq('employment_type', employment_type)
   }
 
   const { data, error, count } = await query

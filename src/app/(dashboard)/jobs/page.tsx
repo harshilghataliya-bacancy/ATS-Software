@@ -34,21 +34,38 @@ export default function JobsPage() {
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState<string>('all')
+  const [deptFilter, setDeptFilter] = useState<string>('all')
+  const [locationFilter, setLocationFilter] = useState<string>('all')
+  const [typeFilter, setTypeFilter] = useState<string>('all')
+  const [departments, setDepartments] = useState<string[]>([])
+  const [locations, setLocations] = useState<string[]>([])
 
   useEffect(() => {
     if (!organization) return
     loadJobs()
-  }, [organization, statusFilter])
+  }, [organization, statusFilter, deptFilter, locationFilter, typeFilter])
 
   async function loadJobs() {
     if (!organization) return
     setLoading(true)
     const supabase = createClient()
-    const filters: Record<string, unknown> = {}
+    const filters: Record<string, unknown> = { limit: 200 }
     if (statusFilter !== 'all') filters.status = statusFilter
+    if (deptFilter !== 'all') filters.department = deptFilter
+    if (locationFilter !== 'all') filters.location = locationFilter
+    if (typeFilter !== 'all') filters.employment_type = typeFilter
     if (search) filters.search = search
     const { data } = await getJobs(supabase, organization.id, filters)
-    if (data) setJobs(data as Job[])
+    if (data) {
+      setJobs(data as Job[])
+      // Build unique filter options from all jobs (only on first load or when no filters active)
+      if (deptFilter === 'all' && locationFilter === 'all' && typeFilter === 'all' && statusFilter === 'all' && !search) {
+        const depts = Array.from(new Set((data as Job[]).map((j) => j.department).filter(Boolean))).sort()
+        const locs = Array.from(new Set((data as Job[]).map((j) => j.location).filter(Boolean))).sort()
+        setDepartments(depts)
+        setLocations(locs)
+      }
+    }
     setLoading(false)
   }
 
@@ -115,8 +132,8 @@ export default function JobsPage() {
       </div>
 
       {/* Filters */}
-      <div className="flex gap-3">
-        <div className="flex-1">
+      <div className="flex flex-wrap gap-3">
+        <div className="flex-1 min-w-[200px]">
           <Input
             placeholder="Search jobs..."
             value={search}
@@ -125,7 +142,7 @@ export default function JobsPage() {
           />
         </div>
         <Select value={statusFilter} onValueChange={setStatusFilter}>
-          <SelectTrigger className="w-40">
+          <SelectTrigger className="w-36">
             <SelectValue placeholder="Status" />
           </SelectTrigger>
           <SelectContent>
@@ -134,6 +151,43 @@ export default function JobsPage() {
             <SelectItem value="published">Published</SelectItem>
             <SelectItem value="closed">Closed</SelectItem>
             <SelectItem value="archived">Archived</SelectItem>
+          </SelectContent>
+        </Select>
+        {departments.length > 0 && (
+          <Select value={deptFilter} onValueChange={setDeptFilter}>
+            <SelectTrigger className="w-40">
+              <SelectValue placeholder="Department" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Departments</SelectItem>
+              {departments.map((d) => (
+                <SelectItem key={d} value={d}>{d}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
+        {locations.length > 0 && (
+          <Select value={locationFilter} onValueChange={setLocationFilter}>
+            <SelectTrigger className="w-40">
+              <SelectValue placeholder="Location" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Locations</SelectItem>
+              {locations.map((l) => (
+                <SelectItem key={l} value={l}>{l}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
+        <Select value={typeFilter} onValueChange={setTypeFilter}>
+          <SelectTrigger className="w-36">
+            <SelectValue placeholder="Type" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Types</SelectItem>
+            {EMPLOYMENT_TYPES.map((t) => (
+              <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
+            ))}
           </SelectContent>
         </Select>
       </div>
