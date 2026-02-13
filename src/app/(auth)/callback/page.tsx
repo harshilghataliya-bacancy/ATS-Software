@@ -17,12 +17,18 @@ function CallbackContent() {
       const token_hash = searchParams.get('token_hash')
       const type = searchParams.get('type')
 
-      // 1. Handle PKCE code exchange (regular login/signup)
+      // Also check hash fragment for type (some Supabase flows put it there)
+      const hash = window.location.hash
+      const hashParams = hash ? new URLSearchParams(hash.substring(1)) : null
+      const hashType = hashParams?.get('type')
+      const isRecovery = type === 'recovery' || hashType === 'recovery'
+
+      // 1. Handle PKCE code exchange (login/signup/recovery)
       if (code) {
         const { error } = await supabase.auth.exchangeCodeForSession(code)
         if (!error) {
-          if (type === 'recovery') {
-            router.push('/login?message=Password updated successfully')
+          if (isRecovery) {
+            window.location.replace('/set-password')
             return
           }
           router.push('/dashboard')
@@ -30,37 +36,35 @@ function CallbackContent() {
         }
       }
 
-      // 2. Handle OTP token hash (magic link)
+      // 2. Handle OTP token hash (magic link / recovery)
       if (token_hash && type) {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const { error } = await supabase.auth.verifyOtp({ token_hash, type: type as any })
         if (!error) {
+          if (isRecovery) {
+            window.location.replace('/set-password')
+            return
+          }
           router.push('/dashboard')
           return
         }
       }
 
       // 3. Handle hash fragment tokens (invite flow)
-      // Supabase redirects with #access_token=...&refresh_token=...
-      // We must manually parse the hash and call setSession()
-      const hash = window.location.hash
       if (hash) {
-        const hashParams = new URLSearchParams(hash.substring(1))
-        const access_token = hashParams.get('access_token')
-        const refresh_token = hashParams.get('refresh_token')
+        const access_token = hashParams?.get('access_token')
+        const refresh_token = hashParams?.get('refresh_token')
 
         if (access_token && refresh_token) {
-          setStatus('Processing invitation...')
+          setStatus('Processing...')
           const { error } = await supabase.auth.setSession({
             access_token,
             refresh_token,
           })
           if (!error) {
-            const hashType = hashParams.get('type')
             window.location.hash = ''
-            // Invite users need to set a password for future logins
-            if (hashType === 'invite') {
-              router.push('/set-password')
+            if (hashType === 'invite' || isRecovery) {
+              window.location.replace('/set-password')
               return
             }
             router.push('/dashboard')
@@ -70,9 +74,13 @@ function CallbackContent() {
         }
       }
 
-      // 4. Check if already has a session
+      // 4. Check if already has a session (fallback)
       const { data: { session } } = await supabase.auth.getSession()
       if (session) {
+        if (isRecovery) {
+          window.location.replace('/set-password')
+          return
+        }
         router.push('/dashboard')
         return
       }
