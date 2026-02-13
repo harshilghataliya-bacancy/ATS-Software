@@ -86,7 +86,7 @@ export async function inviteMemberAction(orgId: string, email: string, role: str
     targetUserId = existingUser.id
   } else {
     // Generate invite link without sending email (avoids Supabase rate limits)
-    const redirectTo = `${process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000'}/callback`
+    const redirectTo = `${(process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000').replace(/\/+$/, '')}/callback`
     const { data: linkData, error: linkError } = await adminSupabase.auth.admin.generateLink({
       type: 'invite',
       email,
