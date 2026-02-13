@@ -298,6 +298,41 @@ export interface ResumeParsedData {
   summary: string
 }
 
+// White-Label Types
+export type DomainStatus = 'pending' | 'verified' | 'failed'
+export type SubdomainStatus = 'active' | 'inactive'
+
+export interface OrganizationDomain {
+  id: string
+  organization_id: string
+  domain: string
+  status: DomainStatus
+  verification_token: string
+  verified_at: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface OrganizationSubdomain {
+  id: string
+  organization_id: string
+  subdomain: string
+  status: SubdomainStatus
+  created_at: string
+  updated_at: string
+}
+
+export interface OrganizationBranding {
+  organization_id: string
+  brand_name: string | null
+  logo_url: string | null
+  favicon_url: string | null
+  primary_color: string
+  accent_color: string
+  created_at: string
+  updated_at: string
+}
+
 // Join Types
 export interface JobWithStages extends Job {
   pipeline_stages: PipelineStage[]
