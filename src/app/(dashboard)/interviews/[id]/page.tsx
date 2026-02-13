@@ -6,6 +6,7 @@ import Link from 'next/link'
 import { useUser } from '@/lib/hooks/use-user'
 import { createClient } from '@/lib/supabase/client'
 import { getInterviewById, updateInterview, cancelInterview } from '@/lib/services/interviews'
+import { resolveUserNames } from '../actions'
 import { submitFeedback } from '@/lib/services/feedback'
 import { getScorecardCriteria } from '@/lib/services/jobs'
 import { INTERVIEW_TYPES, RECOMMENDATION_OPTIONS, RATING_LABELS } from '@/lib/constants'
@@ -89,6 +90,7 @@ export default function InterviewDetailPage() {
   // Scorecard criteria
   const [scorecardCriteria, setScorecardCriteria] = useState<Array<{ id: string; name: string; description?: string; weight: number }>>([])
   const [criteriaRatings, setCriteriaRatings] = useState<Record<string, number>>({})
+  const [userNames, setUserNames] = useState<Record<string, string>>({})
 
   const loadInterview = useCallback(async () => {
     if (!organization) return
@@ -98,9 +100,22 @@ export default function InterviewDetailPage() {
       console.error('[Interview Detail Error]', fetchError)
       setError(fetchError.message)
     } else if (data) {
-      setInterview(data as InterviewDetail)
+      const interviewData = data as InterviewDetail
+      setInterview(interviewData)
+
+      // Resolve panelist + feedback reviewer names
+      const panelists = interviewData.interview_panelists ?? []
+      const feedbackUsers = interviewData.feedback ?? []
+      const allUserIds = [
+        ...panelists.map((p) => p.user_id),
+        ...feedbackUsers.map((f) => f.user_id),
+      ].filter((id, i, arr) => arr.indexOf(id) === i)
+      if (allUserIds.length > 0) {
+        resolveUserNames(allUserIds).then(setUserNames)
+      }
+
       // Load scorecard criteria for this job
-      const jobId = (data as InterviewDetail).application?.job?.id
+      const jobId = interviewData.application?.job?.id
       if (jobId) {
         const { data: criteriaData } = await getScorecardCriteria(supabase, jobId, organization.id)
         if (criteriaData) {
@@ -490,6 +505,9 @@ export default function InterviewDetailPage() {
                               {rec.label}
                             </span>
                           )}
+                          <span className="text-xs text-gray-600 font-medium">
+                            {userNames[fb.user_id] ?? 'Reviewer'}
+                          </span>
                           <span className="text-xs text-gray-400">
                             {new Date(fb.created_at).toLocaleDateString()}
                           </span>
@@ -576,9 +594,9 @@ export default function InterviewDetailPage() {
               <CardContent>
                 <div className="space-y-2">
                   {interview.interview_panelists.map((panelist, idx) => (
-                    <div key={idx} className="text-sm flex justify-between">
-                      <span className="text-gray-700">{panelist.user_id.slice(0, 8)}...</span>
-                      <span className="text-gray-400 capitalize">{panelist.role}</span>
+                    <div key={idx} className="text-sm flex items-center justify-between gap-2">
+                      <span className="text-gray-700 truncate">{userNames[panelist.user_id] ?? 'Loading...'}</span>
+                      <Badge variant="outline" className="text-[10px] capitalize shrink-0">{panelist.role}</Badge>
                     </div>
                   ))}
                 </div>
