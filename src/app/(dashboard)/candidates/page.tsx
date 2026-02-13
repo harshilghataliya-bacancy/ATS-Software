@@ -5,7 +5,7 @@ import Link from 'next/link'
 import { useUser } from '@/lib/hooks/use-user'
 import { createClient } from '@/lib/supabase/client'
 import { getCandidates, deleteCandidate } from '@/lib/services/candidates'
-import { CANDIDATE_SOURCES } from '@/lib/constants'
+import { CANDIDATE_SOURCES, ITEMS_PER_PAGE } from '@/lib/constants'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -16,6 +16,7 @@ import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger,
 } from '@/components/ui/alert-dialog'
+import { Pagination } from '@/components/ui/pagination'
 
 interface Candidate {
   id: string
@@ -43,17 +44,21 @@ export default function CandidatesPage() {
   const [locations, setLocations] = useState<string[]>([])
   const [titles, setTitles] = useState<string[]>([])
   const [total, setTotal] = useState(0)
+  const [page, setPage] = useState(1)
 
   useEffect(() => {
     if (!organization) return
     loadCandidates()
-  }, [organization, sourceFilter, locationFilter, titleFilter])
+  }, [organization, sourceFilter, locationFilter, titleFilter, page])
+
+  // Reset page when filters change
+  useEffect(() => { setPage(1) }, [sourceFilter, locationFilter, titleFilter])
 
   async function loadCandidates() {
     if (!organization) return
     setLoading(true)
     const supabase = createClient()
-    const filters: Record<string, unknown> = { limit: 200 }
+    const filters: Record<string, unknown> = { page }
     if (sourceFilter !== 'all') filters.source = sourceFilter
     if (locationFilter !== 'all') filters.location = locationFilter
     if (titleFilter !== 'all') filters.current_title = titleFilter
@@ -73,6 +78,7 @@ export default function CandidatesPage() {
   }
 
   async function handleSearch() {
+    setPage(1)
     loadCandidates()
   }
 
@@ -191,15 +197,23 @@ export default function CandidatesPage() {
       {/* Candidates List */}
       {loading ? (
         <div className="space-y-3">
-          {[1, 2, 3].map((i) => <Skeleton key={i} className="h-20" />)}
+          {[1, 2, 3].map((i) => <Skeleton key={i} className="h-20 rounded-xl" />)}
         </div>
       ) : candidates.length === 0 ? (
         <Card>
-          <CardContent className="py-12 text-center">
-            <p className="text-gray-500 mb-4">No candidates found. Add your first candidate!</p>
-            <Link href="/candidates/new">
-              <Button>Add Candidate</Button>
-            </Link>
+          <CardContent className="py-16 text-center">
+            <div className="flex flex-col items-center">
+              <div className="w-12 h-12 rounded-full bg-gray-100 flex items-center justify-center mb-4">
+                <svg className="w-6 h-6 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M15 19.128a9.38 9.38 0 002.625.372 9.337 9.337 0 004.121-.952 4.125 4.125 0 00-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 018.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0111.964-3.07M12 6.375a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zm8.25 2.25a2.625 2.625 0 11-5.25 0 2.625 2.625 0 015.25 0z" />
+                </svg>
+              </div>
+              <p className="text-gray-900 font-medium mb-1">No candidates found</p>
+              <p className="text-gray-500 text-sm mb-4">Add your first candidate to get started.</p>
+              <Link href="/candidates/new">
+                <Button>Add Candidate</Button>
+              </Link>
+            </div>
           </CardContent>
         </Card>
       ) : (
@@ -276,6 +290,7 @@ export default function CandidatesPage() {
               </Card>
             )
           })}
+          <Pagination page={page} totalPages={Math.ceil(total / ITEMS_PER_PAGE)} onPageChange={setPage} />
         </div>
       )}
     </div>

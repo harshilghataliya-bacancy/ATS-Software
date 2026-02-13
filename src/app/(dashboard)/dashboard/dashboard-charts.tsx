@@ -121,7 +121,7 @@ export default function DashboardCharts({ orgId }: { orgId: string }) {
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
       {/* Hiring Velocity */}
-      <Card>
+      <Card className="shadow-sm hover:shadow-md transition-shadow">
         <CardHeader className="pb-2">
           <CardTitle className="text-sm font-medium">Hiring Velocity</CardTitle>
           <CardDescription className="text-xs">Hires per month (last 6 months)</CardDescription>
@@ -165,7 +165,7 @@ export default function DashboardCharts({ orgId }: { orgId: string }) {
       </Card>
 
       {/* Pipeline Snapshot */}
-      <Card>
+      <Card className="shadow-sm hover:shadow-md transition-shadow">
         <CardHeader className="pb-2">
           <CardTitle className="text-sm font-medium">Pipeline Snapshot</CardTitle>
           <CardDescription className="text-xs">Active candidates by stage</CardDescription>
@@ -190,7 +190,7 @@ export default function DashboardCharts({ orgId }: { orgId: string }) {
       </Card>
 
       {/* Offer Outcomes */}
-      <Card>
+      <Card className="shadow-sm hover:shadow-md transition-shadow">
         <CardHeader className="pb-2">
           <CardTitle className="text-sm font-medium">Offer Outcomes</CardTitle>
           <CardDescription className="text-xs">Acceptance vs decline rate</CardDescription>
@@ -246,7 +246,7 @@ export default function DashboardCharts({ orgId }: { orgId: string }) {
       </Card>
 
       {/* Row 2 — Applications by Job + Application Trend */}
-      <Card className="lg:col-span-2">
+      <Card className="lg:col-span-2 shadow-sm hover:shadow-md transition-shadow">
         <CardHeader className="pb-2">
           <CardTitle className="text-sm font-medium">Applications by Job</CardTitle>
           <CardDescription className="text-xs">Candidate applications per job posting</CardDescription>
@@ -279,7 +279,7 @@ export default function DashboardCharts({ orgId }: { orgId: string }) {
         </CardContent>
       </Card>
 
-      <Card>
+      <Card className="shadow-sm hover:shadow-md transition-shadow">
         <CardHeader className="pb-2">
           <CardTitle className="text-sm font-medium">Application Trend</CardTitle>
           <CardDescription className="text-xs">Daily applications (last 30 days)</CardDescription>
