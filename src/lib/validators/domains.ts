@@ -42,8 +42,8 @@ export type AddSubdomainInput = z.infer<typeof addSubdomainSchema>
 
 export const updateBrandingSchema = z.object({
   brand_name: z.string().max(100).optional().nullable(),
-  logo_url: z.string().url('Invalid URL').optional().nullable(),
-  favicon_url: z.string().url('Invalid URL').optional().nullable(),
+  logo_url: z.string().transform((v) => v.trim() || null).pipe(z.string().refine((url) => /^https?:\/\/.+/.test(url), 'Must be a valid HTTP(S) URL').nullable()).optional(),
+  favicon_url: z.string().transform((v) => v.trim() || null).pipe(z.string().refine((url) => /^https?:\/\/.+/.test(url), 'Must be a valid HTTP(S) URL').nullable()).optional(),
   primary_color: z
     .string()
     .regex(/^#[0-9a-fA-F]{6}$/, 'Must be a valid hex color (e.g., #4f46e5)')

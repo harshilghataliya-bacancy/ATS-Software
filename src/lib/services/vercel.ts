@@ -46,26 +46,6 @@ export async function addDomainToProject(domain: string) {
   return { data, error: null }
 }
 
-export async function verifyDomainOnProject(domain: string) {
-  const projectId = getProjectId()
-  const teamParam = getTeamParam()
-
-  const res = await fetch(
-    `${VERCEL_API_BASE}/v10/projects/${projectId}/domains/${domain}/verify${teamParam}`,
-    {
-      method: 'POST',
-      headers: getHeaders(),
-    }
-  )
-
-  const data = await res.json()
-  if (!res.ok) {
-    return { data: null, error: new Error(data.error?.message || 'Failed to verify domain on Vercel') }
-  }
-
-  return { data, error: null }
-}
-
 export async function removeDomainFromProject(domain: string) {
   const projectId = getProjectId()
   const teamParam = getTeamParam()
@@ -84,23 +64,4 @@ export async function removeDomainFromProject(domain: string) {
   }
 
   return { data: { removed: true }, error: null }
-}
-
-export async function getDomainConfig(domain: string) {
-  const teamParam = getTeamParam()
-
-  const res = await fetch(
-    `${VERCEL_API_BASE}/v6/domains/${domain}/config${teamParam}`,
-    {
-      method: 'GET',
-      headers: getHeaders(),
-    }
-  )
-
-  const data = await res.json()
-  if (!res.ok) {
-    return { data: null, error: new Error(data.error?.message || 'Failed to get domain config') }
-  }
-
-  return { data, error: null }
 }

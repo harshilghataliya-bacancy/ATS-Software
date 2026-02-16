@@ -25,6 +25,17 @@ export default async function JobDetailPage({ params }: Props) {
     )
   }
 
+  // Fetch white-label branding
+  const { data: branding } = await supabase
+    .from('organization_branding')
+    .select('*')
+    .eq('organization_id', org.id)
+    .maybeSingle()
+
+  const primaryColor = branding?.primary_color || '#4f46e5'
+  const accentColor = branding?.accent_color || '#7c3aed'
+  const displayName = branding?.brand_name || org.name
+
   // Fetch job
   const { data: job } = await supabase
     .from('jobs')
@@ -53,11 +64,11 @@ export default async function JobDetailPage({ params }: Props) {
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
       {/* Header */}
-      <header className="bg-gradient-to-r from-indigo-600 to-purple-600 text-white">
+      <header style={{ background: `linear-gradient(to right, ${primaryColor}, ${accentColor})` }} className="text-white">
         <div className="max-w-4xl mx-auto px-6 py-8">
-          <Link href={`/careers/${slug}`} className="inline-flex items-center gap-1 text-sm text-indigo-100 hover:text-white transition-colors mb-4">
+          <Link href={`/careers/${slug}`} className="inline-flex items-center gap-1 text-sm text-white/70 hover:text-white transition-colors mb-4">
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" /></svg>
-            All positions at {org.name}
+            All positions at {displayName}
           </Link>
           <h1 className="text-3xl font-bold mt-2">{job.title}</h1>
           <div className="flex flex-wrap items-center gap-2 mt-3">
@@ -118,7 +129,7 @@ export default async function JobDetailPage({ params }: Props) {
 
       <footer className="border-t bg-white mt-auto">
         <div className="max-w-4xl mx-auto px-6 py-6 text-center text-sm text-gray-400">
-          Powered by HireFlow
+          {branding?.brand_name ? `\u00A9 ${new Date().getFullYear()} ${branding.brand_name}` : 'Powered by HireFlow'}
         </div>
       </footer>
     </div>

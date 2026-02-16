@@ -26,17 +26,6 @@ export async function addCustomDomain(
 ) {
   const normalizedDomain = domain.toLowerCase().trim()
 
-  // Check if domain already exists
-  const { data: existing } = await supabase
-    .from('organization_domains')
-    .select('id')
-    .eq('domain', normalizedDomain)
-    .maybeSingle()
-
-  if (existing) {
-    return { data: null, error: new Error('This domain is already registered') }
-  }
-
   // Generate verification token
   const verificationToken = randomBytes(32).toString('hex')
 
@@ -61,7 +50,13 @@ export async function addCustomDomain(
     .select()
     .single()
 
-  if (error) return { data: null, error }
+  if (error) {
+    // Handle unique constraint violation
+    if (error.code === '23505') {
+      return { data: null, error: new Error('This domain is already registered') }
+    }
+    return { data: null, error }
+  }
 
   return {
     data: { ...data, vercel_warning: vercelError },
@@ -90,9 +85,8 @@ export async function verifyCustomDomain(
     const { promises: dns } = await import('dns')
     const records = await dns.resolveTxt(domainRecord.domain)
     const flatRecords = records.map((r: string[]) => r.join(''))
-    verified = flatRecords.some((r: string) =>
-      r.includes(`hireflow-verify=${domainRecord.verification_token}`)
-    )
+    const expectedToken = `hireflow-verify=${domainRecord.verification_token}`
+    verified = flatRecords.some((r: string) => r.trim() === expectedToken)
   } catch {
     // DNS lookup failed
     verified = false
@@ -123,11 +117,13 @@ export async function removeCustomDomain(
     .eq('id', domainId)
     .single()
 
+  let vercelWarning: string | null = null
   if (domainRecord) {
     try {
-      await removeDomainFromProject(domainRecord.domain)
+      const { error: vErr } = await removeDomainFromProject(domainRecord.domain)
+      if (vErr) vercelWarning = vErr.message
     } catch {
-      // Continue even if Vercel removal fails
+      vercelWarning = 'Vercel API not configured — domain removed locally only'
     }
   }
 
@@ -138,7 +134,9 @@ export async function removeCustomDomain(
     .select()
     .single()
 
-  return { data, error }
+  if (error) return { data: null, error }
+
+  return { data: { ...data, vercel_warning: vercelWarning }, error: null }
 }
 
 // =============================================================================
@@ -165,17 +163,6 @@ export async function addSubdomain(
 ) {
   const normalizedSubdomain = subdomain.toLowerCase().trim()
 
-  // Check if subdomain already exists
-  const { data: existing } = await supabase
-    .from('organization_subdomains')
-    .select('id')
-    .eq('subdomain', normalizedSubdomain)
-    .maybeSingle()
-
-  if (existing) {
-    return { data: null, error: new Error('This subdomain is already taken') }
-  }
-
   const { data, error } = await supabase
     .from('organization_subdomains')
     .insert({
@@ -186,7 +173,15 @@ export async function addSubdomain(
     .select()
     .single()
 
-  return { data, error }
+  if (error) {
+    // Handle unique constraint violation
+    if (error.code === '23505') {
+      return { data: null, error: new Error('This subdomain is already taken') }
+    }
+    return { data: null, error }
+  }
+
+  return { data, error: null }
 }
 
 export async function removeSubdomain(

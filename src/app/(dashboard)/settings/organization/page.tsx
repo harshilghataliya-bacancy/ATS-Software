@@ -16,7 +16,7 @@ import { Label } from '@/components/ui/label'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Switch } from '@/components/ui/switch'
 import { Badge } from '@/components/ui/badge'
-import type { OrganizationDomain, OrganizationSubdomain, OrganizationBranding } from '@/types/database'
+import type { OrganizationDomain, OrganizationSubdomain } from '@/types/database'
 
 export default function OrganizationSettingsPage() {
   return (
@@ -53,23 +53,14 @@ function OrganizationSettingsContent() {
   // White-Label state
   const [domains, setDomains] = useState<(OrganizationDomain & { dns_instructions?: { verification: { type: string; host: string; value: string }; cname: { type: string; host: string; value: string } } })[]>([])
   const [subdomains, setSubdomains] = useState<OrganizationSubdomain[]>([])
-  const [branding, setBranding] = useState<Partial<OrganizationBranding>>({
-    brand_name: '',
-    logo_url: '',
-    favicon_url: '',
-    primary_color: '#4f46e5',
-    accent_color: '#06b6d4',
-  })
   const [newDomain, setNewDomain] = useState('')
   const [newSubdomain, setNewSubdomain] = useState('')
   const [domainLoading, setDomainLoading] = useState(false)
   const [subdomainLoading, setSubdomainLoading] = useState(false)
-  const [brandingSaving, setBrandingSaving] = useState(false)
-  const [brandingSuccess, setBrandingSuccess] = useState(false)
   const [whitelabelError, setWhitelabelError] = useState<string | null>(null)
   const [expandedDomain, setExpandedDomain] = useState<string | null>(null)
 
-  const platformDomain = process.env.NEXT_PUBLIC_PLATFORM_DOMAIN || 'hireflow.com'
+  const platformDomain = process.env.NEXT_PUBLIC_PLATFORM_DOMAIN || 'getroa.com'
 
   const loadDomains = useCallback(async () => {
     if (!organization) return
@@ -93,22 +84,10 @@ function OrganizationSettingsContent() {
     } catch { /* ignore */ }
   }, [organization])
 
-  const loadBranding = useCallback(async () => {
-    if (!organization) return
-    try {
-      const res = await fetch(`/api/branding?organization_id=${organization.id}`)
-      if (res.ok) {
-        const { data } = await res.json()
-        if (data) setBranding(data)
-      }
-    } catch { /* ignore */ }
-  }, [organization])
-
   useEffect(() => {
     loadDomains()
     loadSubdomains()
-    loadBranding()
-  }, [loadDomains, loadSubdomains, loadBranding])
+  }, [loadDomains, loadSubdomains])
 
   async function handleAddDomain() {
     if (!organization || !newDomain.trim()) return
@@ -178,27 +157,6 @@ function OrganizationSettingsContent() {
       await fetch(`/api/subdomains/${subdomainId}`, { method: 'DELETE' })
       loadSubdomains()
     } catch { /* ignore */ }
-  }
-
-  async function handleSaveBranding() {
-    if (!organization) return
-    setBrandingSaving(true)
-    setWhitelabelError(null)
-    try {
-      const res = await fetch('/api/branding', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ organization_id: organization.id, ...branding }),
-      })
-      if (!res.ok) {
-        const json = await res.json()
-        setWhitelabelError(json.error)
-      } else {
-        setBrandingSuccess(true)
-        setTimeout(() => setBrandingSuccess(false), 3000)
-      }
-    } catch { setWhitelabelError('Failed to save branding') }
-    setBrandingSaving(false)
   }
 
   const loadAiConfig = useCallback(async () => {
@@ -403,7 +361,7 @@ function OrganizationSettingsContent() {
           <CardHeader>
             <CardTitle>White Label</CardTitle>
             <CardDescription>
-              Configure custom domains, platform subdomains, and branding for your organization.
+              Configure custom domains and platform subdomains for your organization.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-8">
@@ -522,92 +480,6 @@ function OrganizationSettingsContent() {
               )}
             </div>
 
-            <div className="border-t pt-6 space-y-4">
-              <div>
-                <Label className="text-sm font-medium">Branding</Label>
-                <p className="text-xs text-gray-500 mt-0.5">
-                  Customize the look and feel of your white-label pages
-                </p>
-              </div>
-
-              {brandingSuccess && (
-                <div className="bg-green-50 text-green-700 text-sm p-3 rounded-md">
-                  Branding saved successfully
-                </div>
-              )}
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-w-lg">
-                <div className="space-y-2">
-                  <Label htmlFor="brand_name" className="text-xs">Brand Name</Label>
-                  <Input
-                    id="brand_name"
-                    placeholder="Your Company"
-                    value={branding.brand_name || ''}
-                    onChange={(e) => setBranding({ ...branding, brand_name: e.target.value })}
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="logo_url" className="text-xs">Logo URL</Label>
-                  <Input
-                    id="logo_url"
-                    placeholder="https://..."
-                    value={branding.logo_url || ''}
-                    onChange={(e) => setBranding({ ...branding, logo_url: e.target.value })}
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="favicon_url" className="text-xs">Favicon URL</Label>
-                  <Input
-                    id="favicon_url"
-                    placeholder="https://..."
-                    value={branding.favicon_url || ''}
-                    onChange={(e) => setBranding({ ...branding, favicon_url: e.target.value })}
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="primary_color" className="text-xs">Primary Color</Label>
-                  <div className="flex gap-2">
-                    <input
-                      type="color"
-                      value={branding.primary_color || '#4f46e5'}
-                      onChange={(e) => setBranding({ ...branding, primary_color: e.target.value })}
-                      className="w-10 h-9 rounded border cursor-pointer"
-                    />
-                    <Input
-                      id="primary_color"
-                      value={branding.primary_color || '#4f46e5'}
-                      onChange={(e) => setBranding({ ...branding, primary_color: e.target.value })}
-                      className="flex-1"
-                    />
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="accent_color" className="text-xs">Accent Color</Label>
-                  <div className="flex gap-2">
-                    <input
-                      type="color"
-                      value={branding.accent_color || '#06b6d4'}
-                      onChange={(e) => setBranding({ ...branding, accent_color: e.target.value })}
-                      className="w-10 h-9 rounded border cursor-pointer"
-                    />
-                    <Input
-                      id="accent_color"
-                      value={branding.accent_color || '#06b6d4'}
-                      onChange={(e) => setBranding({ ...branding, accent_color: e.target.value })}
-                      className="flex-1"
-                    />
-                  </div>
-                </div>
-              </div>
-
-              <Button onClick={handleSaveBranding} disabled={brandingSaving}>
-                {brandingSaving ? 'Saving...' : 'Save Branding'}
-              </Button>
-            </div>
           </CardContent>
         </Card>
       )}
