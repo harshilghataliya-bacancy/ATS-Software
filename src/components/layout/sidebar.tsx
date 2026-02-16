@@ -135,26 +135,25 @@ export function Sidebar() {
             />
           ))}
 
-          <Separator className="my-3" />
+          {canManageMembers && (
+            <>
+              <Separator className="my-3" />
 
-          {!collapsed && (
-            <p className="px-3 text-xs font-medium text-gray-400 uppercase tracking-wider mb-1">
-              Settings
-            </p>
+              {!collapsed && (
+                <p className="px-3 text-xs font-medium text-gray-400 uppercase tracking-wider mb-1">
+                  Settings
+                </p>
+              )}
+              {settingsNav.map((item) => (
+                <NavItem
+                  key={item.href}
+                  {...item}
+                  collapsed={collapsed}
+                  active={pathname === item.href}
+                />
+              ))}
+            </>
           )}
-          {settingsNav
-            .filter((item) => {
-              if (item.href === '/settings/members' && !canManageMembers) return false
-              return true
-            })
-            .map((item) => (
-              <NavItem
-                key={item.href}
-                {...item}
-                collapsed={collapsed}
-                active={pathname === item.href}
-              />
-            ))}
         </nav>
 
         {/* User footer */}

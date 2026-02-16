@@ -261,6 +261,15 @@ function OrganizationSettingsContent() {
     )
   }
 
+  if (!isAdmin) {
+    return (
+      <div className="text-center py-12">
+        <h2 className="text-lg font-semibold text-gray-900">Access Denied</h2>
+        <p className="text-gray-500 mt-1">Only administrators can manage organization settings.</p>
+      </div>
+    )
+  }
+
   return (
     <div className="space-y-6">
       <div>
