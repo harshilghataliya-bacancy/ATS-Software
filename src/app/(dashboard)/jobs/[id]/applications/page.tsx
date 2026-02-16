@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
 import { useParams } from 'next/navigation'
 import Link from 'next/link'
-import { useUser } from '@/lib/hooks/use-user'
+import { useUser, useRole } from '@/lib/hooks/use-user'
 import { createClient } from '@/lib/supabase/client'
 import { getApplicationsForJob, moveApplication } from '@/lib/services/applications'
 import { getJobById } from '@/lib/services/jobs'
@@ -98,6 +98,7 @@ interface StageGroup {
 export default function ApplicationsPage() {
   const params = useParams()
   const { user, organization, isLoading: userLoading } = useUser()
+  const { canManageJobs, canManageOffers } = useRole()
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [job, setJob] = useState<any>(null)
   const [stages, setStages] = useState<StageGroup[]>([])
@@ -513,7 +514,7 @@ export default function ApplicationsPage() {
           <p className="text-gray-500 mt-0.5 text-sm">Applications Table View</p>
         </div>
         <div className="flex gap-2">
-          {allApps.length > 0 && (
+          {allApps.length > 0 && canManageJobs && (
             <Button
               variant="default"
               size="sm"
@@ -630,7 +631,7 @@ export default function ApplicationsPage() {
                 <TableHead>Offer</TableHead>
                 <TableHead>Resume</TableHead>
                 <TableHead>Applied</TableHead>
-                <TableHead>Actions</TableHead>
+                {canManageJobs && <TableHead>Actions</TableHead>}
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -675,21 +676,27 @@ export default function ApplicationsPage() {
                     {app.candidate.phone || '-'}
                   </TableCell>
                   <TableCell>
-                    <Select
-                      value={app.current_stage_id}
-                      onValueChange={(val) => handleStageChange(app, val)}
-                    >
-                      <SelectTrigger className="w-[160px] h-8 text-xs">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {stages.map((stage) => (
-                          <SelectItem key={stage.id} value={stage.id}>
-                            {stage.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    {canManageJobs ? (
+                      <Select
+                        value={app.current_stage_id}
+                        onValueChange={(val) => handleStageChange(app, val)}
+                      >
+                        <SelectTrigger className="w-[160px] h-8 text-xs">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {stages.map((stage) => (
+                            <SelectItem key={stage.id} value={stage.id}>
+                              {stage.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    ) : (
+                      <Badge variant="outline" className="text-xs">
+                        {app.current_stage?.name ?? '-'}
+                      </Badge>
+                    )}
                   </TableCell>
                   <TableCell>
                     {(() => {
@@ -743,7 +750,14 @@ export default function ApplicationsPage() {
                   </TableCell>
                   */}
                   <TableCell>
-                    {renderOfferActions(app)}
+                    {canManageOffers ? renderOfferActions(app) : (
+                      (() => {
+                        const latestOffer = app.offer_letters?.[0]
+                        if (!latestOffer) return <span className="text-gray-400 text-sm">-</span>
+                        const statusLabels: Record<string, string> = { draft: 'Draft', sent: 'Sent', accepted: 'Accepted', declined: 'Declined', expired: 'Expired' }
+                        return <Badge variant="outline" className="text-xs">{statusLabels[latestOffer.status] ?? latestOffer.status}</Badge>
+                      })()
+                    )}
                   </TableCell>
                   <TableCell>
                     {app.candidate.resume_url ? (
@@ -762,16 +776,18 @@ export default function ApplicationsPage() {
                   <TableCell className="text-sm text-gray-600">
                     {new Date(app.applied_at).toLocaleDateString()}
                   </TableCell>
-                  <TableCell>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="h-7 text-xs"
-                      onClick={() => setScheduleApp(app)}
-                    >
-                      Schedule Interview
-                    </Button>
-                  </TableCell>
+                  {canManageJobs && (
+                    <TableCell>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-7 text-xs"
+                        onClick={() => setScheduleApp(app)}
+                      >
+                        Schedule Interview
+                      </Button>
+                    </TableCell>
+                  )}
                 </TableRow>
               ))}
             </TableBody>

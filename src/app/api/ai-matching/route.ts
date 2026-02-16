@@ -22,6 +22,18 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // Verify user belongs to this organization
+    const { data: member } = await supabase
+      .from('organization_members')
+      .select('role')
+      .eq('organization_id', organization_id)
+      .eq('user_id', user.id)
+      .single()
+
+    if (!member) {
+      return NextResponse.json({ error: 'Not a member of this organization' }, { status: 403 })
+    }
+
     // Check if AI scoring is enabled
     const config = await getScoringConfig(supabase, organization_id)
     if (!config.enabled) {
@@ -62,6 +74,18 @@ export async function GET(request: NextRequest) {
         { error: 'job_id and organization_id are required' },
         { status: 400 }
       )
+    }
+
+    // Verify user belongs to this organization
+    const { data: member } = await supabase
+      .from('organization_members')
+      .select('role')
+      .eq('organization_id', orgId)
+      .eq('user_id', user.id)
+      .single()
+
+    if (!member) {
+      return NextResponse.json({ error: 'Not a member of this organization' }, { status: 403 })
     }
 
     const { data, error } = await getMatchScoresForJob(supabase, jobId, orgId)

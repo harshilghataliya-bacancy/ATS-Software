@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
-import { useUser } from '@/lib/hooks/use-user'
+import { useUser, useRole } from '@/lib/hooks/use-user'
 import { createClient } from '@/lib/supabase/client'
 import { getCandidates, deleteCandidate } from '@/lib/services/candidates'
 import { CANDIDATE_SOURCES, ITEMS_PER_PAGE } from '@/lib/constants'
@@ -35,6 +35,7 @@ interface Candidate {
 
 export default function CandidatesPage() {
   const { organization, isLoading } = useUser()
+  const { canManageCandidates } = useRole()
   const [candidates, setCandidates] = useState<Candidate[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
@@ -139,9 +140,11 @@ export default function CandidatesPage() {
           <Button variant="outline" onClick={downloadCSV} disabled={candidates.length === 0}>
             Download CSV
           </Button>
-          <Link href="/candidates/new">
-            <Button>+ Add Candidate</Button>
-          </Link>
+          {canManageCandidates && (
+            <Link href="/candidates/new">
+              <Button>+ Add Candidate</Button>
+            </Link>
+          )}
         </div>
       </div>
 
@@ -210,9 +213,11 @@ export default function CandidatesPage() {
               </div>
               <p className="text-gray-900 font-medium mb-1">No candidates found</p>
               <p className="text-gray-500 text-sm mb-4">Add your first candidate to get started.</p>
-              <Link href="/candidates/new">
-                <Button>Add Candidate</Button>
-              </Link>
+              {canManageCandidates && (
+                <Link href="/candidates/new">
+                  <Button>Add Candidate</Button>
+                </Link>
+              )}
             </div>
           </CardContent>
         </Card>
@@ -265,25 +270,27 @@ export default function CandidatesPage() {
                       <Link href={`/candidates/${candidate.id}`}>
                         <Button variant="outline" size="sm">View</Button>
                       </Link>
-                      <AlertDialog>
-                        <AlertDialogTrigger asChild>
-                          <Button variant="ghost" size="sm" className="text-red-600">Delete</Button>
-                        </AlertDialogTrigger>
-                        <AlertDialogContent>
-                          <AlertDialogHeader>
-                            <AlertDialogTitle>Delete candidate?</AlertDialogTitle>
-                            <AlertDialogDescription>
-                              This will soft-delete {candidate.first_name} {candidate.last_name}. Associated applications will remain.
-                            </AlertDialogDescription>
-                          </AlertDialogHeader>
-                          <AlertDialogFooter>
-                            <AlertDialogCancel>Cancel</AlertDialogCancel>
-                            <AlertDialogAction onClick={() => handleDelete(candidate.id)} className="bg-red-600 hover:bg-red-700">
-                              Delete
-                            </AlertDialogAction>
-                          </AlertDialogFooter>
-                        </AlertDialogContent>
-                      </AlertDialog>
+                      {canManageCandidates && (
+                        <AlertDialog>
+                          <AlertDialogTrigger asChild>
+                            <Button variant="ghost" size="sm" className="text-red-600">Delete</Button>
+                          </AlertDialogTrigger>
+                          <AlertDialogContent>
+                            <AlertDialogHeader>
+                              <AlertDialogTitle>Delete candidate?</AlertDialogTitle>
+                              <AlertDialogDescription>
+                                This will soft-delete {candidate.first_name} {candidate.last_name}. Associated applications will remain.
+                              </AlertDialogDescription>
+                            </AlertDialogHeader>
+                            <AlertDialogFooter>
+                              <AlertDialogCancel>Cancel</AlertDialogCancel>
+                              <AlertDialogAction onClick={() => handleDelete(candidate.id)} className="bg-red-600 hover:bg-red-700">
+                                Delete
+                              </AlertDialogAction>
+                            </AlertDialogFooter>
+                          </AlertDialogContent>
+                        </AlertDialog>
+                      )}
                     </div>
                   </div>
                 </CardContent>

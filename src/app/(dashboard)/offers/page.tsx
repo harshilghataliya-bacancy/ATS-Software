@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
-import { useUser } from '@/lib/hooks/use-user'
+import { useUser, useRole } from '@/lib/hooks/use-user'
 import { createClient } from '@/lib/supabase/client'
 import { getOffers, deleteOffer } from '@/lib/services/offers'
 import { OFFER_STATUS_CONFIG, ITEMS_PER_PAGE } from '@/lib/constants'
@@ -37,6 +37,7 @@ interface OfferItem {
 
 export default function OffersPage() {
   const { organization, isLoading } = useUser()
+  const { canManageOffers } = useRole()
   const [offers, setOffers] = useState<OfferItem[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
@@ -222,25 +223,27 @@ export default function OffersPage() {
                       <Link href={`/offers/${offer.id}`}>
                         <Button variant="outline" size="sm">View</Button>
                       </Link>
-                      <AlertDialog>
-                        <AlertDialogTrigger asChild>
-                          <Button variant="ghost" size="sm" className="text-red-600">Delete</Button>
-                        </AlertDialogTrigger>
-                        <AlertDialogContent>
-                          <AlertDialogHeader>
-                            <AlertDialogTitle>Delete offer?</AlertDialogTitle>
-                            <AlertDialogDescription>
-                              This will permanently delete the offer for {candidateName}. This action cannot be undone.
-                            </AlertDialogDescription>
-                          </AlertDialogHeader>
-                          <AlertDialogFooter>
-                            <AlertDialogCancel>Cancel</AlertDialogCancel>
-                            <AlertDialogAction onClick={() => handleDelete(offer.id)} className="bg-red-600 hover:bg-red-700">
-                              Delete
-                            </AlertDialogAction>
-                          </AlertDialogFooter>
-                        </AlertDialogContent>
-                      </AlertDialog>
+                      {canManageOffers && (
+                        <AlertDialog>
+                          <AlertDialogTrigger asChild>
+                            <Button variant="ghost" size="sm" className="text-red-600">Delete</Button>
+                          </AlertDialogTrigger>
+                          <AlertDialogContent>
+                            <AlertDialogHeader>
+                              <AlertDialogTitle>Delete offer?</AlertDialogTitle>
+                              <AlertDialogDescription>
+                                This will permanently delete the offer for {candidateName}. This action cannot be undone.
+                              </AlertDialogDescription>
+                            </AlertDialogHeader>
+                            <AlertDialogFooter>
+                              <AlertDialogCancel>Cancel</AlertDialogCancel>
+                              <AlertDialogAction onClick={() => handleDelete(offer.id)} className="bg-red-600 hover:bg-red-700">
+                                Delete
+                              </AlertDialogAction>
+                            </AlertDialogFooter>
+                          </AlertDialogContent>
+                        </AlertDialog>
+                      )}
                     </div>
                   </div>
                 </CardContent>

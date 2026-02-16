@@ -6,7 +6,7 @@ import Link from 'next/link'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { updateJobSchema, type UpdateJobInput } from '@/lib/validators/job'
-import { useUser } from '@/lib/hooks/use-user'
+import { useUser, useRole } from '@/lib/hooks/use-user'
 import { createClient } from '@/lib/supabase/client'
 import { getJobById, updateJob, getScorecardCriteria, upsertScorecardCriteria } from '@/lib/services/jobs'
 import { EMPLOYMENT_TYPES, CURRENCIES, JOB_STATUS_CONFIG } from '@/lib/constants'
@@ -23,6 +23,7 @@ export default function JobDetailPage() {
   const params = useParams()
   const router = useRouter()
   const { organization, isLoading: userLoading } = useUser()
+  const { canManageJobs } = useRole()
   const [job, setJob] = useState<Record<string, unknown> | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -139,7 +140,7 @@ export default function JobDetailPage() {
               {statusConfig?.label ?? (job.status as string)}
             </Badge>
           </div>
-          <p className="text-gray-500 mt-1">Edit job details</p>
+          <p className="text-gray-500 mt-1">{canManageJobs ? 'Edit job details' : 'View job details'}</p>
         </div>
         <div className="flex gap-2">
           <Link href={`/jobs/${params.id}/applications`}>
@@ -166,18 +167,18 @@ export default function JobDetailPage() {
           <CardContent className="space-y-4">
             <div className="space-y-2">
               <Label htmlFor="title">Job Title</Label>
-              <Input id="title" {...register('title')} />
+              <Input id="title" {...register('title')} disabled={!canManageJobs} />
               {errors.title && <p className="text-sm text-red-600">{errors.title.message}</p>}
             </div>
 
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="department">Department</Label>
-                <Input id="department" {...register('department')} />
+                <Input id="department" {...register('department')} disabled={!canManageJobs} />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="location">Location</Label>
-                <Input id="location" {...register('location')} />
+                <Input id="location" {...register('location')} disabled={!canManageJobs} />
               </div>
             </div>
 
@@ -222,12 +223,12 @@ export default function JobDetailPage() {
           <CardContent className="space-y-4">
             <div className="space-y-2">
               <Label htmlFor="description">Job Description</Label>
-              <Textarea id="description" rows={6} {...register('description')} />
+              <Textarea id="description" rows={6} {...register('description')} disabled={!canManageJobs} />
               {errors.description && <p className="text-sm text-red-600">{errors.description.message}</p>}
             </div>
             <div className="space-y-2">
               <Label htmlFor="requirements">Requirements</Label>
-              <Textarea id="requirements" rows={4} {...register('requirements')} />
+              <Textarea id="requirements" rows={4} {...register('requirements')} disabled={!canManageJobs} />
             </div>
           </CardContent>
         </Card>
@@ -240,11 +241,11 @@ export default function JobDetailPage() {
             <div className="grid grid-cols-3 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="salary_min">Min Salary</Label>
-                <Input id="salary_min" type="number" {...register('salary_min')} />
+                <Input id="salary_min" type="number" {...register('salary_min')} disabled={!canManageJobs} />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="salary_max">Max Salary</Label>
-                <Input id="salary_max" type="number" {...register('salary_max')} />
+                <Input id="salary_max" type="number" {...register('salary_max')} disabled={!canManageJobs} />
               </div>
               <div className="space-y-2">
                 <Label>Currency</Label>
@@ -330,9 +331,11 @@ export default function JobDetailPage() {
         </Card>
 
         <div className="flex gap-3">
-          <Button type="submit" disabled={saving}>
-            {saving ? 'Saving...' : 'Save Changes'}
-          </Button>
+          {canManageJobs && (
+            <Button type="submit" disabled={saving}>
+              {saving ? 'Saving...' : 'Save Changes'}
+            </Button>
+          )}
           <Button type="button" variant="outline" onClick={() => router.push('/jobs')}>
             Back to Jobs
           </Button>

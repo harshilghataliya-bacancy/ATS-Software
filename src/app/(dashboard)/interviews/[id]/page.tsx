@@ -3,10 +3,10 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { useUser } from '@/lib/hooks/use-user'
+import { useUser, useRole } from '@/lib/hooks/use-user'
 import { createClient } from '@/lib/supabase/client'
 import { getInterviewById, updateInterview, cancelInterview } from '@/lib/services/interviews'
-import { resolveUserNames } from '../actions'
+import { resolveUserNames, resolveUserDetails } from '../actions'
 import { submitFeedback } from '@/lib/services/feedback'
 import { getScorecardCriteria } from '@/lib/services/jobs'
 import { INTERVIEW_TYPES, RECOMMENDATION_OPTIONS, RATING_LABELS } from '@/lib/constants'
@@ -29,6 +29,8 @@ interface InterviewDetail {
   location?: string | null
   meeting_link?: string | null
   notes?: string | null
+  interviewer_email?: string | null
+  created_by?: string | null
   application: {
     id: string
     candidate: {
@@ -64,6 +66,7 @@ export default function InterviewDetailPage() {
   const params = useParams()
   const router = useRouter()
   const { user, organization, isLoading: userLoading } = useUser()
+  const { canManageJobs } = useRole()
   const [interview, setInterview] = useState<InterviewDetail | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -91,6 +94,7 @@ export default function InterviewDetailPage() {
   const [scorecardCriteria, setScorecardCriteria] = useState<Array<{ id: string; name: string; description?: string; weight: number }>>([])
   const [criteriaRatings, setCriteriaRatings] = useState<Record<string, number>>({})
   const [userNames, setUserNames] = useState<Record<string, string>>({})
+  const [userDetails, setUserDetails] = useState<Record<string, { name: string; email: string }>>({})
 
   const loadInterview = useCallback(async () => {
     if (!organization) return
@@ -112,6 +116,7 @@ export default function InterviewDetailPage() {
       ].filter((id, i, arr) => arr.indexOf(id) === i)
       if (allUserIds.length > 0) {
         resolveUserNames(allUserIds).then(setUserNames)
+        resolveUserDetails(allUserIds).then(setUserDetails)
       }
 
       // Load scorecard criteria for this job
@@ -294,7 +299,7 @@ export default function InterviewDetailPage() {
           )}
         </div>
         <div className="flex gap-2">
-          {interview.status === 'scheduled' && (
+          {interview.status === 'scheduled' && canManageJobs && (
             <>
               <Button variant="outline" onClick={startEdit}>Edit</Button>
               <Button onClick={handleMarkCompleted}>Mark Completed</Button>
@@ -586,23 +591,44 @@ export default function InterviewDetailPage() {
             </CardContent>
           </Card>
 
-          {interview.interview_panelists && interview.interview_panelists.length > 0 && (
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-lg">Panel</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-2">
-                  {interview.interview_panelists.map((panelist, idx) => (
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-lg">Panel</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-3">
+                {interview.interview_panelists?.map((panelist, idx) => {
+                  const details = userDetails[panelist.user_id]
+                  return (
                     <div key={idx} className="text-sm flex items-center justify-between gap-2">
-                      <span className="text-gray-700 truncate">{userNames[panelist.user_id] ?? 'Loading...'}</span>
-                      <Badge variant="outline" className="text-[10px] capitalize shrink-0">{panelist.role}</Badge>
+                      <div className="min-w-0">
+                        <p className="text-gray-700 truncate font-medium">{details?.name ?? userNames[panelist.user_id] ?? 'Loading...'}</p>
+                        {details?.email && (
+                          <p className="text-xs text-gray-400 truncate">{details.email}</p>
+                        )}
+                      </div>
+                      <Badge variant="outline" className="text-[10px] capitalize shrink-0">
+                        {panelist.role === 'lead' ? 'Scheduled by' : panelist.role}
+                      </Badge>
                     </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-          )}
+                  )
+                })}
+                {interview.interviewer_email && !interview.interview_panelists?.some(
+                  (p) => userDetails[p.user_id]?.email?.toLowerCase() === interview.interviewer_email?.toLowerCase()
+                ) && (
+                  <div className="text-sm flex items-center justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="text-gray-700 truncate font-medium">{interview.interviewer_email}</p>
+                    </div>
+                    <Badge variant="outline" className="text-[10px] shrink-0">Interviewer</Badge>
+                  </div>
+                )}
+                {!interview.interview_panelists?.length && !interview.interviewer_email && (
+                  <p className="text-sm text-gray-500">No panel members assigned.</p>
+                )}
+              </div>
+            </CardContent>
+          </Card>
 
           <Button variant="outline" className="w-full" onClick={() => router.push('/interviews')}>
             Back to Interviews

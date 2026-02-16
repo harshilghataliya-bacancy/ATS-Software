@@ -22,6 +22,18 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // Verify user belongs to this organization
+    const { data: member } = await supabase
+      .from('organization_members')
+      .select('role')
+      .eq('organization_id', organization_id)
+      .eq('user_id', user.id)
+      .single()
+
+    if (!member) {
+      return NextResponse.json({ error: 'Not a member of this organization' }, { status: 403 })
+    }
+
     // Get ALL applications for the job (not filtered by status)
     const { data: applications, error: appsError } = await supabase
       .from('applications')

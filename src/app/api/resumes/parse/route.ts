@@ -18,6 +18,18 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'organization_id is required' }, { status: 400 })
     }
 
+    // Verify user belongs to this organization
+    const { data: member } = await supabase
+      .from('organization_members')
+      .select('role')
+      .eq('organization_id', organization_id)
+      .eq('user_id', user.id)
+      .single()
+
+    if (!member) {
+      return NextResponse.json({ error: 'Not a member of this organization' }, { status: 403 })
+    }
+
     // Batch parse
     if (candidate_ids && Array.isArray(candidate_ids)) {
       const results: Array<{ candidate_id: string; success: boolean; error?: string }> = []

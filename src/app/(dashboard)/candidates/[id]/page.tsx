@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from 'react'
 import { useParams, useRouter } from 'next/navigation'
-import { useUser } from '@/lib/hooks/use-user'
+import { useUser, useRole } from '@/lib/hooks/use-user'
 import { createClient } from '@/lib/supabase/client'
 import { getCandidateById, updateCandidate } from '@/lib/services/candidates'
 import { createApplication } from '@/lib/services/applications'
@@ -50,6 +50,7 @@ export default function CandidateDetailPage() {
   const params = useParams()
   const router = useRouter()
   const { user, organization, isLoading: userLoading } = useUser()
+  const { canManageCandidates } = useRole()
   const [candidate, setCandidate] = useState<CandidateData | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -184,59 +185,61 @@ export default function CandidateDetailPage() {
             </p>
           </div>
         </div>
-        <div className="flex gap-2">
-          <Dialog open={applyDialogOpen} onOpenChange={(open) => {
-            setApplyDialogOpen(open)
-            if (open) loadJobs()
-          }}>
-            <DialogTrigger asChild>
-              <Button>Apply to Job</Button>
-            </DialogTrigger>
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle>Apply to Job</DialogTitle>
-                <DialogDescription>
-                  Select a published job to apply {candidate.first_name} to.
-                </DialogDescription>
-              </DialogHeader>
-              <div className="py-4">
-                <Select value={selectedJob} onValueChange={setSelectedJob}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select a job..." />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {jobs.map((job) => (
-                      <SelectItem key={job.id} value={job.id}>
-                        {job.title} - {job.department}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                {jobs.length === 0 && (
-                  <p className="text-sm text-gray-500 mt-2">No published jobs available.</p>
-                )}
-              </div>
-              <DialogFooter>
-                <Button variant="outline" onClick={() => setApplyDialogOpen(false)}>Cancel</Button>
-                <Button onClick={handleApplyToJob} disabled={!selectedJob || applying}>
-                  {applying ? 'Applying...' : 'Apply'}
+        {canManageCandidates && (
+          <div className="flex gap-2">
+            <Dialog open={applyDialogOpen} onOpenChange={(open) => {
+              setApplyDialogOpen(open)
+              if (open) loadJobs()
+            }}>
+              <DialogTrigger asChild>
+                <Button>Apply to Job</Button>
+              </DialogTrigger>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>Apply to Job</DialogTitle>
+                  <DialogDescription>
+                    Select a published job to apply {candidate.first_name} to.
+                  </DialogDescription>
+                </DialogHeader>
+                <div className="py-4">
+                  <Select value={selectedJob} onValueChange={setSelectedJob}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select a job..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {jobs.map((job) => (
+                        <SelectItem key={job.id} value={job.id}>
+                          {job.title} - {job.department}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {jobs.length === 0 && (
+                    <p className="text-sm text-gray-500 mt-2">No published jobs available.</p>
+                  )}
+                </div>
+                <DialogFooter>
+                  <Button variant="outline" onClick={() => setApplyDialogOpen(false)}>Cancel</Button>
+                  <Button onClick={handleApplyToJob} disabled={!selectedJob || applying}>
+                    {applying ? 'Applying...' : 'Apply'}
+                  </Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
+            {!editing ? (
+              <Button variant="outline" onClick={() => setEditing(true)}>Edit</Button>
+            ) : (
+              <>
+                <Button onClick={handleSave} disabled={saving}>
+                  {saving ? 'Saving...' : 'Save'}
                 </Button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
-          {!editing ? (
-            <Button variant="outline" onClick={() => setEditing(true)}>Edit</Button>
-          ) : (
-            <>
-              <Button onClick={handleSave} disabled={saving}>
-                {saving ? 'Saving...' : 'Save'}
-              </Button>
-              <Button variant="outline" onClick={() => { setEditing(false); setFormData(candidate) }}>
-                Cancel
-              </Button>
-            </>
-          )}
-        </div>
+                <Button variant="outline" onClick={() => { setEditing(false); setFormData(candidate) }}>
+                  Cancel
+                </Button>
+              </>
+            )}
+          </div>
+        )}
       </div>
 
       {error && (

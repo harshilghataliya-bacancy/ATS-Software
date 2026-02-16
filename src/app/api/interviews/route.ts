@@ -83,6 +83,30 @@ export async function POST(request: NextRequest) {
     }
   }
 
+  // Build panelists: scheduler (lead) + interviewer (if found by email)
+  const panelists: Array<{ user_id: string; role: string }> = [
+    { user_id: user.id, role: 'lead' },
+  ]
+
+  if (interviewer_email) {
+    // Look up interviewer by email in auth.users via organization_members
+    const { data: interviewerMember } = await supabase
+      .from('organization_members')
+      .select('user_id, user:user_id(email)')
+      .eq('organization_id', orgId)
+
+    const matchedMember = interviewerMember?.find(
+      (m: Record<string, unknown>) => {
+        const u = m.user as Record<string, unknown> | null
+        return u?.email?.toString().toLowerCase() === interviewer_email.toLowerCase()
+      }
+    )
+
+    if (matchedMember && matchedMember.user_id !== user.id) {
+      panelists.push({ user_id: matchedMember.user_id, role: 'interviewer' })
+    }
+  }
+
   // Create interview record
   const { data: interview, error: interviewError } = await createInterview(
     supabase,
@@ -94,7 +118,8 @@ export async function POST(request: NextRequest) {
       duration_minutes,
       meeting_link: meetLink || undefined,
       notes: notes || undefined,
-      panelists: [{ user_id: user.id, role: 'interviewer' }],
+      interviewer_email: interviewer_email || undefined,
+      panelists,
     },
     user.id
   )
@@ -174,22 +199,26 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  // Log activity
-  await logActivity(
-    supabase,
-    orgId,
-    user.id,
-    'interview',
-    interview.id,
-    'interview_scheduled',
-    {
-      candidate_name,
-      job_title,
-      interview_type,
-      scheduled_at,
-      meeting_link: meetLink,
-    }
-  )
+  // Log activity (best effort)
+  try {
+    await logActivity(
+      supabase,
+      orgId,
+      user.id,
+      'interview',
+      interview.id,
+      'interview_scheduled',
+      {
+        candidate_name,
+        job_title,
+        interview_type,
+        scheduled_at,
+        meeting_link: meetLink,
+      }
+    )
+  } catch (err) {
+    console.error('[Activity Log Error]', err)
+  }
 
   return NextResponse.json({ success: true, data: interview })
 }

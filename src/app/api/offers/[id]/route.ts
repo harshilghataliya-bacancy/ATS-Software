@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { getOfferById, updateOffer, deleteOffer } from '@/lib/services/offers'
+import { updateOfferSchema } from '@/lib/validators/offer'
 
 export async function GET(
   _request: NextRequest,
@@ -60,7 +61,12 @@ export async function PATCH(
   }
 
   const body = await request.json()
-  const { data, error } = await updateOffer(supabase, id, membership.organization_id, body)
+  const parsed = updateOfferSchema.safeParse(body)
+  if (!parsed.success) {
+    return NextResponse.json({ error: parsed.error.issues[0].message }, { status: 400 })
+  }
+
+  const { data, error } = await updateOffer(supabase, id, membership.organization_id, parsed.data)
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 })

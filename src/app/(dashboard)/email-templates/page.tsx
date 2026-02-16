@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { useUser } from '@/lib/hooks/use-user'
+import { useUser, useRole } from '@/lib/hooks/use-user'
 import { createClient } from '@/lib/supabase/client'
 import { getEmailTemplates, createEmailTemplate, updateEmailTemplate, deleteEmailTemplate } from '@/lib/services/email'
 import { Card, CardContent } from '@/components/ui/card'
@@ -48,6 +48,7 @@ interface EmailTemplate {
 
 export default function EmailTemplatesPage() {
   const { user, organization, isLoading } = useUser()
+  const { canManageJobs } = useRole()
   const [templates, setTemplates] = useState<EmailTemplate[]>([])
   const [loading, setLoading] = useState(true)
   const [filterType, setFilterType] = useState<string>('all')
@@ -163,7 +164,7 @@ export default function EmailTemplatesPage() {
           <h1 className="text-2xl font-bold text-gray-900">Email Templates</h1>
           <p className="text-gray-500 mt-1">Manage reusable email templates for candidates</p>
         </div>
-        <Button onClick={openCreate}>+ New Template</Button>
+        {canManageJobs && <Button onClick={openCreate}>+ New Template</Button>}
       </div>
 
       <div className="flex gap-3">
@@ -195,7 +196,7 @@ export default function EmailTemplatesPage() {
               </div>
               <p className="text-gray-900 font-medium mb-1">No email templates yet</p>
               <p className="text-gray-500 text-sm mb-4">Create reusable templates to speed up communication.</p>
-              <Button onClick={openCreate}>Create Template</Button>
+              {canManageJobs && <Button onClick={openCreate}>Create Template</Button>}
             </div>
           </CardContent>
         </Card>
@@ -223,28 +224,30 @@ export default function EmailTemplatesPage() {
                         <p className="text-sm text-gray-500 mt-0.5 truncate">Subject: {template.subject}</p>
                       </div>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <Button variant="outline" size="sm" onClick={() => openEdit(template)}>Edit</Button>
-                      <AlertDialog>
-                        <AlertDialogTrigger asChild>
-                          <Button variant="ghost" size="sm" className="text-red-600">Delete</Button>
-                        </AlertDialogTrigger>
-                        <AlertDialogContent>
-                          <AlertDialogHeader>
-                            <AlertDialogTitle>Delete template?</AlertDialogTitle>
-                            <AlertDialogDescription>
-                              This will delete &quot;{template.name}&quot;. This action cannot be undone.
-                            </AlertDialogDescription>
-                          </AlertDialogHeader>
-                          <AlertDialogFooter>
-                            <AlertDialogCancel>Cancel</AlertDialogCancel>
-                            <AlertDialogAction onClick={() => handleDelete(template.id)} className="bg-red-600 hover:bg-red-700">
-                              Delete
-                            </AlertDialogAction>
-                          </AlertDialogFooter>
-                        </AlertDialogContent>
-                      </AlertDialog>
-                    </div>
+                    {canManageJobs && (
+                      <div className="flex items-center gap-2">
+                        <Button variant="outline" size="sm" onClick={() => openEdit(template)}>Edit</Button>
+                        <AlertDialog>
+                          <AlertDialogTrigger asChild>
+                            <Button variant="ghost" size="sm" className="text-red-600">Delete</Button>
+                          </AlertDialogTrigger>
+                          <AlertDialogContent>
+                            <AlertDialogHeader>
+                              <AlertDialogTitle>Delete template?</AlertDialogTitle>
+                              <AlertDialogDescription>
+                                This will delete &quot;{template.name}&quot;. This action cannot be undone.
+                              </AlertDialogDescription>
+                            </AlertDialogHeader>
+                            <AlertDialogFooter>
+                              <AlertDialogCancel>Cancel</AlertDialogCancel>
+                              <AlertDialogAction onClick={() => handleDelete(template.id)} className="bg-red-600 hover:bg-red-700">
+                                Delete
+                              </AlertDialogAction>
+                            </AlertDialogFooter>
+                          </AlertDialogContent>
+                        </AlertDialog>
+                      </div>
+                    )}
                   </div>
                 </CardContent>
               </Card>

@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from 'react'
 import Link from 'next/link'
-import { useUser } from '@/lib/hooks/use-user'
+import { useUser, useRole } from '@/lib/hooks/use-user'
 import { createClient } from '@/lib/supabase/client'
 import { getInterviews, cancelInterview } from '@/lib/services/interviews'
 import { INTERVIEW_TYPES, ITEMS_PER_PAGE } from '@/lib/constants'
@@ -52,6 +52,7 @@ const STATUS_CONFIG: Record<string, { label: string; variant: 'default' | 'secon
 
 export default function InterviewsPage() {
   const { organization, isLoading } = useUser()
+  const { canManageJobs } = useRole()
   const [interviews, setInterviews] = useState<Interview[]>([])
   const [loading, setLoading] = useState(true)
   const [statusFilter, setStatusFilter] = useState<string>('scheduled')
@@ -230,7 +231,7 @@ export default function InterviewsPage() {
                       <Link href={`/interviews/${interview.id}`}>
                         <Button variant="outline" size="sm">View</Button>
                       </Link>
-                      {interview.status === 'scheduled' && (
+                      {interview.status === 'scheduled' && canManageJobs && (
                         <AlertDialog>
                           <AlertDialogTrigger asChild>
                             <Button variant="ghost" size="sm" className="text-red-600">Cancel</Button>

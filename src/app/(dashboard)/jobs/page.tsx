@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
-import { useUser } from '@/lib/hooks/use-user'
+import { useUser, useRole } from '@/lib/hooks/use-user'
 import { createClient } from '@/lib/supabase/client'
 import { getJobs, deleteJob } from '@/lib/services/jobs'
 import { JOB_STATUS_CONFIG, EMPLOYMENT_TYPES, ITEMS_PER_PAGE } from '@/lib/constants'
@@ -31,6 +31,7 @@ interface Job {
 
 export default function JobsPage() {
   const { organization, isLoading } = useUser()
+  const { canManageJobs, isAdmin } = useRole()
   const [jobs, setJobs] = useState<Job[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
@@ -133,9 +134,11 @@ export default function JobsPage() {
           <Button variant="outline" onClick={downloadCSV} disabled={jobs.length === 0}>
             Download CSV
           </Button>
-          <Link href="/jobs/new">
-            <Button>+ New Job</Button>
-          </Link>
+          {canManageJobs && (
+            <Link href="/jobs/new">
+              <Button>+ New Job</Button>
+            </Link>
+          )}
         </div>
       </div>
 
@@ -216,9 +219,11 @@ export default function JobsPage() {
               </div>
               <p className="text-gray-900 font-medium mb-1">No jobs found</p>
               <p className="text-gray-500 text-sm mb-4">Create your first job posting to get started.</p>
-              <Link href="/jobs/new">
-                <Button>Create Job</Button>
-              </Link>
+              {canManageJobs && (
+                <Link href="/jobs/new">
+                  <Button>Create Job</Button>
+                </Link>
+              )}
             </div>
           </CardContent>
         </Card>
@@ -273,25 +278,27 @@ export default function JobsPage() {
                       <Link href={`/jobs/${job.id}/pipeline`}>
                         <Button variant="outline" size="sm">Pipeline</Button>
                       </Link>
-                      <AlertDialog>
-                        <AlertDialogTrigger asChild>
-                          <Button variant="ghost" size="sm" className="text-red-600">Delete</Button>
-                        </AlertDialogTrigger>
-                        <AlertDialogContent>
-                          <AlertDialogHeader>
-                            <AlertDialogTitle>Delete job?</AlertDialogTitle>
-                            <AlertDialogDescription>
-                              This will soft-delete &quot;{job.title}&quot;. It can be restored later.
-                            </AlertDialogDescription>
-                          </AlertDialogHeader>
-                          <AlertDialogFooter>
-                            <AlertDialogCancel>Cancel</AlertDialogCancel>
-                            <AlertDialogAction onClick={() => handleDelete(job.id)} className="bg-red-600 hover:bg-red-700">
-                              Delete
-                            </AlertDialogAction>
-                          </AlertDialogFooter>
-                        </AlertDialogContent>
-                      </AlertDialog>
+                      {isAdmin && (
+                        <AlertDialog>
+                          <AlertDialogTrigger asChild>
+                            <Button variant="ghost" size="sm" className="text-red-600">Delete</Button>
+                          </AlertDialogTrigger>
+                          <AlertDialogContent>
+                            <AlertDialogHeader>
+                              <AlertDialogTitle>Delete job?</AlertDialogTitle>
+                              <AlertDialogDescription>
+                                This will soft-delete &quot;{job.title}&quot;. It can be restored later.
+                              </AlertDialogDescription>
+                            </AlertDialogHeader>
+                            <AlertDialogFooter>
+                              <AlertDialogCancel>Cancel</AlertDialogCancel>
+                              <AlertDialogAction onClick={() => handleDelete(job.id)} className="bg-red-600 hover:bg-red-700">
+                                Delete
+                              </AlertDialogAction>
+                            </AlertDialogFooter>
+                          </AlertDialogContent>
+                        </AlertDialog>
+                      )}
                     </div>
                   </div>
                 </CardContent>

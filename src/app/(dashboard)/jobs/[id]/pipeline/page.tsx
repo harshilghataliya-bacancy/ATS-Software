@@ -17,7 +17,7 @@ import {
   type DragEndEvent,
 } from '@dnd-kit/core'
 import { CSS } from '@dnd-kit/utilities'
-import { useUser } from '@/lib/hooks/use-user'
+import { useUser, useRole } from '@/lib/hooks/use-user'
 import { createClient } from '@/lib/supabase/client'
 import { getApplicationsForJob, moveApplication } from '@/lib/services/applications'
 import { getJobById } from '@/lib/services/jobs'
@@ -179,6 +179,7 @@ function DraggableApplicationCard({ app }: { app: ApplicationCard }) {
 export default function PipelinePage() {
   const params = useParams()
   const { user, organization, isLoading: userLoading } = useUser()
+  const { canManageJobs } = useRole()
   const [job, setJob] = useState<Record<string, unknown> | null>(null)
   const [stages, setStages] = useState<PipelineStage[]>([])
   const [loading, setLoading] = useState(true)
@@ -235,7 +236,7 @@ export default function PipelinePage() {
     const { active, over } = event
     setActiveApp(null)
 
-    if (!over || !user || !organization) return
+    if (!over || !user || !organization || !canManageJobs) return
 
     const appId = active.id as string
     const targetStageId = over.id as string
@@ -349,7 +350,9 @@ export default function PipelinePage() {
           {stages.map((stage) => (
             <StageColumn key={stage.id} stage={stage}>
               {stage.applications.map((app) => (
-                <DraggableApplicationCard key={app.id} app={app} />
+                canManageJobs
+                  ? <DraggableApplicationCard key={app.id} app={app} />
+                  : <ApplicationCardUI key={app.id} app={app} />
               ))}
               {stage.applications.length === 0 && (
                 <div className="flex items-center justify-center h-16 text-xs text-gray-400 border-2 border-dashed border-gray-200 rounded-lg">

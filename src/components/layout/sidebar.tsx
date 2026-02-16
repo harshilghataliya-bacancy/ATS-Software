@@ -62,7 +62,7 @@ function NavItem({ href, label, icon, active, collapsed }: { href: string; label
 export function Sidebar() {
   const pathname = usePathname()
   const { user, organization } = useUser()
-  const { canManageMembers } = useRole()
+  const { canManageMembers, canViewReports } = useRole()
   const [collapsed, setCollapsed] = useState(false)
 
   const initials = user?.full_name
@@ -115,14 +115,19 @@ export function Sidebar() {
 
         {/* Main nav */}
         <nav className={`flex-1 overflow-y-auto ${collapsed ? 'p-2' : 'p-3'} space-y-1`}>
-          {mainNav.map((item) => (
-            <NavItem
-              key={item.href}
-              {...item}
-              collapsed={collapsed}
-              active={pathname === item.href || pathname.startsWith(item.href + '/')}
-            />
-          ))}
+          {mainNav
+            .filter((item) => {
+              if (item.href === '/reports' && !canViewReports) return false
+              return true
+            })
+            .map((item) => (
+              <NavItem
+                key={item.href}
+                {...item}
+                collapsed={collapsed}
+                active={pathname === item.href || pathname.startsWith(item.href + '/')}
+              />
+            ))}
 
           <Separator className="my-3" />
 

@@ -17,6 +17,18 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'organization_id is required' }, { status: 400 })
     }
 
+    // Verify user belongs to this organization
+    const { data: member } = await supabase
+      .from('organization_members')
+      .select('role')
+      .eq('organization_id', orgId)
+      .eq('user_id', user.id)
+      .single()
+
+    if (!member) {
+      return NextResponse.json({ error: 'Not a member of this organization' }, { status: 403 })
+    }
+
     const config = await getScoringConfig(supabase, orgId)
     return NextResponse.json({ data: config })
   } catch {
@@ -39,6 +51,18 @@ export async function PUT(request: NextRequest) {
 
     if (!organization_id) {
       return NextResponse.json({ error: 'organization_id is required' }, { status: 400 })
+    }
+
+    // Verify admin role
+    const { data: member } = await supabase
+      .from('organization_members')
+      .select('role')
+      .eq('organization_id', organization_id)
+      .eq('user_id', user.id)
+      .single()
+
+    if (!member || member.role !== 'admin') {
+      return NextResponse.json({ error: 'Admin access required' }, { status: 403 })
     }
 
     const { data, error } = await updateScoringConfig(supabase, organization_id, config)

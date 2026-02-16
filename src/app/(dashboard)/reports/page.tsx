@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from 'react'
 import dynamic from 'next/dynamic'
-import { useUser } from '@/lib/hooks/use-user'
+import { useUser, useRole } from '@/lib/hooks/use-user'
 import { createClient } from '@/lib/supabase/client'
 import {
   getDashboardStats,
@@ -137,6 +137,7 @@ const KPI_CONFIG = [
 
 export default function ReportsPage() {
   const { organization, isLoading: userLoading } = useUser()
+  const { canViewReports } = useRole()
   const [loading, setLoading] = useState(true)
 
   const [stats, setStats] = useState<Stats | null>(null)
@@ -203,6 +204,15 @@ export default function ReportsPage() {
   useEffect(() => {
     if (organization) loadReports()
   }, [organization, loadReports])
+
+  if (!userLoading && !canViewReports) {
+    return (
+      <div className="text-center py-12">
+        <h2 className="text-lg font-semibold text-gray-900">Access Denied</h2>
+        <p className="text-gray-500 mt-1">Only administrators and recruiters can view reports.</p>
+      </div>
+    )
+  }
 
   if (userLoading || loading) {
     return (

@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from 'react'
 import { useParams, useRouter } from 'next/navigation'
-import { useUser } from '@/lib/hooks/use-user'
+import { useUser, useRole } from '@/lib/hooks/use-user'
 import { useGmailStatus } from '@/lib/hooks/use-gmail-status'
 import { createClient } from '@/lib/supabase/client'
 import { getOfferById, updateOffer } from '@/lib/services/offers'
@@ -44,6 +44,7 @@ export default function OfferDetailPage() {
   const params = useParams()
   const router = useRouter()
   const { organization, isLoading: userLoading } = useUser()
+  const { canManageOffers } = useRole()
   const { connected: gmailConnected, loading: gmailLoading } = useGmailStatus()
 
   const [offer, setOffer] = useState<OfferDetail | null>(null)
@@ -297,7 +298,7 @@ export default function OfferDetailPage() {
               </div>
             </CardHeader>
             <CardContent>
-              {isDraft && !showPreview ? (
+              {isDraft && !showPreview && canManageOffers ? (
                 <Textarea
                   rows={16}
                   value={templateHtml}
@@ -319,43 +320,47 @@ export default function OfferDetailPage() {
               <CardTitle className="text-lg">Actions</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="flex flex-wrap gap-2">
-                {isDraft && (
-                  <>
-                    <Button onClick={handleSave} disabled={saving}>
-                      {saving ? 'Saving...' : 'Save Changes'}
-                    </Button>
-                    <Button
-                      variant="default"
-                      onClick={() => {
-                        if (!gmailConnected && !gmailLoading) {
-                          setError('Please connect Gmail in Settings before sending offers.')
-                          return
-                        }
-                        setSendDialogOpen(true)
-                      }}
-                    >
-                      Send Offer
-                    </Button>
-                    <Button variant="destructive" onClick={() => setDeleteDialogOpen(true)}>
-                      Delete
-                    </Button>
-                  </>
-                )}
-                {isSent && (
-                  <>
-                    <Button onClick={() => setAcceptDialogOpen(true)}>
-                      Mark Accepted
-                    </Button>
-                    <Button variant="outline" onClick={() => setDeclineDialogOpen(true)}>
-                      Mark Declined
-                    </Button>
-                    <Button variant="outline" onClick={() => setExpireDialogOpen(true)}>
-                      Mark Expired
-                    </Button>
-                  </>
-                )}
-              </div>
+              {canManageOffers ? (
+                <div className="flex flex-wrap gap-2">
+                  {isDraft && (
+                    <>
+                      <Button onClick={handleSave} disabled={saving}>
+                        {saving ? 'Saving...' : 'Save Changes'}
+                      </Button>
+                      <Button
+                        variant="default"
+                        onClick={() => {
+                          if (!gmailConnected && !gmailLoading) {
+                            setError('Please connect Gmail in Settings before sending offers.')
+                            return
+                          }
+                          setSendDialogOpen(true)
+                        }}
+                      >
+                        Send Offer
+                      </Button>
+                      <Button variant="destructive" onClick={() => setDeleteDialogOpen(true)}>
+                        Delete
+                      </Button>
+                    </>
+                  )}
+                  {isSent && (
+                    <>
+                      <Button onClick={() => setAcceptDialogOpen(true)}>
+                        Mark Accepted
+                      </Button>
+                      <Button variant="outline" onClick={() => setDeclineDialogOpen(true)}>
+                        Mark Declined
+                      </Button>
+                      <Button variant="outline" onClick={() => setExpireDialogOpen(true)}>
+                        Mark Expired
+                      </Button>
+                    </>
+                  )}
+                </div>
+              ) : (
+                <p className="text-sm text-gray-500">You have view-only access to this offer.</p>
+              )}
             </CardContent>
           </Card>
         </div>

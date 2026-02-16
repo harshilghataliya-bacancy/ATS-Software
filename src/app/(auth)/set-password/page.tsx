@@ -19,8 +19,13 @@ export default function SetPasswordPage() {
     e.preventDefault()
     setError(null)
 
-    if (password.length < 6) {
-      setError('Password must be at least 6 characters')
+    if (password.length < 8) {
+      setError('Password must be at least 8 characters')
+      return
+    }
+
+    if (!/[A-Z]/.test(password) || !/[0-9]/.test(password)) {
+      setError('Password must contain at least one uppercase letter and one number')
       return
     }
 
@@ -63,7 +68,7 @@ export default function SetPasswordPage() {
             <Input
               id="password"
               type="password"
-              placeholder="At least 6 characters"
+              placeholder="At least 8 characters, 1 uppercase, 1 number"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
             />

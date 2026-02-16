@@ -18,6 +18,18 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'organization_id is required' }, { status: 400 })
     }
 
+    // Verify user belongs to this organization
+    const { data: member } = await supabase
+      .from('organization_members')
+      .select('role')
+      .eq('organization_id', orgId)
+      .eq('user_id', user.id)
+      .single()
+
+    if (!member) {
+      return NextResponse.json({ error: 'Not a member of this organization' }, { status: 403 })
+    }
+
     const { data, error } = await getOrganizationDomains(supabase, orgId)
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 500 })
