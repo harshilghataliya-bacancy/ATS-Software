@@ -150,7 +150,7 @@ export default function NewOrganizationPage() {
           <div className="space-y-2">
             <Label htmlFor="slug">URL Slug</Label>
             <div className="flex items-center gap-1">
-              <span className="text-sm text-gray-500">hireflow.app/careers/</span>
+              <span className="text-sm text-gray-500">{process.env.NEXT_PUBLIC_PLATFORM_DOMAIN || 'getroa.com'}/careers/</span>
               <Input
                 id="slug"
                 placeholder="acme-inc"

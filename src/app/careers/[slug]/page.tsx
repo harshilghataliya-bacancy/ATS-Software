@@ -24,26 +24,38 @@ export default async function CareersPage({ params }: Props) {
 
   const { organization, jobs } = data
 
+  // Fetch white-label branding
+  const { data: branding } = await supabase
+    .from('organization_branding')
+    .select('*')
+    .eq('organization_id', organization.id)
+    .maybeSingle()
+
+  const primaryColor = branding?.primary_color || '#4f46e5'
+  const accentColor = branding?.accent_color || '#7c3aed'
+  const displayName = branding?.brand_name || organization.name
+  const logoUrl = branding?.logo_url || organization.logo_url
+
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
       {/* Header */}
-      <header className="bg-gradient-to-r from-indigo-600 to-purple-600 text-white">
+      <header style={{ background: `linear-gradient(to right, ${primaryColor}, ${accentColor})` }} className="text-white">
         <div className="max-w-4xl mx-auto px-6 py-10">
           <div className="flex items-center gap-4">
-            {organization.logo_url ? (
+            {logoUrl ? (
               <img
-                src={organization.logo_url}
-                alt={organization.name}
+                src={logoUrl}
+                alt={displayName}
                 className="w-14 h-14 rounded-xl object-cover ring-2 ring-white/30"
               />
             ) : (
               <div className="w-14 h-14 rounded-xl bg-white/20 flex items-center justify-center text-xl font-bold">
-                {organization.name?.[0] ?? 'C'}
+                {displayName?.[0] ?? 'C'}
               </div>
             )}
             <div>
-              <h1 className="text-3xl font-bold">{organization.name}</h1>
-              <p className="text-indigo-100 mt-1">Join our team &mdash; explore open positions below</p>
+              <h1 className="text-3xl font-bold">{displayName}</h1>
+              <p className="text-white/70 mt-1">Join our team &mdash; explore open positions below</p>
             </div>
           </div>
         </div>
@@ -68,14 +80,14 @@ export default async function CareersPage({ params }: Props) {
               <Link
                 key={job.id}
                 href={`/careers/${slug}/${job.id}`}
-                className="group block bg-white border rounded-xl p-6 hover:shadow-lg hover:border-indigo-200 transition-all"
+                className="group block bg-white border rounded-xl p-6 hover:shadow-lg transition-all"
               >
                 <div className="flex items-start justify-between">
                   <div>
-                    <h3 className="text-lg font-semibold text-gray-900 group-hover:text-indigo-600 transition-colors">{job.title}</h3>
+                    <h3 className="text-lg font-semibold text-gray-900 transition-colors">{job.title}</h3>
                     <div className="flex flex-wrap items-center gap-2 mt-2.5">
                       {job.department && (
-                        <span className="inline-flex items-center gap-1 text-xs font-medium bg-indigo-50 text-indigo-700 px-2.5 py-1 rounded-full">
+                        <span className="inline-flex items-center gap-1 text-xs font-medium px-2.5 py-1 rounded-full" style={{ backgroundColor: `${primaryColor}15`, color: primaryColor }}>
                           <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M3.75 21h16.5M4.5 3h15M5.25 3v18m13.5-18v18M9 6.75h1.5m-1.5 3h1.5m-1.5 3h1.5m3-6H15m-1.5 3H15m-1.5 3H15M9 21v-3.375c0-.621.504-1.125 1.125-1.125h3.75c.621 0 1.125.504 1.125 1.125V21" /></svg>
                           {job.department}
                         </span>
@@ -92,7 +104,7 @@ export default async function CareersPage({ params }: Props) {
                       </span>
                     </div>
                   </div>
-                  <svg className="w-5 h-5 text-gray-300 group-hover:text-indigo-500 transition-colors mt-1 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <svg className="w-5 h-5 text-gray-300 transition-colors mt-1 shrink-0" style={{ color: primaryColor }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                     <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
                   </svg>
                 </div>
@@ -108,7 +120,7 @@ export default async function CareersPage({ params }: Props) {
       {/* Footer */}
       <footer className="border-t bg-white mt-auto">
         <div className="max-w-4xl mx-auto px-6 py-6 text-center text-sm text-gray-400">
-          Powered by HireFlow
+          {branding?.brand_name ? `\u00A9 ${new Date().getFullYear()} ${branding.brand_name}` : 'Powered by HireFlow'}
         </div>
       </footer>
     </div>

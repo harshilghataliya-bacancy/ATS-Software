@@ -15,6 +15,8 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Switch } from '@/components/ui/switch'
+import { Badge } from '@/components/ui/badge'
+import type { OrganizationDomain, OrganizationSubdomain } from '@/types/database'
 
 export default function OrganizationSettingsPage() {
   return (
@@ -47,6 +49,115 @@ function OrganizationSettingsContent() {
   const [semanticWeight, setSemanticWeight] = useState(30)
   const [aiSaving, setAiSaving] = useState(false)
   const [aiSuccess, setAiSuccess] = useState(false)
+
+  // White-Label state
+  const [domains, setDomains] = useState<(OrganizationDomain & { dns_instructions?: { verification: { type: string; host: string; value: string }; cname: { type: string; host: string; value: string } } })[]>([])
+  const [subdomains, setSubdomains] = useState<OrganizationSubdomain[]>([])
+  const [newDomain, setNewDomain] = useState('')
+  const [newSubdomain, setNewSubdomain] = useState('')
+  const [domainLoading, setDomainLoading] = useState(false)
+  const [subdomainLoading, setSubdomainLoading] = useState(false)
+  const [whitelabelError, setWhitelabelError] = useState<string | null>(null)
+  const [expandedDomain, setExpandedDomain] = useState<string | null>(null)
+
+  const platformDomain = process.env.NEXT_PUBLIC_PLATFORM_DOMAIN || 'getroa.com'
+
+  const loadDomains = useCallback(async () => {
+    if (!organization) return
+    try {
+      const res = await fetch(`/api/domains?organization_id=${organization.id}`)
+      if (res.ok) {
+        const { data } = await res.json()
+        setDomains(data || [])
+      }
+    } catch { /* ignore */ }
+  }, [organization])
+
+  const loadSubdomains = useCallback(async () => {
+    if (!organization) return
+    try {
+      const res = await fetch(`/api/subdomains?organization_id=${organization.id}`)
+      if (res.ok) {
+        const { data } = await res.json()
+        setSubdomains(data || [])
+      }
+    } catch { /* ignore */ }
+  }, [organization])
+
+  useEffect(() => {
+    loadDomains()
+    loadSubdomains()
+  }, [loadDomains, loadSubdomains])
+
+  async function handleAddDomain() {
+    if (!organization || !newDomain.trim()) return
+    setDomainLoading(true)
+    setWhitelabelError(null)
+    try {
+      const res = await fetch('/api/domains', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ organization_id: organization.id, domain: newDomain.trim().toLowerCase() }),
+      })
+      const json = await res.json()
+      if (!res.ok) {
+        setWhitelabelError(json.error)
+      } else {
+        setNewDomain('')
+        loadDomains()
+      }
+    } catch { setWhitelabelError('Failed to add domain') }
+    setDomainLoading(false)
+  }
+
+  async function handleVerifyDomain(domainId: string) {
+    setWhitelabelError(null)
+    try {
+      const res = await fetch(`/api/domains/${domainId}/verify`, { method: 'POST' })
+      if (!res.ok) {
+        const json = await res.json()
+        setWhitelabelError(json.error)
+      }
+      loadDomains()
+    } catch { setWhitelabelError('Verification failed') }
+  }
+
+  async function handleRemoveDomain(domainId: string) {
+    setWhitelabelError(null)
+    try {
+      await fetch(`/api/domains/${domainId}`, { method: 'DELETE' })
+      loadDomains()
+    } catch { /* ignore */ }
+  }
+
+  async function handleAddSubdomain() {
+    if (!organization || !newSubdomain.trim()) return
+    setSubdomainLoading(true)
+    setWhitelabelError(null)
+    try {
+      const res = await fetch('/api/subdomains', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ organization_id: organization.id, subdomain: newSubdomain.trim().toLowerCase() }),
+      })
+      const json = await res.json()
+      if (!res.ok) {
+        setWhitelabelError(json.error)
+      } else {
+        setNewSubdomain('')
+        loadSubdomains()
+      }
+    } catch { setWhitelabelError('Failed to add subdomain') }
+    setSubdomainLoading(false)
+  }
+
+  async function handleRemoveSubdomain(subdomainId: string) {
+    setWhitelabelError(null)
+    try {
+      await fetch(`/api/subdomains/${subdomainId}`, { method: 'DELETE' })
+      loadSubdomains()
+    } catch { /* ignore */ }
+  }
 
   const loadAiConfig = useCallback(async () => {
     if (!organization) return
@@ -240,6 +351,135 @@ function OrganizationSettingsContent() {
                 <a href="/api/gmail/connect">Connect Gmail</a>
               </Button>
             )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* White Label — admin only */}
+      {isAdmin && (
+        <Card>
+          <CardHeader>
+            <CardTitle>White Label</CardTitle>
+            <CardDescription>
+              Configure custom domains and platform subdomains for your organization.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-8">
+            {whitelabelError && (
+              <div className="bg-red-50 text-red-700 text-sm p-3 rounded-md">{whitelabelError}</div>
+            )}
+
+            {/* Custom Domains */}
+            <div className="space-y-4">
+              <div>
+                <Label className="text-sm font-medium">Custom Domain</Label>
+                <p className="text-xs text-gray-500 mt-0.5">
+                  Use your own domain (e.g., careers.acme.com) to host your careers page
+                </p>
+              </div>
+
+              <div className="flex gap-2">
+                <Input
+                  placeholder="careers.yourcompany.com"
+                  value={newDomain}
+                  onChange={(e) => setNewDomain(e.target.value)}
+                  className="max-w-sm"
+                />
+                <Button onClick={handleAddDomain} disabled={domainLoading || !newDomain.trim()}>
+                  {domainLoading ? 'Adding...' : 'Add Domain'}
+                </Button>
+              </div>
+
+              {domains.length > 0 && (
+                <div className="space-y-3">
+                  {domains.map((d) => (
+                    <div key={d.id} className="border rounded-lg p-3 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm font-medium">{d.domain}</span>
+                          <Badge variant={d.status === 'verified' ? 'default' : d.status === 'pending' ? 'secondary' : 'destructive'}>
+                            {d.status}
+                          </Badge>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          {d.status !== 'verified' && (
+                            <Button variant="outline" size="sm" onClick={() => handleVerifyDomain(d.id)}>
+                              Verify
+                            </Button>
+                          )}
+                          <Button variant="outline" size="sm" onClick={() => setExpandedDomain(expandedDomain === d.id ? null : d.id)}>
+                            {expandedDomain === d.id ? 'Hide DNS' : 'DNS Setup'}
+                          </Button>
+                          <Button variant="ghost" size="sm" className="text-red-600 hover:text-red-700" onClick={() => handleRemoveDomain(d.id)}>
+                            Remove
+                          </Button>
+                        </div>
+                      </div>
+
+                      {expandedDomain === d.id && d.dns_instructions && (
+                        <div className="bg-gray-50 rounded-md p-3 text-xs space-y-3 mt-2">
+                          <div>
+                            <p className="font-medium text-gray-700 mb-1">Step 1: Add TXT record to verify ownership</p>
+                            <div className="bg-white rounded p-2 font-mono">
+                              <div><span className="text-gray-500">Type:</span> {d.dns_instructions.verification.type}</div>
+                              <div><span className="text-gray-500">Host:</span> {d.dns_instructions.verification.host}</div>
+                              <div><span className="text-gray-500">Value:</span> {d.dns_instructions.verification.value}</div>
+                            </div>
+                          </div>
+                          <div>
+                            <p className="font-medium text-gray-700 mb-1">Step 2: Add CNAME record to point to HireFlow</p>
+                            <div className="bg-white rounded p-2 font-mono">
+                              <div><span className="text-gray-500">Type:</span> {d.dns_instructions.cname.type}</div>
+                              <div><span className="text-gray-500">Host:</span> {d.dns_instructions.cname.host}</div>
+                              <div><span className="text-gray-500">Value:</span> {d.dns_instructions.cname.value}</div>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="border-t pt-6 space-y-4">
+              <div>
+                <Label className="text-sm font-medium">Platform Subdomain</Label>
+                <p className="text-xs text-gray-500 mt-0.5">
+                  Get a free subdomain on {platformDomain}
+                </p>
+              </div>
+
+              <div className="flex gap-2 items-center">
+                <Input
+                  placeholder="yourcompany"
+                  value={newSubdomain}
+                  onChange={(e) => setNewSubdomain(e.target.value)}
+                  className="max-w-[200px]"
+                />
+                <span className="text-sm text-gray-500">.{platformDomain}</span>
+                <Button onClick={handleAddSubdomain} disabled={subdomainLoading || !newSubdomain.trim()}>
+                  {subdomainLoading ? 'Creating...' : 'Create'}
+                </Button>
+              </div>
+
+              {subdomains.length > 0 && (
+                <div className="space-y-2">
+                  {subdomains.map((s) => (
+                    <div key={s.id} className="flex items-center justify-between border rounded-lg p-3">
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-medium">{s.subdomain}.{platformDomain}</span>
+                        <Badge variant={s.status === 'active' ? 'default' : 'secondary'}>{s.status}</Badge>
+                      </div>
+                      <Button variant="ghost" size="sm" className="text-red-600 hover:text-red-700" onClick={() => handleRemoveSubdomain(s.id)}>
+                        Remove
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
           </CardContent>
         </Card>
       )}

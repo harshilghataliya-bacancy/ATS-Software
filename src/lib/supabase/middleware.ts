@@ -1,5 +1,6 @@
 import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
+import { resolveTenantByHost } from '@/lib/tenant-resolver'
 
 export async function updateSession(request: NextRequest) {
   // Skip auth if Supabase is not configured yet
@@ -31,6 +32,14 @@ export async function updateSession(request: NextRequest) {
       },
     }
   )
+
+  // Tenant resolution: resolve org from custom domain or subdomain
+  const host = request.headers.get('host') || ''
+  const tenant = await resolveTenantByHost(host)
+  if (tenant) {
+    supabaseResponse.headers.set('x-org-id', tenant.orgId)
+    supabaseResponse.headers.set('x-tenant-source', tenant.source)
+  }
 
   const {
     data: { user },
