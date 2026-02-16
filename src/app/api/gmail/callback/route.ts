@@ -3,7 +3,7 @@ import { createClient } from '@/lib/supabase/server'
 import { exchangeCodeForTokens, storeGmailTokens } from '@/lib/services/gmail'
 
 export async function GET(request: NextRequest) {
-  const baseUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000'
+  const baseUrl = (process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000').replace(/\/+$/, '')
   const settingsUrl = new URL('/settings/organization', baseUrl)
 
   const code = request.nextUrl.searchParams.get('code')

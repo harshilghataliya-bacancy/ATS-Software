@@ -7,7 +7,7 @@ export async function GET() {
   const { data: { user } } = await supabase.auth.getUser()
 
   if (!user) {
-    return NextResponse.redirect(new URL('/login', process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000'))
+    return NextResponse.redirect(new URL('/login', (process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000').replace(/\/+$/, '')))
   }
 
   // Get user's organization
@@ -18,7 +18,7 @@ export async function GET() {
     .single()
 
   if (!membership) {
-    return NextResponse.redirect(new URL('/login', process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000'))
+    return NextResponse.redirect(new URL('/login', (process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000').replace(/\/+$/, '')))
   }
 
   const state = JSON.stringify({
