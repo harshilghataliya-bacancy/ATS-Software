@@ -1,5 +1,6 @@
 import { UserProvider } from '@/components/layout/user-provider'
 import { Sidebar } from '@/components/layout/sidebar'
+import { BlocFeedFeedback } from '@/components/layout/blocfeed-widget'
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   return (
@@ -12,6 +13,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           </div>
         </main>
       </div>
+      <BlocFeedFeedback />
     </UserProvider>
   )
 }

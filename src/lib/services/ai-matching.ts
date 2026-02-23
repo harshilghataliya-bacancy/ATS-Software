@@ -242,6 +242,60 @@ export async function scoreCandidate(
     const candidateText = buildCandidateText(candidate, resumeText)
     const jobText = buildJobText(job)
 
+    // 4a. Check if candidate profile has meaningful data beyond just a name
+    const hasResume = resumeText.trim().length > 0
+    const hasParsedData = candidate.resume_parsed_data && Object.keys(candidate.resume_parsed_data).length > 0
+    const hasTags = candidate.tags && candidate.tags.length > 0
+    const hasTitle = !!candidate.current_title
+    const hasCompany = !!candidate.current_company
+    const hasNotes = !!candidate.notes
+
+    if (!hasResume && !hasParsedData && !hasTags && !hasTitle && !hasCompany && !hasNotes) {
+      // Candidate has no meaningful data — return a low score with explanation
+      const result: MatchScoreResult = {
+        overall_score: 0,
+        skill_score: 0,
+        experience_score: 0,
+        semantic_score: 0,
+        ai_summary: 'Unable to score — candidate profile has no resume, skills, or experience data. Please upload a resume or add profile details to enable accurate scoring.',
+        recommendation: 'insufficient_data',
+        strengths: [],
+        concerns: ['No resume uploaded', 'No skills or experience data available'],
+        breakdown: {
+          skills_found: [],
+          skills_missing: [],
+          experience_details: 'No data available for assessment',
+        },
+      }
+
+      // Still upsert so we don't re-score on every page load
+      await supabase
+        .from('candidate_match_scores')
+        .upsert(
+          {
+            organization_id: orgId,
+            application_id: applicationId,
+            candidate_id: app.candidate_id,
+            job_id: app.job_id,
+            overall_score: 0,
+            skill_score: 0,
+            experience_score: 0,
+            semantic_score: 0,
+            ai_summary: result.ai_summary,
+            recommendation: result.recommendation,
+            strengths: result.strengths,
+            concerns: result.concerns,
+            breakdown: result.breakdown,
+            weights: weights,
+            model_used: 'gpt-4o',
+            scored_at: new Date().toISOString(),
+          },
+          { onConflict: 'application_id' }
+        )
+
+      return { data: result, error: null }
+    }
+
     // 4. Run GPT-4o analysis + embedding similarity in parallel
     const openai = getOpenAIClient()
 
@@ -261,10 +315,7 @@ export async function scoreCandidate(
           safeSemanticScore * weights.semantic) /
           totalWeight
       : 0
-    // Apply gentle upward curve: boosts mid-range scores (60→72, 70→80, 80→87)
-    // while keeping extremes stable (0→0, 100→100)
-    const curvedScore = 100 * Math.pow(rawScore / 100, 0.75)
-    const overallScore = Math.round(curvedScore)
+    const overallScore = Math.round(rawScore)
 
     const result: MatchScoreResult = {
       overall_score: clamp(overallScore, 0, 100),
@@ -357,11 +408,12 @@ Return ONLY valid JSON with this exact structure:
 }
 
 Scoring guidelines:
-- skill_score: How well the candidate's skills match job requirements (0=no overlap, 100=perfect match). Give credit for related/transferable skills, not just exact keyword matches. A candidate with 70%+ of required skills should score 75+.
-- experience_score: How relevant their experience is (0=completely unrelated field, 100=exact role match). Value years of industry experience, leadership, and domain knowledge generously. Similar roles in the same industry should score 80+.
-- Score generously — focus on what the candidate CAN do, not just gaps. Most qualified candidates should score 70-95.
-- A candidate who matches most requirements but is missing 1-2 nice-to-haves should still score 80+.
-- List concrete strengths and concerns
+- skill_score: How well the candidate's skills match job requirements (0=no overlap, 100=perfect match). Give credit for related/transferable skills, not just exact keyword matches.
+- experience_score: How relevant their experience is (0=completely unrelated field, 100=exact role match). Value years of industry experience, leadership, and domain knowledge.
+- CRITICAL: Only score based on EVIDENCE present in the candidate profile. If the candidate has minimal data (e.g. only a name, no resume, few skills), scores MUST be low (0-20). Do NOT assume or infer skills/experience that are not explicitly stated.
+- If the candidate has a detailed resume with relevant skills and experience, scores can be high (70-95).
+- If the candidate has some relevant data but gaps, score moderately (40-70).
+- List concrete strengths and concerns based only on available data
 - Keep summary concise and actionable`
 
   const response = await openai.chat.completions.create({
