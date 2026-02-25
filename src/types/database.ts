@@ -3,10 +3,10 @@
 // =============================================================================
 
 // Enums
-export type OrgRole = 'admin' | 'recruiter' | 'hiring_manager'
+export type OrgRole = 'admin' | 'recruiter' | 'hiring_manager' | 'interviewer'
 export type JobStatus = 'draft' | 'published' | 'closed' | 'archived'
 export type EmploymentType = 'full_time' | 'part_time' | 'contract' | 'internship'
-export type StageType = 'applied' | 'screening' | 'interview' | 'assessment' | 'offer' | 'hired' | 'rejected'
+export type StageType = 'applied' | 'screening' | 'interview' | 'offer' | 'hired' | 'rejected'
 export type ApplicationStatus = 'active' | 'withdrawn' | 'rejected' | 'hired'
 export type InterviewType = 'phone' | 'video' | 'onsite' | 'technical' | 'cultural'
 export type InterviewStatus = 'scheduled' | 'completed' | 'cancelled' | 'no_show'
@@ -41,6 +41,7 @@ export interface OrganizationMember {
   joined_at: string | null
   created_at: string
   updated_at: string
+  deleted_at: string | null
 }
 
 export interface Job {
@@ -56,6 +57,17 @@ export interface Job {
   salary_max: number | null
   salary_currency: string
   status: JobStatus
+  experience_level: string | null
+  num_openings: number
+  application_deadline: string | null
+  remote_policy: string
+  skills: string[]
+  benefits: string | null
+  nice_to_have: string | null
+  education_level: string | null
+  experience_min: number | null
+  experience_max: number | null
+  priority: string
   published_at: string | null
   closed_at: string | null
   created_by: string
@@ -90,6 +102,14 @@ export interface Candidate {
   location: string | null
   source: CandidateSource
   source_details: string | null
+  current_salary: number | null
+  expected_salary: number | null
+  education: string | null
+  experience_years: number | null
+  notice_period: string | null
+  cover_letter: string | null
+  date_of_birth: string | null
+  gender: string | null
   resume_url: string | null
   resume_parsed_data: ResumeParsedData | null
   gdpr_consent: boolean
@@ -115,6 +135,7 @@ export interface Application {
   rejection_reason: string | null
   created_at: string
   updated_at: string
+  deleted_at: string | null
 }
 
 export interface StageMovement {
@@ -145,6 +166,7 @@ export interface Interview {
   created_by: string
   created_at: string
   updated_at: string
+  deleted_at: string | null
 }
 
 export interface InterviewPanelist {
@@ -171,6 +193,7 @@ export interface InterviewFeedback {
   submitted_at: string
   created_at: string
   updated_at: string
+  deleted_at: string | null
 }
 
 export interface ScorecardCriteria {
@@ -203,6 +226,7 @@ export interface EmailTemplate {
   created_by: string
   created_at: string
   updated_at: string
+  deleted_at: string | null
 }
 
 export interface EmailLog {
@@ -221,6 +245,19 @@ export interface EmailLog {
   created_at: string
 }
 
+export interface SalaryComponent {
+  name: string
+  monthly: number
+  annual: number
+  section?: string
+}
+
+export interface BonusComponent {
+  name: string
+  amount: number
+  frequency: string
+}
+
 export interface OfferLetter {
   id: string
   organization_id: string
@@ -237,9 +274,19 @@ export interface OfferLetter {
   sent_at: string | null
   responded_at: string | null
   response_notes: string | null
+  salary_components: SalaryComponent[] | null
+  bonus_components: BonusComponent[] | null
+  reporting_manager: string | null
+  employment_type: string | null
+  location: string | null
+  remuneration_type: string | null
+  pf_applicable: boolean
+  work_type: string | null
+  business_unit: string | null
   created_by: string
   created_at: string
   updated_at: string
+  deleted_at: string | null
 }
 
 export interface ActivityLog {
@@ -331,6 +378,37 @@ export interface OrganizationBranding {
   accent_color: string
   created_at: string
   updated_at: string
+}
+
+// WhatsApp Integration Types
+export type WhatsAppMessageDirection = 'outbound' | 'inbound'
+export type WhatsAppMessageStatus = 'queued' | 'sent' | 'delivered' | 'read' | 'failed'
+
+export interface WhatsAppConfig {
+  id: string
+  organization_id: string
+  account_sid: string
+  auth_token: string
+  whatsapp_number: string
+  is_sandbox: boolean
+  created_at: string
+  updated_at: string
+}
+
+export interface WhatsAppMessage {
+  id: string
+  organization_id: string
+  candidate_id: string
+  application_id: string | null
+  from_number: string
+  to_number: string
+  message_body: string
+  direction: WhatsAppMessageDirection
+  twilio_message_sid: string | null
+  status: WhatsAppMessageStatus
+  sent_by: string | null
+  error_message: string | null
+  created_at: string
 }
 
 // Join Types

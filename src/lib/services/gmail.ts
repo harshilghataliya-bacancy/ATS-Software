@@ -106,6 +106,7 @@ export async function getValidAccessToken(
     .select('user_id')
     .eq('organization_id', orgId)
     .eq('role', 'admin')
+    .is('deleted_at', null)
 
   if (adminMembers) {
     for (const admin of adminMembers) {

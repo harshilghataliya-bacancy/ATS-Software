@@ -27,16 +27,20 @@ export function useUser() {
 
 export function useRole() {
   const { membership } = useUser()
+  const role = membership?.role ?? null
   return {
-    role: membership?.role ?? null,
-    isAdmin: membership?.role === 'admin',
-    isRecruiter: membership?.role === 'recruiter',
-    isHiringManager: membership?.role === 'hiring_manager',
-    canManageJobs: membership?.role === 'admin' || membership?.role === 'recruiter',
-    canManageCandidates: membership?.role === 'admin' || membership?.role === 'recruiter',
-    canManageOffers: membership?.role === 'admin' || membership?.role === 'recruiter',
+    role,
+    isAdmin: role === 'admin',
+    isRecruiter: role === 'recruiter',
+    isHiringManager: role === 'hiring_manager',
+    isInterviewer: role === 'interviewer',
+    canManageJobs: role === 'admin' || role === 'recruiter',
+    canManageCandidates: role === 'admin' || role === 'recruiter',
+    canManageOffers: role === 'admin' || role === 'recruiter',
     canSubmitFeedback: true,
-    canManageMembers: membership?.role === 'admin',
-    canViewReports: membership?.role === 'admin' || membership?.role === 'recruiter',
+    canManageMembers: role === 'admin',
+    canViewReports: role === 'admin' || role === 'recruiter',
+    canViewAllInterviews: role !== 'interviewer',
+    canSendWhatsApp: role !== null && role !== 'interviewer',
   }
 }

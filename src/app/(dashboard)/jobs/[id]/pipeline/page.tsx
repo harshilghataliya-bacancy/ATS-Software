@@ -67,7 +67,6 @@ const STAGE_COLORS: Record<string, string> = {
   applied: 'border-t-blue-400',
   screening: 'border-t-yellow-400',
   interview: 'border-t-purple-400',
-  assessment: 'border-t-orange-400',
   offer: 'border-t-green-400',
   hired: 'border-t-emerald-500',
   rejected: 'border-t-red-400',

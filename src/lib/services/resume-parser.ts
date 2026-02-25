@@ -65,6 +65,92 @@ async function fetchResumeText(
 }
 
 // ---------------------------------------------------------------------------
+// Types: Auto-fill (public, no DB dependency)
+// ---------------------------------------------------------------------------
+
+export interface ParsedResumeForAutoFill {
+  first_name: string | null
+  last_name: string | null
+  email: string | null
+  phone: string | null
+  current_title: string | null
+  current_company: string | null
+  location: string | null
+  experience_years: number | null
+  education_level: string | null
+  linkedin_url: string | null
+  current_salary: number | null
+  expected_salary: number | null
+  notice_period: string | null
+}
+
+// ---------------------------------------------------------------------------
+// Parse resume from raw bytes (no DB, for public auto-fill)
+// ---------------------------------------------------------------------------
+
+export async function parseResumeFromBytes(
+  pdfBytes: Uint8Array
+): Promise<{ data: ParsedResumeForAutoFill | null; error: Error | null }> {
+  try {
+    const result = await extractText(pdfBytes)
+    const text = (Array.isArray(result.text) ? result.text.join('\n') : (result.text || '')).substring(0, 8000)
+
+    if (!text || text.trim().length < 20) {
+      return { data: null, error: new Error('Could not extract text from resume') }
+    }
+
+    const openai = getOpenAIClient()
+    const response = await openai.chat.completions.create({
+      model: 'gpt-4o',
+      messages: [
+        {
+          role: 'system',
+          content: `You are a resume parsing expert. Extract structured data from the resume text below for a job application form. Return ONLY valid JSON with this exact structure:
+{
+  "first_name": "string or null",
+  "last_name": "string or null",
+  "email": "string or null",
+  "phone": "string or null",
+  "current_title": "string or null",
+  "current_company": "string or null",
+  "location": "string or null",
+  "experience_years": number or null,
+  "education_level": "one of: high_school, associate, bachelor, master, doctorate, diploma, certification, other — or null",
+  "linkedin_url": "string or null",
+  "current_salary": number or null,
+  "expected_salary": number or null,
+  "notice_period": "one of: immediate, 15_days, 30_days, 60_days, 90_days, more_than_90 — or null"
+}
+
+Rules:
+- education_level MUST be one of the exact enum values listed above, or null.
+- notice_period MUST be one of the exact enum values listed above, or null.
+- Salary values should be annual amounts as numbers (no currency symbols).
+- experience_years should be total professional experience as a number.
+- Be accurate. Use null for anything not clearly stated in the resume.`,
+        },
+        { role: 'user', content: text },
+      ],
+      temperature: 0.2,
+      response_format: { type: 'json_object' },
+    })
+
+    const content = response.choices[0]?.message?.content
+    if (!content) {
+      return { data: null, error: new Error('Empty response from GPT-4o') }
+    }
+
+    const parsed = JSON.parse(content) as ParsedResumeForAutoFill
+    return { data: parsed, error: null }
+  } catch (err) {
+    return {
+      data: null,
+      error: err instanceof Error ? err : new Error('Resume parsing failed'),
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Core: Parse a single resume
 // ---------------------------------------------------------------------------
 

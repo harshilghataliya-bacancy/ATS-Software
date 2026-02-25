@@ -23,6 +23,7 @@ export async function getMembersWithDetails(orgId: string) {
     .from('organization_members')
     .select('*')
     .eq('organization_id', orgId)
+    .is('deleted_at', null)
     .order('created_at', { ascending: true })
 
   if (membersError) {
@@ -64,6 +65,7 @@ export async function inviteMemberAction(orgId: string, email: string, role: str
     .select('role')
     .eq('organization_id', orgId)
     .eq('user_id', user.id)
+    .is('deleted_at', null)
     .single()
 
   if (membership?.role !== 'admin') {
@@ -81,9 +83,42 @@ export async function inviteMemberAction(orgId: string, email: string, role: str
 
   const existingUser = users.find((u) => u.email === email)
 
+  // Fetch org name for email
+  const { data: orgData } = await adminSupabase
+    .from('organizations')
+    .select('name')
+    .eq('id', orgId)
+    .single()
+  const orgName = orgData?.name || 'HireFlow'
+  const appUrl = (process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000').replace(/\/+$/, '')
+
   if (existingUser) {
-    // User already has an account
+    // User already has an account — send notification email via Gmail
     targetUserId = existingUser.id
+
+    const tokenResult = await getValidAccessToken(adminSupabase, user.id, orgId)
+    if (tokenResult.accessToken) {
+      // Fire-and-forget: send notification email in background
+      sendGmailEmail(tokenResult.accessToken, {
+        from: tokenResult.fromEmail || user.email!,
+        to: email,
+        subject: `You've been added to ${orgName} on HireFlow`,
+        html: `
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+            <h2>Welcome to ${orgName}!</h2>
+            <p>You have been added to <strong>${orgName}</strong> on HireFlow as a <strong>${role.replace('_', ' ')}</strong>.</p>
+            <p>You can now log in with your existing account to access the organization.</p>
+            <div style="margin: 24px 0;">
+              <a href="${appUrl}"
+                 style="background-color: #2563eb; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block;">
+                Open HireFlow
+              </a>
+            </div>
+            <p style="color: #6b7280; font-size: 14px;">If you did not expect this invitation, you can ignore this email.</p>
+          </div>
+        `,
+      }).catch((err) => console.error('Failed to send member notification email via Gmail:', err))
+    }
   } else {
     // Generate invite link without sending email (avoids Supabase rate limits)
     const redirectTo = `${(process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000').replace(/\/+$/, '')}/callback`
@@ -119,6 +154,36 @@ export async function inviteMemberAction(orgId: string, email: string, role: str
       }
 
       targetUserId = createData.user.id
+
+      // Send credentials email via Gmail
+      const fallbackToken = await getValidAccessToken(adminSupabase, user.id, orgId)
+      if (fallbackToken.accessToken) {
+        // Fire-and-forget: send credentials email in background
+        sendGmailEmail(fallbackToken.accessToken, {
+          from: fallbackToken.fromEmail || user.email!,
+          to: email,
+          subject: `You've been invited to ${orgName} on HireFlow`,
+          html: `
+            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+              <h2>Welcome to ${orgName}!</h2>
+              <p>You have been invited to join <strong>${orgName}</strong> on HireFlow as a <strong>${role.replace('_', ' ')}</strong>.</p>
+              <p>An account has been created for you. Here are your login credentials:</p>
+              <div style="background: #f3f4f6; padding: 16px; border-radius: 8px; margin: 16px 0;">
+                <p style="margin: 0;"><strong>Email:</strong> ${email}</p>
+                <p style="margin: 8px 0 0 0;"><strong>Temporary Password:</strong> ${tempPassword}</p>
+              </div>
+              <p style="color: #dc2626; font-size: 14px;">Please change your password after first login.</p>
+              <div style="margin: 24px 0;">
+                <a href="${appUrl}"
+                   style="background-color: #2563eb; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block;">
+                  Login to HireFlow
+                </a>
+              </div>
+            </div>
+          `,
+        }).catch((err) => console.error('Failed to send invite email via Gmail:', err))
+      }
+
       return await addMemberAndReturn(adminSupabase, orgId, targetUserId, role, tempPassword)
     }
 
@@ -128,31 +193,27 @@ export async function inviteMemberAction(orgId: string, email: string, role: str
     const tokenResult = await getValidAccessToken(adminSupabase, user.id, orgId)
     if (tokenResult.accessToken) {
       const inviteLink = linkData.properties.action_link
-      try {
-        await sendGmailEmail(tokenResult.accessToken, {
-          from: tokenResult.fromEmail || user.email!,
-          to: email,
-          subject: 'You have been invited to join HireFlow',
-          html: `
-            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-              <h2>You&rsquo;re invited to join HireFlow!</h2>
-              <p>You have been invited to join an organization on HireFlow as a <strong>${role}</strong>.</p>
-              <p>Click the button below to accept your invitation and set up your account:</p>
-              <div style="margin: 24px 0;">
-                <a href="${inviteLink}"
-                   style="background-color: #2563eb; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block;">
-                  Accept Invitation
-                </a>
-              </div>
-              <p style="color: #6b7280; font-size: 14px;">If the button doesn&rsquo;t work, copy and paste this link into your browser:</p>
-              <p style="color: #6b7280; font-size: 14px; word-break: break-all;">${inviteLink}</p>
+      // Fire-and-forget: send invite email in background
+      sendGmailEmail(tokenResult.accessToken, {
+        from: tokenResult.fromEmail || user.email!,
+        to: email,
+        subject: `You've been invited to ${orgName} on HireFlow`,
+        html: `
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+            <h2>You're invited to join ${orgName}!</h2>
+            <p>You have been invited to join <strong>${orgName}</strong> on HireFlow as a <strong>${role.replace('_', ' ')}</strong>.</p>
+            <p>Click the button below to accept your invitation and set up your account:</p>
+            <div style="margin: 24px 0;">
+              <a href="${inviteLink}"
+                 style="background-color: #2563eb; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block;">
+                Accept Invitation
+              </a>
             </div>
-          `,
-        })
-      } catch (gmailError) {
-        console.error('Failed to send invite email via Gmail:', gmailError)
-        // User was created but email failed — admin can resend later
-      }
+            <p style="color: #6b7280; font-size: 14px;">If the button doesn&rsquo;t work, copy and paste this link into your browser:</p>
+            <p style="color: #6b7280; font-size: 14px; word-break: break-all;">${inviteLink}</p>
+          </div>
+        `,
+      }).catch((err) => console.error('Failed to send invite email via Gmail:', err))
     } else {
       console.warn('Gmail not connected — invite created but no email sent. User:', email)
     }
@@ -164,6 +225,7 @@ export async function inviteMemberAction(orgId: string, email: string, role: str
     .select('id')
     .eq('organization_id', orgId)
     .eq('user_id', targetUserId)
+    .is('deleted_at', null)
     .maybeSingle()
 
   if (existingMember) {
@@ -200,6 +262,7 @@ async function addMemberAndReturn(
     .select('id')
     .eq('organization_id', orgId)
     .eq('user_id', userId)
+    .is('deleted_at', null)
     .maybeSingle()
 
   if (existingMember) {

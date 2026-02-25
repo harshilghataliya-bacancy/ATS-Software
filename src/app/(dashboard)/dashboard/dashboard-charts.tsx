@@ -61,7 +61,8 @@ export default function DashboardCharts({ orgId }: { orgId: string }) {
       supabase
         .from('applications')
         .select('status, applied_at, job:jobs(title)')
-        .eq('organization_id', orgId),
+        .eq('organization_id', orgId)
+        .is('deleted_at', null),
     ])
 
     if (velocityResult.data) setVelocity(velocityResult.data)

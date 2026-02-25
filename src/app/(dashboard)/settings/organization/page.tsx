@@ -7,6 +7,7 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { updateOrganizationSchema, type UpdateOrganizationInput } from '@/lib/validators/organization'
 import { useUser, useRole } from '@/lib/hooks/use-user'
 import { useGmailStatus } from '@/lib/hooks/use-gmail-status'
+import { useWhatsAppStatus } from '@/lib/hooks/use-whatsapp-status'
 import { createClient } from '@/lib/supabase/client'
 import { updateOrganization } from '@/lib/services/organization'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -41,6 +42,17 @@ function OrganizationSettingsContent() {
   const [saving, setSaving] = useState(false)
   const [disconnecting, setDisconnecting] = useState(false)
 
+  // WhatsApp state
+  const { configured: waConfigured, loading: waLoading, refresh: refreshWhatsApp } = useWhatsAppStatus()
+  const [waSid, setWaSid] = useState('')
+  const [waToken, setWaToken] = useState('')
+  const [waNumber, setWaNumber] = useState('')
+  const [waSandbox, setWaSandbox] = useState(false)
+  const [waSaving, setWaSaving] = useState(false)
+  const [waSuccess, setWaSuccess] = useState(false)
+  const [waError, setWaError] = useState<string | null>(null)
+  const [waDisconnecting, setWaDisconnecting] = useState(false)
+
   // AI Scoring state
   const [aiEnabled, setAiEnabled] = useState(true)
   const [aiAutoScore, setAiAutoScore] = useState(true)
@@ -65,7 +77,7 @@ function OrganizationSettingsContent() {
   const loadDomains = useCallback(async () => {
     if (!organization) return
     try {
-      const res = await fetch(`/api/domains?organization_id=${organization.id}`)
+      const res = await fetch('/api/domains')
       if (res.ok) {
         const { data } = await res.json()
         setDomains(data || [])
@@ -76,7 +88,7 @@ function OrganizationSettingsContent() {
   const loadSubdomains = useCallback(async () => {
     if (!organization) return
     try {
-      const res = await fetch(`/api/subdomains?organization_id=${organization.id}`)
+      const res = await fetch('/api/subdomains')
       if (res.ok) {
         const { data } = await res.json()
         setSubdomains(data || [])
@@ -97,7 +109,7 @@ function OrganizationSettingsContent() {
       const res = await fetch('/api/domains', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ organization_id: organization.id, domain: newDomain.trim().toLowerCase() }),
+        body: JSON.stringify({ domain: newDomain.trim().toLowerCase() }),
       })
       const json = await res.json()
       if (!res.ok) {
@@ -138,7 +150,7 @@ function OrganizationSettingsContent() {
       const res = await fetch('/api/subdomains', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ organization_id: organization.id, subdomain: newSubdomain.trim().toLowerCase() }),
+        body: JSON.stringify({ subdomain: newSubdomain.trim().toLowerCase() }),
       })
       const json = await res.json()
       if (!res.ok) {
@@ -162,7 +174,7 @@ function OrganizationSettingsContent() {
   const loadAiConfig = useCallback(async () => {
     if (!organization) return
     try {
-      const res = await fetch(`/api/ai-matching/config?organization_id=${organization.id}`)
+      const res = await fetch('/api/ai-matching/config')
       if (res.ok) {
         const { data } = await res.json()
         if (data) {
@@ -190,7 +202,6 @@ function OrganizationSettingsContent() {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          organization_id: organization.id,
           enabled: aiEnabled,
           auto_score: aiAutoScore,
           skill_weight: skillWeight,
@@ -223,6 +234,51 @@ function OrganizationSettingsContent() {
       // ignore
     }
     setDisconnecting(false)
+  }
+
+  async function handleSaveWhatsApp() {
+    setWaSaving(true)
+    setWaError(null)
+    try {
+      const res = await fetch('/api/whatsapp/config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          account_sid: waSid,
+          auth_token: waToken,
+          whatsapp_number: waNumber,
+          is_sandbox: waSandbox,
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        setWaError(data.error || 'Failed to save')
+      } else {
+        setWaSuccess(true)
+        refreshWhatsApp()
+        setTimeout(() => setWaSuccess(false), 3000)
+      }
+    } catch {
+      setWaError('Failed to save WhatsApp configuration')
+    }
+    setWaSaving(false)
+  }
+
+  async function handleDisconnectWhatsApp() {
+    setWaDisconnecting(true)
+    try {
+      const res = await fetch('/api/whatsapp/config', { method: 'DELETE' })
+      if (res.ok) {
+        refreshWhatsApp()
+        setWaSid('')
+        setWaToken('')
+        setWaNumber('')
+        setWaSandbox(false)
+      }
+    } catch {
+      // ignore
+    }
+    setWaDisconnecting(false)
   }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -359,6 +415,91 @@ function OrganizationSettingsContent() {
               <Button asChild>
                 <a href="/api/gmail/connect">Connect Gmail</a>
               </Button>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* WhatsApp Integration — admin only */}
+      {isAdmin && (
+        <Card>
+          <CardHeader>
+            <CardTitle>WhatsApp Integration</CardTitle>
+            <CardDescription>
+              Connect your Twilio account to send WhatsApp messages to candidates directly from HireFlow.
+              All team members (except interviewers) will be able to send messages.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {waError && (
+              <div className="bg-red-50 text-red-700 text-sm p-3 rounded-md">{waError}</div>
+            )}
+            {waSuccess && (
+              <div className="bg-green-50 text-green-700 text-sm p-3 rounded-md">
+                WhatsApp configuration saved successfully!
+              </div>
+            )}
+
+            {waLoading ? (
+              <Skeleton className="h-10 w-40" />
+            ) : waConfigured ? (
+              <div className="flex items-center gap-4">
+                <div className="flex items-center gap-2">
+                  <div className="w-2 h-2 rounded-full bg-green-500" />
+                  <span className="text-sm text-gray-700">WhatsApp connected</span>
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleDisconnectWhatsApp}
+                  disabled={waDisconnecting}
+                >
+                  {waDisconnecting ? 'Disconnecting...' : 'Disconnect'}
+                </Button>
+              </div>
+            ) : (
+              <div className="space-y-4 max-w-md">
+                <div className="space-y-2">
+                  <Label>Twilio Account SID</Label>
+                  <Input
+                    placeholder="ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+                    value={waSid}
+                    onChange={(e) => setWaSid(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Auth Token</Label>
+                  <Input
+                    type="password"
+                    placeholder="Your Twilio Auth Token"
+                    value={waToken}
+                    onChange={(e) => setWaToken(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>WhatsApp-Enabled Number</Label>
+                  <Input
+                    placeholder="+14155238886"
+                    value={waNumber}
+                    onChange={(e) => setWaNumber(e.target.value)}
+                  />
+                  <p className="text-xs text-gray-500">
+                    E.164 format (e.g., +14155238886). For sandbox, use the Twilio sandbox number.
+                  </p>
+                </div>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <Label className="text-sm font-medium">Sandbox Mode</Label>
+                    <p className="text-xs text-gray-500 mt-0.5">
+                      Enable for testing with Twilio WhatsApp sandbox
+                    </p>
+                  </div>
+                  <Switch checked={waSandbox} onCheckedChange={setWaSandbox} />
+                </div>
+                <Button onClick={handleSaveWhatsApp} disabled={waSaving || !waSid || !waToken || !waNumber}>
+                  {waSaving ? 'Saving...' : 'Save WhatsApp Config'}
+                </Button>
+              </div>
             )}
           </CardContent>
         </Card>

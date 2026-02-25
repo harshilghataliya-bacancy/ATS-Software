@@ -5,9 +5,9 @@ import { useParams, useRouter } from 'next/navigation'
 import { useUser, useRole } from '@/lib/hooks/use-user'
 import { useGmailStatus } from '@/lib/hooks/use-gmail-status'
 import { createClient } from '@/lib/supabase/client'
-import { getOfferById, updateOffer } from '@/lib/services/offers'
-import { OFFER_STATUS_CONFIG } from '@/lib/constants'
-import { substituteOfferVariables, formatSalary } from '@/lib/offer-template'
+import { getOfferById } from '@/lib/services/offers'
+import { OFFER_STATUS_CONFIG, EMPLOYMENT_TYPE_OPTIONS, WORK_TYPE_OPTIONS } from '@/lib/constants'
+import { formatSalary } from '@/lib/offer-template'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -18,6 +18,13 @@ import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
+
+interface SalaryComponent {
+  name: string
+  monthly: number
+  annual: number
+  section?: string
+}
 
 interface OfferDetail {
   id: string
@@ -33,11 +40,24 @@ interface OfferDetail {
   created_at: string
   updated_at: string
   application_id: string
+  salary_components: SalaryComponent[] | null
+  bonus_components: unknown[] | null
+  reporting_manager: string | null
+  employment_type: string | null
+  location: string | null
+  remuneration_type: string | null
+  pf_applicable: boolean
+  work_type: string | null
+  business_unit: string | null
   application: {
     id: string
-    candidate: { id: string; first_name: string; last_name: string; email: string } | null
+    candidate: { id: string; first_name: string; last_name: string; email: string; phone?: string } | null
     job: { id: string; title: string; department: string; status: string } | null
   } | null
+}
+
+function fmtNum(n: number) {
+  return n.toLocaleString('en-IN')
 }
 
 export default function OfferDetailPage() {
@@ -51,28 +71,20 @@ export default function OfferDetailPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
-  const [saving, setSaving] = useState(false)
   const [sending, setSending] = useState(false)
   const [responding, setResponding] = useState(false)
-  const [showPreview, setShowPreview] = useState(false)
-  const [templateHtml, setTemplateHtml] = useState('')
   const [downloadingPdf, setDownloadingPdf] = useState(false)
+  const [pdfPreviewUrl, setPdfPreviewUrl] = useState<string | null>(null)
+  const [pdfLoading, setPdfLoading] = useState(false)
 
-  // Decline dialog state
+  // Dialog states
   const [declineDialogOpen, setDeclineDialogOpen] = useState(false)
   const [declineNotes, setDeclineNotes] = useState('')
-
-  // Delete dialog state
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
-
-  // Send dialog state
   const [sendDialogOpen, setSendDialogOpen] = useState(false)
-
-  // Accept dialog state
   const [acceptDialogOpen, setAcceptDialogOpen] = useState(false)
-
-  // Expire dialog state
-  const [expireDialogOpen, setExpireDialogOpen] = useState(false)
+  const [revokeDialogOpen, setRevokeDialogOpen] = useState(false)
+  const [revokeNotes, setRevokeNotes] = useState('')
 
   const loadOffer = useCallback(async () => {
     if (!organization) return
@@ -84,7 +96,6 @@ export default function OfferDetailPage() {
       setError(fetchError.message)
     } else if (data) {
       setOffer(data as OfferDetail)
-      setTemplateHtml(data.template_html || '')
     }
     setLoading(false)
   }, [organization, params.id])
@@ -94,42 +105,40 @@ export default function OfferDetailPage() {
     loadOffer()
   }, [organization, loadOffer])
 
+  // Auto-load PDF preview
+  useEffect(() => {
+    if (!offer) return
+    loadPdfPreview()
+    return () => {
+      if (pdfPreviewUrl) window.URL.revokeObjectURL(pdfPreviewUrl)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [offer?.id])
+
   const candidate = offer?.application?.candidate
   const job = offer?.application?.job
   const candidateName = candidate ? `${candidate.first_name} ${candidate.last_name}` : 'Unknown'
+  const initials = candidate
+    ? `${candidate.first_name?.[0] ?? ''}${candidate.last_name?.[0] ?? ''}`.toUpperCase()
+    : '??'
   const isDraft = offer?.status === 'draft'
   const isSent = offer?.status === 'sent'
 
-  const previewHtml = offer
-    ? substituteOfferVariables(templateHtml, {
-        candidate_name: candidateName,
-        job_title: job?.title || '',
-        department: job?.department || '',
-        salary: formatSalary(offer.salary, offer.salary_currency),
-        start_date: offer.start_date ? new Date(offer.start_date).toLocaleDateString('en-US', { dateStyle: 'long' }) : '',
-        expiry_date: offer.expiry_date ? new Date(offer.expiry_date).toLocaleDateString('en-US', { dateStyle: 'long' }) : '',
-        company_name: organization?.name || '',
-      })
-    : ''
-
-  async function handleSave() {
-    if (!organization || !offer) return
-    setSaving(true)
-    setError(null)
-    setSuccess(null)
-
-    const supabase = createClient()
-    const { error: updateError } = await updateOffer(
-      supabase, offer.id, organization.id, { template_html: templateHtml }
-    )
-
-    if (updateError) {
-      setError(updateError.message)
-    } else {
-      setSuccess('Offer saved successfully')
-      setTimeout(() => setSuccess(null), 3000)
+  async function loadPdfPreview() {
+    if (!offer) return
+    setPdfLoading(true)
+    try {
+      const res = await fetch(`/api/offers/generate-pdf?id=${offer.id}`)
+      if (res.ok) {
+        const blob = await res.blob()
+        const url = window.URL.createObjectURL(blob)
+        setPdfPreviewUrl(url)
+      }
+    } catch {
+      // silently fail, user can retry
+    } finally {
+      setPdfLoading(false)
     }
-    setSaving(false)
   }
 
   async function handleSend() {
@@ -157,7 +166,7 @@ export default function OfferDetailPage() {
     }
   }
 
-  async function handleRespond(status: 'accepted' | 'declined' | 'expired', notes?: string) {
+  async function handleRespond(status: 'accepted' | 'declined' | 'expired' | 'revoked', notes?: string) {
     if (!offer) return
     setResponding(true)
     setError(null)
@@ -179,8 +188,9 @@ export default function OfferDetailPage() {
       setSuccess(`Offer marked as ${status}`)
       setDeclineDialogOpen(false)
       setAcceptDialogOpen(false)
-      setExpireDialogOpen(false)
+      setRevokeDialogOpen(false)
       setDeclineNotes('')
+      setRevokeNotes('')
       await loadOffer()
     } catch {
       setError(`Failed to mark offer as ${status}`)
@@ -236,7 +246,7 @@ export default function OfferDetailPage() {
 
   if (userLoading || loading) {
     return (
-      <div className="space-y-6 max-w-4xl">
+      <div className="space-y-6">
         <Skeleton className="h-8 w-64" />
         <Skeleton className="h-96" />
       </div>
@@ -248,33 +258,96 @@ export default function OfferDetailPage() {
   }
 
   const statusConfig = OFFER_STATUS_CONFIG[offer.status as keyof typeof OFFER_STATUS_CONFIG]
+  const statusBorder = offer.status === 'accepted' ? 'border-l-emerald-500'
+    : offer.status === 'declined' ? 'border-l-red-400'
+    : offer.status === 'sent' ? 'border-l-blue-500'
+    : offer.status === 'revoked' ? 'border-l-orange-400'
+    : offer.status === 'expired' ? 'border-l-gray-300'
+    : 'border-l-amber-400'
+
+  const empLabel = EMPLOYMENT_TYPE_OPTIONS?.find((e) => e.value === offer.employment_type)?.label || offer.employment_type?.replace('_', ' ') || '-'
+  const workLabel = WORK_TYPE_OPTIONS?.find((w) => w.value === offer.work_type)?.label || offer.work_type?.replace('_', '-') || '-'
+
+  // Salary structure breakdown
+  const salaryComponents = offer.salary_components || []
+  const earnings = salaryComponents.filter((c) => !c.section || c.section === 'earnings')
+  const deductions = salaryComponents.filter((c) => c.section === 'deduction')
+  const employer = salaryComponents.filter((c) => c.section === 'employer')
+  const earningsTotal = earnings.reduce((s, c) => s + c.annual, 0)
+  const deductionsTotal = deductions.reduce((s, c) => s + c.annual, 0)
+  const employerTotal = employer.reduce((s, c) => s + c.annual, 0)
+  const netPay = earningsTotal - deductionsTotal
+  const totalCtc = earningsTotal + employerTotal
 
   return (
-    <div className="max-w-4xl space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <div className="flex items-center gap-3">
-            <h1 className="text-2xl font-bold text-gray-900">
-              Offer for {candidateName}
-            </h1>
-            <Badge variant={statusConfig?.variant ?? 'secondary'}>
-              {statusConfig?.label ?? offer.status}
-            </Badge>
+    <div className="space-y-6">
+      {/* Back link */}
+      <button onClick={() => router.back()} className="inline-flex items-center gap-1 text-sm text-gray-500 hover:text-gray-900 transition-colors">
+        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" /></svg>
+        Back
+      </button>
+
+      {/* Header Card */}
+      <Card className={`border-l-4 ${statusBorder}`}>
+        <CardContent className="py-5">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <div className="w-12 h-12 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center text-lg font-semibold">
+                {initials}
+              </div>
+              <div>
+                <div className="flex items-center gap-3">
+                  <h1 className="text-xl font-bold text-gray-900">{candidateName}</h1>
+                  <Badge variant={statusConfig?.variant ?? 'secondary'}>
+                    {statusConfig?.label ?? offer.status}
+                  </Badge>
+                </div>
+                <p className="text-gray-500 text-sm mt-0.5">
+                  {job?.title ?? 'Unknown Position'} {job?.department ? `\u00B7 ${job.department}` : ''} {offer.location ? `\u00B7 ${offer.location}` : ''}
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <Button variant="outline" size="sm" onClick={handleDownloadPdf} disabled={downloadingPdf}>
+                <svg className="w-4 h-4 mr-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" /></svg>
+                {downloadingPdf ? 'Generating...' : 'Download PDF'}
+              </Button>
+              {canManageOffers && isDraft && (
+                <Button
+                  size="sm"
+                  onClick={() => {
+                    if (!gmailConnected && !gmailLoading) {
+                      setError('Please connect Gmail in Settings before sending offers.')
+                      return
+                    }
+                    setSendDialogOpen(true)
+                  }}
+                >
+                  Send Offer
+                </Button>
+              )}
+              {canManageOffers && isSent && (
+                <>
+                  <Button size="sm" className="bg-green-600 hover:bg-green-700" onClick={() => setAcceptDialogOpen(true)}>
+                    Accepted
+                  </Button>
+                  <Button size="sm" variant="outline" onClick={() => setDeclineDialogOpen(true)}>
+                    Declined
+                  </Button>
+                  <Button size="sm" variant="destructive" onClick={() => setRevokeDialogOpen(true)}>
+                    Revoke
+                  </Button>
+                </>
+              )}
+              {canManageOffers && isDraft && (
+                <Button size="sm" variant="destructive" onClick={() => setDeleteDialogOpen(true)}>
+                  Delete
+                </Button>
+              )}
+            </div>
           </div>
-          <p className="text-gray-500 mt-1">
-            {job?.title ?? 'Unknown Position'} {job?.department ? `- ${job.department}` : ''}
-          </p>
-        </div>
-        <div className="flex gap-2">
-          <Button variant="outline" onClick={handleDownloadPdf} disabled={downloadingPdf}>
-            {downloadingPdf ? 'Generating...' : 'Download PDF'}
-          </Button>
-          <Button variant="outline" onClick={() => router.push('/offers')}>
-            Back to Offers
-          </Button>
-        </div>
-      </div>
+        </CardContent>
+      </Card>
 
       {error && (
         <div className="bg-red-50 text-red-700 text-sm p-3 rounded-md">{error}</div>
@@ -283,161 +356,282 @@ export default function OfferDetailPage() {
         <div className="bg-green-50 text-green-700 text-sm p-3 rounded-md">{success}</div>
       )}
 
-      <div className="grid grid-cols-3 gap-6">
-        {/* Left: Offer Content */}
-        <div className="col-span-2 space-y-6">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* ===== LEFT COLUMN (2/3) ===== */}
+        <div className="lg:col-span-2 space-y-6">
+          {/* Position Details */}
           <Card>
             <CardHeader>
-              <div className="flex items-center justify-between">
-                <CardTitle className="text-lg">Offer Letter</CardTitle>
-                {isDraft && (
-                  <Button variant="ghost" size="sm" onClick={() => setShowPreview(!showPreview)}>
-                    {showPreview ? 'Edit' : 'Preview'}
-                  </Button>
-                )}
-              </div>
+              <CardTitle className="text-lg">Position Details</CardTitle>
             </CardHeader>
             <CardContent>
-              {isDraft && !showPreview && canManageOffers ? (
-                <Textarea
-                  rows={16}
-                  value={templateHtml}
-                  onChange={(e) => setTemplateHtml(e.target.value)}
-                  className="font-mono text-xs"
-                />
-              ) : (
-                <div
-                  className="prose prose-sm max-w-none"
-                  dangerouslySetInnerHTML={{ __html: previewHtml }}
-                />
-              )}
+              <div className="grid grid-cols-2 gap-x-8 gap-y-4 text-sm">
+                <div>
+                  <span className="text-gray-500">Designation</span>
+                  <p className="font-medium mt-0.5">{job?.title ?? '-'}</p>
+                </div>
+                <div>
+                  <span className="text-gray-500">Department</span>
+                  <p className="font-medium mt-0.5">{job?.department ?? '-'}</p>
+                </div>
+                <div>
+                  <span className="text-gray-500">Employment Type</span>
+                  <p className="font-medium mt-0.5 capitalize">{empLabel}</p>
+                </div>
+                <div>
+                  <span className="text-gray-500">Work Type</span>
+                  <p className="font-medium mt-0.5 capitalize">{workLabel}</p>
+                </div>
+                <div>
+                  <span className="text-gray-500">Location</span>
+                  <p className="font-medium mt-0.5">{offer.location || '-'}</p>
+                </div>
+                <div>
+                  <span className="text-gray-500">Reporting Manager</span>
+                  <p className="font-medium mt-0.5">{offer.reporting_manager || '-'}</p>
+                </div>
+                {offer.business_unit && (
+                  <div>
+                    <span className="text-gray-500">Business Unit</span>
+                    <p className="font-medium mt-0.5">{offer.business_unit}</p>
+                  </div>
+                )}
+                <div>
+                  <span className="text-gray-500">Date of Joining</span>
+                  <p className="font-medium mt-0.5">
+                    {offer.start_date ? new Date(offer.start_date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '-'}
+                  </p>
+                </div>
+                <div>
+                  <span className="text-gray-500">Annual CTC</span>
+                  <p className="font-semibold mt-0.5 text-indigo-700">{formatSalary(offer.salary, offer.salary_currency)}</p>
+                </div>
+                <div>
+                  <span className="text-gray-500">PF Applicable</span>
+                  <p className="font-medium mt-0.5">{offer.pf_applicable ? 'Yes' : 'No'}</p>
+                </div>
+              </div>
             </CardContent>
           </Card>
 
-          {/* Actions */}
+          {/* Salary Structure */}
+          {salaryComponents.length > 0 && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-lg">Salary Structure ({offer.salary_currency})</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="border rounded-lg overflow-hidden">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="bg-gray-50 border-b">
+                        <th className="text-left py-2.5 px-3 font-semibold text-gray-700">Component</th>
+                        <th className="text-right py-2.5 px-3 font-semibold text-gray-700">Monthly</th>
+                        <th className="text-right py-2.5 px-3 font-semibold text-gray-700">Annual</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {/* Earnings */}
+                      {earnings.length > 0 && (
+                        <>
+                          <tr><td colSpan={3} className="py-2 px-3 font-semibold text-indigo-700 bg-indigo-50 text-xs uppercase tracking-wide">A. Earnings</td></tr>
+                          {earnings.map((comp, idx) => (
+                            <tr key={`e-${idx}`} className="border-b border-gray-100">
+                              <td className="py-2 px-3 pl-5">{comp.name}</td>
+                              <td className="text-right py-2 px-3 tabular-nums">{fmtNum(comp.monthly)}</td>
+                              <td className="text-right py-2 px-3 tabular-nums">{fmtNum(comp.annual)}</td>
+                            </tr>
+                          ))}
+                          <tr className="bg-gray-50 border-b font-semibold">
+                            <td className="py-2 px-3">Gross Salary</td>
+                            <td className="text-right py-2 px-3 tabular-nums">{fmtNum(Math.round(earningsTotal / 12))}</td>
+                            <td className="text-right py-2 px-3 tabular-nums">{fmtNum(earningsTotal)}</td>
+                          </tr>
+                        </>
+                      )}
+
+                      {/* Deductions */}
+                      {deductions.length > 0 && (
+                        <>
+                          <tr><td colSpan={3} className="py-2 px-3 font-semibold text-red-700 bg-red-50 text-xs uppercase tracking-wide">B. Deductions (from Gross)</td></tr>
+                          {deductions.map((comp, idx) => (
+                            <tr key={`d-${idx}`} className="border-b border-gray-100">
+                              <td className="py-2 px-3 pl-5">{comp.name}</td>
+                              <td className="text-right py-2 px-3 tabular-nums">{fmtNum(comp.monthly)}</td>
+                              <td className="text-right py-2 px-3 tabular-nums">{fmtNum(comp.annual)}</td>
+                            </tr>
+                          ))}
+                          <tr className="bg-green-50 border-b font-semibold text-green-800">
+                            <td className="py-2 px-3">Net Pay (Take Home)</td>
+                            <td className="text-right py-2 px-3 tabular-nums">{fmtNum(Math.round(netPay / 12))}</td>
+                            <td className="text-right py-2 px-3 tabular-nums">{fmtNum(netPay)}</td>
+                          </tr>
+                        </>
+                      )}
+
+                      {/* Employer Contributions */}
+                      {employer.length > 0 && (
+                        <>
+                          <tr><td colSpan={3} className="py-2 px-3 font-semibold text-blue-700 bg-blue-50 text-xs uppercase tracking-wide">C. Employer Contributions</td></tr>
+                          {employer.map((comp, idx) => (
+                            <tr key={`em-${idx}`} className="border-b border-gray-100">
+                              <td className="py-2 px-3 pl-5">{comp.name}</td>
+                              <td className="text-right py-2 px-3 tabular-nums">{fmtNum(comp.monthly)}</td>
+                              <td className="text-right py-2 px-3 tabular-nums">{fmtNum(comp.annual)}</td>
+                            </tr>
+                          ))}
+                        </>
+                      )}
+
+                      {/* Total CTC */}
+                      <tr className="bg-indigo-900 text-white font-bold">
+                        <td className="py-2.5 px-3">Total CTC (A + C)</td>
+                        <td className="text-right py-2.5 px-3 tabular-nums">{fmtNum(Math.round(totalCtc / 12))}</td>
+                        <td className="text-right py-2.5 px-3 tabular-nums">{fmtNum(totalCtc)}</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Offer Letter PDF Preview */}
           <Card>
             <CardHeader>
-              <CardTitle className="text-lg">Actions</CardTitle>
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-lg">Offer Letter PDF</CardTitle>
+                <Button variant="outline" size="sm" onClick={loadPdfPreview} disabled={pdfLoading}>
+                  {pdfLoading ? 'Loading...' : 'Refresh'}
+                </Button>
+              </div>
             </CardHeader>
             <CardContent>
-              {canManageOffers ? (
-                <div className="flex flex-wrap gap-2">
-                  {isDraft && (
-                    <>
-                      <Button onClick={handleSave} disabled={saving}>
-                        {saving ? 'Saving...' : 'Save Changes'}
-                      </Button>
-                      <Button
-                        variant="default"
-                        onClick={() => {
-                          if (!gmailConnected && !gmailLoading) {
-                            setError('Please connect Gmail in Settings before sending offers.')
-                            return
-                          }
-                          setSendDialogOpen(true)
-                        }}
-                      >
-                        Send Offer
-                      </Button>
-                      <Button variant="destructive" onClick={() => setDeleteDialogOpen(true)}>
-                        Delete
-                      </Button>
-                    </>
-                  )}
-                  {isSent && (
-                    <>
-                      <Button onClick={() => setAcceptDialogOpen(true)}>
-                        Mark Accepted
-                      </Button>
-                      <Button variant="outline" onClick={() => setDeclineDialogOpen(true)}>
-                        Mark Declined
-                      </Button>
-                      <Button variant="outline" onClick={() => setExpireDialogOpen(true)}>
-                        Mark Expired
-                      </Button>
-                    </>
-                  )}
+              {pdfLoading && (
+                <div className="flex items-center justify-center py-12">
+                  <svg className="w-6 h-6 animate-spin text-gray-400" viewBox="0 0 24 24" fill="none">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                  </svg>
+                  <span className="ml-2 text-sm text-gray-500">Loading PDF preview...</span>
                 </div>
-              ) : (
-                <p className="text-sm text-gray-500">You have view-only access to this offer.</p>
+              )}
+              {pdfPreviewUrl && !pdfLoading && (
+                <iframe
+                  src={`${pdfPreviewUrl}#navpanes=0`}
+                  className="w-full border rounded-lg"
+                  style={{ height: '700px' }}
+                  title="Offer Letter PDF Preview"
+                />
+              )}
+              {!pdfPreviewUrl && !pdfLoading && (
+                <div className="text-center py-8 text-gray-500 text-sm">
+                  <p>PDF preview not available.</p>
+                  <Button variant="outline" size="sm" className="mt-2" onClick={loadPdfPreview}>
+                    Load Preview
+                  </Button>
+                </div>
               )}
             </CardContent>
           </Card>
         </div>
 
-        {/* Right: Details */}
+        {/* ===== RIGHT COLUMN (1/3) ===== */}
         <div className="space-y-6">
+          {/* Candidate Card */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-lg">Candidate</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3 text-sm">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center text-sm font-semibold">
+                  {initials}
+                </div>
+                <div>
+                  <p className="font-semibold">{candidateName}</p>
+                  <p className="text-gray-500">{candidate?.email ?? '-'}</p>
+                </div>
+              </div>
+              {candidate?.phone && (
+                <div>
+                  <span className="text-gray-500">Phone</span>
+                  <p className="font-medium">{candidate.phone}</p>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Offer Details */}
           <Card>
             <CardHeader>
               <CardTitle className="text-lg">Offer Details</CardTitle>
             </CardHeader>
             <CardContent className="space-y-3 text-sm">
-              <div>
-                <span className="text-gray-500">Candidate</span>
-                <p className="font-medium">{candidateName}</p>
-                <p className="text-gray-400">{candidate?.email}</p>
-              </div>
-              <div>
-                <span className="text-gray-500">Position</span>
-                <p className="font-medium">{job?.title ?? '-'}</p>
-              </div>
-              {job?.department && (
-                <div>
-                  <span className="text-gray-500">Department</span>
-                  <p className="font-medium">{job.department}</p>
-                </div>
-              )}
-              <div>
+              <div className="flex justify-between">
                 <span className="text-gray-500">Salary</span>
-                <p className="font-medium">{formatSalary(offer.salary, offer.salary_currency)}</p>
+                <span className="font-semibold text-indigo-700">{formatSalary(offer.salary, offer.salary_currency)}</span>
               </div>
-              <div>
+              <div className="flex justify-between">
                 <span className="text-gray-500">Start Date</span>
-                <p className="font-medium">
-                  {offer.start_date ? new Date(offer.start_date).toLocaleDateString() : '-'}
-                </p>
+                <span className="font-medium">
+                  {offer.start_date ? new Date(offer.start_date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '-'}
+                </span>
               </div>
-              <div>
-                <span className="text-gray-500">Expiry Date</span>
-                <p className="font-medium">
-                  {offer.expiry_date ? new Date(offer.expiry_date).toLocaleDateString() : '-'}
-                </p>
+              <div className="flex justify-between">
+                <span className="text-gray-500">Offer Valid Until</span>
+                <span className="font-medium">
+                  {offer.expiry_date ? new Date(offer.expiry_date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '-'}
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-500">Remuneration</span>
+                <span className="font-medium capitalize">{offer.remuneration_type || 'Annual'}</span>
               </div>
             </CardContent>
           </Card>
 
+          {/* Timeline */}
           <Card>
             <CardHeader>
               <CardTitle className="text-lg">Timeline</CardTitle>
             </CardHeader>
-            <CardContent className="space-y-3 text-sm">
-              <div className="flex justify-between">
-                <span className="text-gray-500">Created</span>
-                <span>{new Date(offer.created_at).toLocaleDateString()}</span>
+            <CardContent>
+              <div className="relative pl-6 space-y-4 text-sm">
+                {/* Created */}
+                <div className="relative">
+                  <div className="absolute -left-6 top-0.5 w-3 h-3 rounded-full bg-gray-300 border-2 border-white" />
+                  <p className="font-medium">Offer Created</p>
+                  <p className="text-gray-500 text-xs">{new Date(offer.created_at).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</p>
+                </div>
+
+                {offer.sent_at && (
+                  <div className="relative">
+                    <div className="absolute -left-6 top-0.5 w-3 h-3 rounded-full bg-blue-500 border-2 border-white" />
+                    <p className="font-medium">Sent to Candidate</p>
+                    <p className="text-gray-500 text-xs">{new Date(offer.sent_at).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</p>
+                  </div>
+                )}
+
+                {offer.responded_at && (
+                  <div className="relative">
+                    <div className={`absolute -left-6 top-0.5 w-3 h-3 rounded-full border-2 border-white ${offer.status === 'accepted' ? 'bg-green-500' : offer.status === 'declined' ? 'bg-red-500' : offer.status === 'revoked' ? 'bg-orange-500' : 'bg-gray-400'}`} />
+                    <p className="font-medium capitalize">{offer.status === 'revoked' ? 'Revoked by Company' : `${offer.status} by Candidate`}</p>
+                    <p className="text-gray-500 text-xs">{new Date(offer.responded_at).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</p>
+                    {offer.response_notes && (
+                      <p className="text-gray-600 text-xs mt-1 italic">&quot;{offer.response_notes}&quot;</p>
+                    )}
+                  </div>
+                )}
+
+                {/* Vertical line connector */}
+                <div className="absolute left-[-18px] top-3 bottom-3 w-0.5 bg-gray-200" />
               </div>
-              {offer.sent_at && (
-                <div className="flex justify-between">
-                  <span className="text-gray-500">Sent</span>
-                  <span>{new Date(offer.sent_at).toLocaleDateString()}</span>
-                </div>
-              )}
-              {offer.responded_at && (
-                <div className="flex justify-between">
-                  <span className="text-gray-500">Response</span>
-                  <span>{new Date(offer.responded_at).toLocaleDateString()}</span>
-                </div>
-              )}
-              {offer.response_notes && (
-                <div>
-                  <span className="text-gray-500">Notes</span>
-                  <p className="mt-1 text-gray-700">{offer.response_notes}</p>
-                </div>
-              )}
             </CardContent>
           </Card>
 
           <Button variant="outline" className="w-full" onClick={() => router.push(`/candidates/${candidate?.id}`)}>
-            View Candidate
+            View Candidate Profile
           </Button>
         </div>
       </div>
@@ -448,7 +642,7 @@ export default function OfferDetailPage() {
           <AlertDialogHeader>
             <AlertDialogTitle>Send Offer?</AlertDialogTitle>
             <AlertDialogDescription>
-              This will send the offer letter to {candidate?.email} via Gmail. The offer status will change to &quot;Sent&quot;.
+              This will send the offer letter to {candidate?.email} via Gmail with PDF attachment. The offer status will change to &quot;Sent&quot;.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -507,19 +701,31 @@ export default function OfferDetailPage() {
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* Expire Dialog */}
-      <AlertDialog open={expireDialogOpen} onOpenChange={setExpireDialogOpen}>
+      {/* Revoke Dialog */}
+      <AlertDialog open={revokeDialogOpen} onOpenChange={setRevokeDialogOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Mark as Expired?</AlertDialogTitle>
+            <AlertDialogTitle>Revoke Offer?</AlertDialogTitle>
             <AlertDialogDescription>
-              Mark this offer as expired. This should be used when the offer has passed its expiry date without a response.
+              This will revoke the offer on behalf of the company. The candidate will no longer be able to accept it.
             </AlertDialogDescription>
           </AlertDialogHeader>
+          <div className="py-2">
+            <Textarea
+              placeholder="Reason for revoking (optional)"
+              value={revokeNotes}
+              onChange={(e) => setRevokeNotes(e.target.value)}
+              rows={3}
+            />
+          </div>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={() => handleRespond('expired')} disabled={responding}>
-              {responding ? 'Updating...' : 'Confirm Expired'}
+            <AlertDialogAction
+              className="bg-red-600 hover:bg-red-700"
+              onClick={() => handleRespond('revoked', revokeNotes || undefined)}
+              disabled={responding}
+            >
+              {responding ? 'Revoking...' : 'Revoke Offer'}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

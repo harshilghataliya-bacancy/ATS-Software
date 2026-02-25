@@ -11,6 +11,7 @@ interface JobFilters {
   department?: string
   location?: string
   employment_type?: string
+  priority?: string
   page?: number
   limit?: number
 }
@@ -31,7 +32,7 @@ export async function getJobs(
   orgId: string,
   filters: JobFilters = {}
 ) {
-  const { status, search, department, location, employment_type, page = 1, limit = ITEMS_PER_PAGE } = filters
+  const { status, search, department, location, employment_type, priority, page = 1, limit = ITEMS_PER_PAGE } = filters
   const from = (page - 1) * limit
   const to = from + limit - 1
 
@@ -67,6 +68,10 @@ export async function getJobs(
 
   if (employment_type) {
     query = query.eq('employment_type', employment_type)
+  }
+
+  if (priority) {
+    query = query.eq('priority', priority)
   }
 
   const { data, error, count } = await query
@@ -154,9 +159,73 @@ export async function deleteJob(
   jobId: string,
   orgId: string
 ) {
+  const now = new Date().toISOString()
+
+  // Get application IDs for this job (needed for feedback cascade)
+  const { data: apps } = await supabase
+    .from('applications')
+    .select('id')
+    .eq('job_id', jobId)
+    .eq('organization_id', orgId)
+    .is('deleted_at', null)
+
+  const appIds = (apps || []).map((a) => a.id)
+
+  // Soft-delete feedback for these applications
+  if (appIds.length > 0) {
+    await supabase
+      .from('interview_feedback')
+      .update({ deleted_at: now })
+      .in('application_id', appIds)
+      .eq('organization_id', orgId)
+      .is('deleted_at', null)
+  }
+
+  // Soft-delete related records that have deleted_at
+  await Promise.all([
+    supabase
+      .from('applications')
+      .update({ deleted_at: now })
+      .eq('job_id', jobId)
+      .eq('organization_id', orgId)
+      .is('deleted_at', null),
+    supabase
+      .from('interviews')
+      .update({ deleted_at: now })
+      .eq('job_id', jobId)
+      .eq('organization_id', orgId)
+      .is('deleted_at', null),
+    supabase
+      .from('offer_letters')
+      .update({ deleted_at: now })
+      .eq('job_id', jobId)
+      .eq('organization_id', orgId)
+      .is('deleted_at', null),
+  ])
+
+  // Hard-delete related records without deleted_at
+  await Promise.all([
+    supabase
+      .from('candidate_match_scores')
+      .delete()
+      .eq('job_id', jobId)
+      .eq('organization_id', orgId),
+    supabase
+      .from('scorecard_criteria')
+      .delete()
+      .eq('job_id', jobId)
+      .eq('organization_id', orgId),
+    supabase
+      .from('pipeline_stages')
+      .delete()
+      .eq('job_id', jobId)
+      .eq('organization_id', orgId),
+  ])
+
+  // Soft-delete the job itself
   const { data, error } = await supabase
     .from('jobs')
-    .update({ deleted_at: new Date().toISOString() })
+    .update({ deleted_at: now })
     .eq('id', jobId)
     .eq('organization_id', orgId)
     .is('deleted_at', null)
@@ -187,7 +256,7 @@ export async function getPublicJobs(
 
   const { data: jobs, error: jobsError } = await supabase
     .from('jobs')
-    .select('id, title, department, location, employment_type, created_at')
+    .select('id, title, department, location, employment_type, remote_policy, experience_level, salary_min, salary_max, salary_currency, skills, num_openings, application_deadline, education_level, experience_min, experience_max, priority, description, requirements, nice_to_have, benefits, created_at')
     .eq('organization_id', org.id)
     .eq('status', 'published')
     .is('deleted_at', null)

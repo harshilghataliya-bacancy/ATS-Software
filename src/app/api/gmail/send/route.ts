@@ -15,6 +15,7 @@ export async function POST(request: NextRequest) {
     .from('organization_members')
     .select('organization_id')
     .eq('user_id', user.id)
+    .is('deleted_at', null)
     .single()
 
   if (!membership) {
@@ -54,8 +55,8 @@ export async function POST(request: NextRequest) {
       html,
     })
 
-    // Log the email
-    await logEmail(supabase, orgId, {
+    // Log the email in background
+    logEmail(supabase, orgId, {
       candidate_id: candidateId,
       application_id: applicationId,
       template_id: templateId,
@@ -65,27 +66,23 @@ export async function POST(request: NextRequest) {
       from_email: fromEmail,
       status: 'sent',
       sent_at: new Date().toISOString(),
-    })
+    }).catch((err) => console.error('[Email Log Error]', err))
 
     return NextResponse.json({ success: true })
   } catch (err) {
     console.error('[Gmail Send Error]', err)
 
-    // Log the failed email - wrap in try/catch so logging failure doesn't mask the real error
-    try {
-      await logEmail(supabase, orgId, {
-        candidate_id: candidateId,
-        application_id: applicationId,
-        template_id: templateId,
-        subject,
-        body_html: html,
-        to_email: to,
-        from_email: fromEmail,
-        status: 'failed',
-      })
-    } catch (logErr) {
-      console.error('[Email Log Error]', logErr)
-    }
+    // Log the failed email in background
+    logEmail(supabase, orgId, {
+      candidate_id: candidateId,
+      application_id: applicationId,
+      template_id: templateId,
+      subject,
+      body_html: html,
+      to_email: to,
+      from_email: fromEmail,
+      status: 'failed',
+    }).catch((logErr) => console.error('[Email Log Error]', logErr))
 
     const message = err instanceof Error ? err.message : 'Failed to send email'
     return NextResponse.json({ error: message }, { status: 500 })

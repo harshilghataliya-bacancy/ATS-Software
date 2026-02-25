@@ -3,7 +3,7 @@
 import { useState, useRef } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { updateCandidate } from '@/lib/services/candidates'
-import { ALLOWED_RESUME_TYPES, MAX_FILE_SIZE } from '@/lib/constants'
+import { MAX_FILE_SIZE } from '@/lib/constants'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 
@@ -23,13 +23,11 @@ export function ResumeUpload({ candidateId, orgId, currentResumeUrl, onUploadCom
     const file = event.target.files?.[0]
     if (!file) return
 
-    // Validate file type
-    if (!ALLOWED_RESUME_TYPES.includes(file.type)) {
-      setError('Only PDF and Word documents are allowed')
+    if (file.type !== 'application/pdf') {
+      setError('Only PDF files are allowed')
       return
     }
 
-    // Validate file size
     if (file.size > MAX_FILE_SIZE) {
       setError('File size must be under 10MB')
       return
@@ -39,10 +37,8 @@ export function ResumeUpload({ candidateId, orgId, currentResumeUrl, onUploadCom
     setError(null)
 
     const supabase = createClient()
-    const fileExt = file.name.split('.').pop()
-    const filePath = `${orgId}/${candidateId}/resume.${fileExt}`
+    const filePath = `${orgId}/${candidateId}/resume.pdf`
 
-    // Upload to Supabase Storage
     const { error: uploadError } = await supabase.storage
       .from('resumes')
       .upload(filePath, file, { upsert: true })
@@ -53,12 +49,10 @@ export function ResumeUpload({ candidateId, orgId, currentResumeUrl, onUploadCom
       return
     }
 
-    // Get public URL
     const { data: { publicUrl } } = supabase.storage
       .from('resumes')
       .getPublicUrl(filePath)
 
-    // Update candidate record
     const { error: updateError } = await updateCandidate(supabase, candidateId, orgId, {
       resume_url: publicUrl,
     })
@@ -70,14 +64,26 @@ export function ResumeUpload({ candidateId, orgId, currentResumeUrl, onUploadCom
     }
 
     setUploading(false)
-    // Reset file input
     if (fileInputRef.current) fileInputRef.current.value = ''
   }
 
   return (
     <Card>
-      <CardHeader>
-        <CardTitle className="text-lg">Resume</CardTitle>
+      <CardHeader className="pb-3">
+        <div className="flex items-center justify-between">
+          <CardTitle className="text-lg">Resume</CardTitle>
+          {currentResumeUrl && (
+            <a
+              href={currentResumeUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-xs text-blue-600 hover:underline flex items-center gap-1"
+            >
+              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" /></svg>
+              Download
+            </a>
+          )}
+        </div>
       </CardHeader>
       <CardContent>
         {error && (
@@ -86,23 +92,17 @@ export function ResumeUpload({ candidateId, orgId, currentResumeUrl, onUploadCom
 
         {currentResumeUrl ? (
           <div className="space-y-3">
-            <div className="flex items-center gap-2 p-3 bg-gray-50 rounded-lg border">
-              <span className="text-sm text-gray-600">resume</span>
-              <span className="text-gray-300">|</span>
-              <a
-                href={currentResumeUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-sm text-blue-600 hover:underline"
-              >
-                View Resume
-              </a>
-            </div>
+            <iframe
+              src={`${currentResumeUrl}#toolbar=0&navpanes=0&scrollbar=1`}
+              className="w-full rounded-lg border bg-white"
+              style={{ height: '500px' }}
+              title="Resume Preview"
+            />
             <div>
               <input
                 ref={fileInputRef}
                 type="file"
-                accept=".pdf,.doc,.docx"
+                accept=".pdf"
                 onChange={handleUpload}
                 className="hidden"
               />
@@ -125,7 +125,7 @@ export function ResumeUpload({ candidateId, orgId, currentResumeUrl, onUploadCom
               <input
                 ref={fileInputRef}
                 type="file"
-                accept=".pdf,.doc,.docx"
+                accept=".pdf"
                 onChange={handleUpload}
                 className="hidden"
               />
@@ -137,7 +137,7 @@ export function ResumeUpload({ candidateId, orgId, currentResumeUrl, onUploadCom
               >
                 {uploading ? 'Uploading...' : 'Upload Resume'}
               </Button>
-              <p className="text-xs text-gray-400 mt-1">PDF or Word, max 10MB</p>
+              <p className="text-xs text-gray-400 mt-1">PDF only, max 10MB</p>
             </div>
           </div>
         )}

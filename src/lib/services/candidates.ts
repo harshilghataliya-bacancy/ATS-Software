@@ -93,7 +93,7 @@ export async function getCandidateById(
         *,
         job:jobs(id, title, department, status),
         current_stage:pipeline_stages(id, name, stage_type),
-        interviews(id, status, scheduled_at, interview_type, duration_minutes),
+        interviews(id, status, scheduled_at, interview_type, duration_minutes, interview_feedback(id, overall_rating, recommendation)),
         offer_letters(id, status, salary, salary_currency, sent_at)
       )
     `
@@ -153,9 +153,68 @@ export async function deleteCandidate(
   candidateId: string,
   orgId: string
 ) {
+  const now = new Date().toISOString()
+
+  // Get application IDs for this candidate (needed for feedback cascade)
+  const { data: apps } = await supabase
+    .from('applications')
+    .select('id')
+    .eq('candidate_id', candidateId)
+    .eq('organization_id', orgId)
+    .is('deleted_at', null)
+
+  const appIds = (apps || []).map((a) => a.id)
+
+  // Soft-delete feedback for these applications
+  if (appIds.length > 0) {
+    await supabase
+      .from('interview_feedback')
+      .update({ deleted_at: now })
+      .in('application_id', appIds)
+      .eq('organization_id', orgId)
+      .is('deleted_at', null)
+  }
+
+  // Soft-delete related records that have deleted_at
+  await Promise.all([
+    supabase
+      .from('applications')
+      .update({ deleted_at: now })
+      .eq('candidate_id', candidateId)
+      .eq('organization_id', orgId)
+      .is('deleted_at', null),
+    supabase
+      .from('interviews')
+      .update({ deleted_at: now })
+      .eq('candidate_id', candidateId)
+      .eq('organization_id', orgId)
+      .is('deleted_at', null),
+    supabase
+      .from('offer_letters')
+      .update({ deleted_at: now })
+      .eq('candidate_id', candidateId)
+      .eq('organization_id', orgId)
+      .is('deleted_at', null),
+  ])
+
+  // Hard-delete related records without deleted_at
+  await Promise.all([
+    supabase
+      .from('candidate_match_scores')
+      .delete()
+      .eq('candidate_id', candidateId)
+      .eq('organization_id', orgId),
+    supabase
+      .from('email_logs')
+      .delete()
+      .eq('candidate_id', candidateId)
+      .eq('organization_id', orgId),
+  ])
+
+  // Soft-delete the candidate itself
   const { data, error } = await supabase
     .from('candidates')
-    .update({ deleted_at: new Date().toISOString() })
+    .update({ deleted_at: now })
     .eq('id', candidateId)
     .eq('organization_id', orgId)
     .is('deleted_at', null)

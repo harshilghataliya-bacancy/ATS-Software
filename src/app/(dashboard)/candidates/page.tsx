@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import { useUser, useRole } from '@/lib/hooks/use-user'
 import { createClient } from '@/lib/supabase/client'
 import { getCandidates, deleteCandidate } from '@/lib/services/candidates'
@@ -35,7 +36,16 @@ interface Candidate {
 
 export default function CandidatesPage() {
   const { organization, isLoading } = useUser()
-  const { canManageCandidates } = useRole()
+  const { canManageCandidates, isInterviewer } = useRole()
+  const router = useRouter()
+
+  // Interviewers only have access to Dashboard + Interviews
+  useEffect(() => {
+    if (!isLoading && isInterviewer) {
+      router.replace('/interviews')
+    }
+  }, [isLoading, isInterviewer, router])
+
   const [candidates, setCandidates] = useState<Candidate[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
@@ -116,6 +126,11 @@ export default function CandidatesPage() {
     a.download = `candidates-${new Date().toISOString().slice(0, 10)}.csv`
     a.click()
     URL.revokeObjectURL(url)
+  }
+
+  // Block render while redirecting interviewer
+  if (isInterviewer) {
+    return null
   }
 
   if (isLoading) {
@@ -279,7 +294,7 @@ export default function CandidatesPage() {
                             <AlertDialogHeader>
                               <AlertDialogTitle>Delete candidate?</AlertDialogTitle>
                               <AlertDialogDescription>
-                                This will soft-delete {candidate.first_name} {candidate.last_name}. Associated applications will remain.
+                                This will delete {candidate.first_name} {candidate.last_name} and all related data (applications, interviews, offers, scores).
                               </AlertDialogDescription>
                             </AlertDialogHeader>
                             <AlertDialogFooter>

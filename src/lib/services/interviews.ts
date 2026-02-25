@@ -10,6 +10,7 @@ interface InterviewFilters {
   upcoming?: boolean
   page?: number
   limit?: number
+  panelistUserId?: string
 }
 
 interface InterviewData {
@@ -36,9 +37,24 @@ export async function getInterviews(
   orgId: string,
   filters: InterviewFilters = {}
 ) {
-  const { status, upcoming, page = 1, limit = ITEMS_PER_PAGE } = filters
+  const { status, upcoming, page = 1, limit = ITEMS_PER_PAGE, panelistUserId } = filters
   const from = (page - 1) * limit
   const to = from + limit - 1
+
+  // If filtering by panelist, first get their interview IDs
+  let panelistInterviewIds: string[] | null = null
+  if (panelistUserId) {
+    const { data: panelistRows } = await supabase
+      .from('interview_panelists')
+      .select('interview_id')
+      .eq('user_id', panelistUserId)
+      .eq('organization_id', orgId)
+
+    panelistInterviewIds = panelistRows?.map((p) => p.interview_id) ?? []
+    if (panelistInterviewIds.length === 0) {
+      return { data: [], error: null, count: 0 }
+    }
+  }
 
   let query = supabase
     .from('interviews')
@@ -55,8 +71,13 @@ export async function getInterviews(
       { count: 'exact' }
     )
     .eq('organization_id', orgId)
+    .is('deleted_at', null)
     .order('scheduled_at', { ascending: true })
     .range(from, to)
+
+  if (panelistInterviewIds) {
+    query = query.in('id', panelistInterviewIds)
+  }
 
   if (status) {
     query = query.eq('status', status)
@@ -95,6 +116,7 @@ export async function getInterviewById(
     )
     .eq('id', interviewId)
     .eq('organization_id', orgId)
+    .is('deleted_at', null)
     .maybeSingle()
 
   return { data, error }
@@ -196,10 +218,14 @@ export async function updateInterview(
     .eq('id', interviewId)
     .eq('organization_id', orgId)
     .select()
-    .single()
+    .maybeSingle()
 
   if (error) {
     return { data: null, error }
+  }
+
+  if (!interview) {
+    return { data: null, error: new Error('Interview not found or you do not have permission to update it.') }
   }
 
   // Replace panelists if provided
@@ -288,6 +314,7 @@ export async function getUpcomingInterviews(
     )
     .eq('organization_id', orgId)
     .in('id', interviewIds)
+    .is('deleted_at', null)
     .gte('scheduled_at', now)
     .eq('status', 'scheduled')
     .order('scheduled_at', { ascending: true })

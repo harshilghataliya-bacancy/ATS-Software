@@ -34,6 +34,7 @@ export async function DELETE(
       .select('role')
       .eq('organization_id', domainRecord.organization_id)
       .eq('user_id', user.id)
+      .is('deleted_at', null)
       .single()
 
     if (!member || member.role !== 'admin') {

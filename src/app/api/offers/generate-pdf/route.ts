@@ -3,7 +3,8 @@ import { createClient } from '@/lib/supabase/server'
 import { getOfferById } from '@/lib/services/offers'
 import { renderToBuffer } from '@react-pdf/renderer'
 import { OfferPDFDocument } from '@/components/offers/offer-pdf-document'
-import { substituteOfferVariables, formatSalary } from '@/lib/offer-template'
+import { formatSalary } from '@/lib/offer-template'
+import { EMPLOYMENT_TYPE_OPTIONS, WORK_TYPE_OPTIONS } from '@/lib/constants'
 import React from 'react'
 
 export async function GET(request: NextRequest) {
@@ -18,6 +19,7 @@ export async function GET(request: NextRequest) {
     .from('organization_members')
     .select('organization_id')
     .eq('user_id', user.id)
+    .is('deleted_at', null)
     .single()
 
   if (!membership) {
@@ -53,7 +55,7 @@ export async function GET(request: NextRequest) {
 
   const companyName = org?.name || 'Company'
   const candidateName = `${candidate.first_name} ${candidate.last_name}`
-  const salaryFormatted = formatSalary(offer.salary || 0, offer.salary_currency || 'USD')
+  const salaryFormatted = formatSalary(offer.salary || 0, offer.salary_currency || 'INR')
   const startDate = offer.start_date
     ? new Date(offer.start_date).toLocaleDateString('en-US', { dateStyle: 'long' })
     : 'TBD'
@@ -61,15 +63,10 @@ export async function GET(request: NextRequest) {
     ? new Date(offer.expiry_date).toLocaleDateString('en-US', { dateStyle: 'long' })
     : 'TBD'
 
-  const templateContent = substituteOfferVariables(offer.template_html || '', {
-    candidate_name: candidateName,
-    job_title: job?.title || '',
-    department: job?.department || '',
-    salary: salaryFormatted,
-    start_date: startDate,
-    expiry_date: expiryDate,
-    company_name: companyName,
-  })
+  const salaryComponents = Array.isArray(offer.salary_components) ? offer.salary_components : []
+  const bonusComponents = Array.isArray(offer.bonus_components) ? offer.bonus_components : []
+  const empLabel = EMPLOYMENT_TYPE_OPTIONS.find((e) => e.value === offer.employment_type)?.label || offer.employment_type || ''
+  const workLabel = WORK_TYPE_OPTIONS.find((w) => w.value === offer.work_type)?.label || offer.work_type || ''
 
   try {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -79,11 +76,19 @@ export async function GET(request: NextRequest) {
       candidateEmail: candidate.email,
       jobTitle: job?.title || '',
       department: job?.department || '',
+      businessUnit: offer.business_unit || undefined,
+      employmentType: empLabel,
+      workType: workLabel,
+      location: offer.location || job?.location || undefined,
+      reportingManager: offer.reporting_manager || undefined,
       salary: salaryFormatted,
+      salaryCurrency: offer.salary_currency || 'INR',
       startDate,
       expiryDate,
-      templateContent,
       createdDate: new Date(offer.created_at).toLocaleDateString('en-US', { dateStyle: 'long' }),
+      salaryComponents: salaryComponents.length > 0 ? salaryComponents : undefined,
+      bonusComponents: bonusComponents.length > 0 ? bonusComponents : undefined,
+      pfApplicable: offer.pf_applicable ?? false,
     }) as any
     const buffer = await renderToBuffer(pdfElement)
 

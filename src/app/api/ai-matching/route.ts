@@ -13,29 +13,31 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json()
-    const { application_id, organization_id } = body
+    const { application_id } = body
 
-    if (!application_id || !organization_id) {
+    if (!application_id) {
       return NextResponse.json(
-        { error: 'application_id and organization_id are required' },
+        { error: 'application_id is required' },
         { status: 400 }
       )
     }
 
-    // Verify user belongs to this organization
+    // Derive org from user's membership
     const { data: member } = await supabase
       .from('organization_members')
-      .select('role')
-      .eq('organization_id', organization_id)
+      .select('organization_id, role')
       .eq('user_id', user.id)
+      .is('deleted_at', null)
       .single()
 
     if (!member) {
-      return NextResponse.json({ error: 'Not a member of this organization' }, { status: 403 })
+      return NextResponse.json({ error: 'No organization' }, { status: 403 })
     }
 
+    const orgId = member.organization_id
+
     // Check if AI scoring is enabled
-    const config = await getScoringConfig(supabase, organization_id)
+    const config = await getScoringConfig(supabase, orgId)
     if (!config.enabled) {
       return NextResponse.json(
         { error: 'AI scoring is disabled for this organization' },
@@ -43,7 +45,7 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const { data, error } = await scoreCandidate(supabase, application_id, organization_id)
+    const { data, error } = await scoreCandidate(supabase, application_id, orgId)
 
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 500 })
@@ -55,7 +57,7 @@ export async function POST(request: NextRequest) {
   }
 }
 
-// GET /api/ai-matching?job_id=...&organization_id=... - Get all scores for a job
+// GET /api/ai-matching?job_id=... - Get all scores for a job
 export async function GET(request: NextRequest) {
   try {
     const supabase = await createClient()
@@ -67,28 +69,27 @@ export async function GET(request: NextRequest) {
 
     const { searchParams } = new URL(request.url)
     const jobId = searchParams.get('job_id')
-    const orgId = searchParams.get('organization_id')
 
-    if (!jobId || !orgId) {
+    if (!jobId) {
       return NextResponse.json(
-        { error: 'job_id and organization_id are required' },
+        { error: 'job_id is required' },
         { status: 400 }
       )
     }
 
-    // Verify user belongs to this organization
+    // Derive org from user's membership
     const { data: member } = await supabase
       .from('organization_members')
-      .select('role')
-      .eq('organization_id', orgId)
+      .select('organization_id')
       .eq('user_id', user.id)
+      .is('deleted_at', null)
       .single()
 
     if (!member) {
-      return NextResponse.json({ error: 'Not a member of this organization' }, { status: 403 })
+      return NextResponse.json({ error: 'No organization' }, { status: 403 })
     }
 
-    const { data, error } = await getMatchScoresForJob(supabase, jobId, orgId)
+    const { data, error } = await getMatchScoresForJob(supabase, jobId, member.organization_id)
 
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 500 })

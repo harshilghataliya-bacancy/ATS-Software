@@ -45,7 +45,7 @@ export async function updateSession(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser()
 
-  const publicRoutes = ['/login', '/signup', '/forgot-password', '/set-password', '/careers', '/api/webhooks', '/org/new']
+  const publicRoutes = ['/login', '/signup', '/forgot-password', '/set-password', '/careers', '/api/webhooks', '/api/public', '/org/new']
   const isPublicRoute = publicRoutes.some(route => request.nextUrl.pathname.startsWith(route))
   const isAuthCallback = request.nextUrl.pathname.startsWith('/api/auth') || request.nextUrl.pathname.startsWith('/callback')
   const isRootPage = request.nextUrl.pathname === '/'

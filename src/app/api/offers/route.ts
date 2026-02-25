@@ -15,6 +15,7 @@ export async function GET(request: NextRequest) {
     .from('organization_members')
     .select('organization_id')
     .eq('user_id', user.id)
+    .is('deleted_at', null)
     .single()
 
   if (!membership) {
@@ -49,6 +50,7 @@ export async function POST(request: NextRequest) {
     .from('organization_members')
     .select('organization_id')
     .eq('user_id', user.id)
+    .is('deleted_at', null)
     .single()
 
   if (!membership) {
@@ -89,6 +91,15 @@ export async function POST(request: NextRequest) {
       start_date: parsed.data.start_date,
       expiry_date: parsed.data.expiry_date,
       template_html: parsed.data.template_html,
+      salary_components: parsed.data.salary_components,
+      bonus_components: parsed.data.bonus_components,
+      reporting_manager: parsed.data.reporting_manager,
+      employment_type: parsed.data.employment_type,
+      location: parsed.data.location,
+      remuneration_type: parsed.data.remuneration_type,
+      pf_applicable: parsed.data.pf_applicable,
+      work_type: parsed.data.work_type,
+      business_unit: parsed.data.business_unit,
     },
     user.id
   )

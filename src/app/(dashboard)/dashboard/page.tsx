@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import dynamic from 'next/dynamic'
 import Link from 'next/link'
-import { useUser } from '@/lib/hooks/use-user'
+import { useUser, useRole } from '@/lib/hooks/use-user'
 import { createClient } from '@/lib/supabase/client'
 import { getDashboardStats } from '@/lib/services/reports'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -116,6 +116,7 @@ const ENTITY_COLORS: Record<string, string> = {
 
 export default function DashboardPage() {
   const { user, organization, isLoading } = useUser()
+  const { isInterviewer } = useRole()
   const [stats, setStats] = useState<{
     open_jobs: number
     active_candidates: number
@@ -127,9 +128,93 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true)
 
   const loadDashboard = useCallback(async () => {
-    if (!organization) return
+    if (!organization || !user) return
     const supabase = createClient()
 
+    if (isInterviewer) {
+      // Interviewer: only fetch their assigned interviews
+      // First get interview IDs from panelist table
+      const { data: panelistData } = await supabase
+        .from('interview_panelists')
+        .select('interview_id')
+        .eq('user_id', user.id)
+
+      const myInterviewIds = (panelistData ?? []).map((p: { interview_id: string }) => p.interview_id)
+
+      if (myInterviewIds.length === 0) {
+        setStats({ open_jobs: 0, active_candidates: 0, interviews_this_week: 0, pending_offers: 0 })
+        setInterviews([])
+        setActivities([])
+        setLoading(false)
+        return
+      }
+
+      // Fetch upcoming interviews assigned to this interviewer
+      const { data: upcomingData } = await supabase
+        .from('interviews')
+        .select(`
+          id, scheduled_at, interview_type,
+          application:applications(
+            candidate:candidates(first_name, last_name),
+            job:jobs(title)
+          )
+        `)
+        .in('id', myInterviewIds)
+        .eq('organization_id', organization.id)
+        .eq('status', 'scheduled')
+        .is('deleted_at', null)
+        .gte('scheduled_at', new Date(new Date().setHours(0, 0, 0, 0)).toISOString())
+        .order('scheduled_at', { ascending: true })
+        .limit(10)
+
+      // Count this week's interviews
+      const startOfWeek = new Date()
+      startOfWeek.setDate(startOfWeek.getDate() - startOfWeek.getDay())
+      startOfWeek.setHours(0, 0, 0, 0)
+      const endOfWeek = new Date(startOfWeek)
+      endOfWeek.setDate(endOfWeek.getDate() + 7)
+
+      const { count: weekCount } = await supabase
+        .from('interviews')
+        .select('id', { count: 'exact', head: true })
+        .in('id', myInterviewIds)
+        .eq('organization_id', organization.id)
+        .eq('status', 'scheduled')
+        .is('deleted_at', null)
+        .gte('scheduled_at', startOfWeek.toISOString())
+        .lt('scheduled_at', endOfWeek.toISOString())
+
+      // Count total scheduled
+      const { count: totalScheduled } = await supabase
+        .from('interviews')
+        .select('id', { count: 'exact', head: true })
+        .in('id', myInterviewIds)
+        .eq('organization_id', organization.id)
+        .eq('status', 'scheduled')
+        .is('deleted_at', null)
+
+      // Count completed
+      const { count: totalCompleted } = await supabase
+        .from('interviews')
+        .select('id', { count: 'exact', head: true })
+        .in('id', myInterviewIds)
+        .eq('organization_id', organization.id)
+        .eq('status', 'completed')
+        .is('deleted_at', null)
+
+      setStats({
+        open_jobs: totalScheduled ?? 0,
+        active_candidates: totalCompleted ?? 0,
+        interviews_this_week: weekCount ?? 0,
+        pending_offers: (upcomingData ?? []).length,
+      })
+      if (upcomingData) setInterviews(upcomingData as unknown as UpcomingInterview[])
+      setActivities([])
+      setLoading(false)
+      return
+    }
+
+    // Full dashboard for non-interviewers
     const [statsResult, activityResult, interviewsResult] = await Promise.all([
       getDashboardStats(supabase, organization.id),
       supabase
@@ -149,6 +234,7 @@ export default function DashboardPage() {
         `)
         .eq('organization_id', organization.id)
         .eq('status', 'scheduled')
+        .is('deleted_at', null)
         .gte('scheduled_at', new Date(new Date().setHours(0, 0, 0, 0)).toISOString())
         .order('scheduled_at', { ascending: true })
         .limit(5),
@@ -158,7 +244,7 @@ export default function DashboardPage() {
     if (activityResult.data) setActivities(activityResult.data as ActivityLog[])
     if (interviewsResult.data) setInterviews(interviewsResult.data as unknown as UpcomingInterview[])
     setLoading(false)
-  }, [organization])
+  }, [organization, user, isInterviewer])
 
   useEffect(() => {
     if (organization) loadDashboard()
@@ -220,6 +306,42 @@ export default function DashboardPage() {
   const greeting =
     today.getHours() < 12 ? 'Good morning' : today.getHours() < 18 ? 'Good afternoon' : 'Good evening'
 
+  // Interviewer-specific KPI config
+  const INTERVIEWER_KPI = [
+    {
+      key: 'open_jobs',
+      label: 'Upcoming Interviews',
+      sub: 'Scheduled & assigned to you',
+      href: '/interviews',
+      icon: KPI_CONFIG[2].icon,
+      bg: 'bg-blue-50',
+      iconColor: 'text-blue-600',
+      accent: 'border-l-blue-500',
+    },
+    {
+      key: 'active_candidates',
+      label: 'Completed',
+      sub: 'Interviews completed',
+      href: '/interviews',
+      icon: KPI_CONFIG[1].icon,
+      bg: 'bg-emerald-50',
+      iconColor: 'text-emerald-600',
+      accent: 'border-l-emerald-500',
+    },
+    {
+      key: 'interviews_this_week',
+      label: 'This Week',
+      sub: 'Interviews this week',
+      href: '/interviews',
+      icon: KPI_CONFIG[2].icon,
+      bg: 'bg-amber-50',
+      iconColor: 'text-amber-600',
+      accent: 'border-l-amber-500',
+    },
+  ]
+
+  const kpiList = isInterviewer ? INTERVIEWER_KPI : KPI_CONFIG
+
   return (
     <div className="space-y-6">
       {/* Welcome Header */}
@@ -229,7 +351,9 @@ export default function DashboardPage() {
             {greeting}, {user?.full_name?.split(' ')[0]}
           </h1>
           <p className="text-gray-500 mt-1">
-            Here&apos;s what&apos;s happening at {organization?.name}
+            {isInterviewer
+              ? 'Here are your assigned interviews'
+              : `Here\u0027s what\u0027s happening at ${organization?.name}`}
           </p>
         </div>
         <p className="text-sm text-gray-400">
@@ -238,8 +362,8 @@ export default function DashboardPage() {
       </div>
 
       {/* KPI Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        {KPI_CONFIG.map((kpi) => (
+      <div className={`grid grid-cols-1 md:grid-cols-2 ${isInterviewer ? 'lg:grid-cols-3' : 'lg:grid-cols-4'} gap-4`}>
+        {kpiList.map((kpi) => (
           <Link key={kpi.key} href={kpi.href}>
             <Card className={`hover:shadow-lg transition-all duration-200 cursor-pointer border-l-4 ${kpi.accent} group`}>
               <CardContent className="p-5">
@@ -261,58 +385,63 @@ export default function DashboardPage() {
         ))}
       </div>
 
-      {/* Charts */}
-      {organization && <DashboardCharts orgId={organization.id} />}
+      {/* Charts — only for non-interviewers */}
+      {!isInterviewer && organization && <DashboardCharts orgId={organization.id} />}
 
       {/* Activity + Interviews */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <Card className="shadow-sm">
-          <CardHeader className="pb-3">
-            <div className="flex items-center justify-between">
-              <CardTitle className="text-lg font-semibold">Recent Activity</CardTitle>
-              <span className="text-xs text-gray-400">{activities.length} events</span>
-            </div>
-          </CardHeader>
-          <CardContent>
-            {activities.length === 0 ? (
-              <div className="text-center py-10">
-                <div className="w-12 h-12 rounded-full bg-gray-100 flex items-center justify-center mx-auto mb-3">
-                  <svg className="w-6 h-6 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                </div>
-                <p className="text-sm text-gray-500">No activity yet</p>
-                <p className="text-xs text-gray-400 mt-1">Start by creating a job posting</p>
+      <div className={`grid grid-cols-1 ${isInterviewer ? '' : 'lg:grid-cols-2'} gap-6`}>
+        {/* Recent Activity — only for non-interviewers */}
+        {!isInterviewer && (
+          <Card className="shadow-sm">
+            <CardHeader className="pb-3">
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-lg font-semibold">Recent Activity</CardTitle>
+                <span className="text-xs text-gray-400">{activities.length} events</span>
               </div>
-            ) : (
-              <div className="space-y-1">
-                {activities.map((activity) => (
-                  <div
-                    key={activity.id}
-                    className="flex items-center justify-between gap-3 py-2.5 px-3 rounded-lg hover:bg-gray-50 transition-colors"
-                  >
-                    <div className="flex items-center gap-3 min-w-0">
-                      <Badge
-                        className={`text-[10px] shrink-0 capitalize font-medium border-0 ${
-                          ENTITY_COLORS[activity.entity_type] ?? 'bg-gray-100 text-gray-700'
-                        }`}
-                      >
-                        {activity.entity_type}
-                      </Badge>
-                      <span className="text-sm text-gray-700 truncate">{formatAction(activity)}</span>
-                    </div>
-                    <span className="text-xs text-gray-400 shrink-0 tabular-nums">{timeAgo(activity.created_at)}</span>
+            </CardHeader>
+            <CardContent>
+              {activities.length === 0 ? (
+                <div className="text-center py-10">
+                  <div className="w-12 h-12 rounded-full bg-gray-100 flex items-center justify-center mx-auto mb-3">
+                    <svg className="w-6 h-6 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
                   </div>
-                ))}
-              </div>
-            )}
-          </CardContent>
-        </Card>
+                  <p className="text-sm text-gray-500">No activity yet</p>
+                  <p className="text-xs text-gray-400 mt-1">Start by creating a job posting</p>
+                </div>
+              ) : (
+                <div className="space-y-1">
+                  {activities.map((activity) => (
+                    <div
+                      key={activity.id}
+                      className="flex items-center justify-between gap-3 py-2.5 px-3 rounded-lg hover:bg-gray-50 transition-colors"
+                    >
+                      <div className="flex items-center gap-3 min-w-0">
+                        <Badge
+                          className={`text-[10px] shrink-0 capitalize font-medium border-0 ${
+                            ENTITY_COLORS[activity.entity_type] ?? 'bg-gray-100 text-gray-700'
+                          }`}
+                        >
+                          {activity.entity_type}
+                        </Badge>
+                        <span className="text-sm text-gray-700 truncate">{formatAction(activity)}</span>
+                      </div>
+                      <span className="text-xs text-gray-400 shrink-0 tabular-nums">{timeAgo(activity.created_at)}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        )}
 
         <Card className="shadow-sm">
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between">
-              <CardTitle className="text-lg font-semibold">Upcoming Interviews</CardTitle>
+              <CardTitle className="text-lg font-semibold">
+                {isInterviewer ? 'My Upcoming Interviews' : 'Upcoming Interviews'}
+              </CardTitle>
               {interviews.length > 0 && (
                 <Link href="/interviews" className="text-xs text-blue-600 hover:underline">
                   View all
@@ -328,8 +457,12 @@ export default function DashboardPage() {
                     <path strokeLinecap="round" strokeLinejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5" />
                   </svg>
                 </div>
-                <p className="text-sm text-gray-500">No interviews scheduled</p>
-                <p className="text-xs text-gray-400 mt-1">Interviews will appear here when scheduled</p>
+                <p className="text-sm text-gray-500">
+                  {isInterviewer ? 'No interviews assigned to you' : 'No interviews scheduled'}
+                </p>
+                <p className="text-xs text-gray-400 mt-1">
+                  {isInterviewer ? 'You will be notified when assigned' : 'Interviews will appear here when scheduled'}
+                </p>
               </div>
             ) : (
               <div className="space-y-1">

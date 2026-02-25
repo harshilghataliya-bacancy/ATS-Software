@@ -12,30 +12,28 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json()
-    const { candidate_id, candidate_ids, organization_id } = body
+    const { candidate_id, candidate_ids } = body
 
-    if (!organization_id) {
-      return NextResponse.json({ error: 'organization_id is required' }, { status: 400 })
-    }
-
-    // Verify user belongs to this organization
+    // Derive org from user's membership
     const { data: member } = await supabase
       .from('organization_members')
-      .select('role')
-      .eq('organization_id', organization_id)
+      .select('organization_id')
       .eq('user_id', user.id)
+      .is('deleted_at', null)
       .single()
 
     if (!member) {
-      return NextResponse.json({ error: 'Not a member of this organization' }, { status: 403 })
+      return NextResponse.json({ error: 'No organization' }, { status: 403 })
     }
+
+    const orgId = member.organization_id
 
     // Batch parse
     if (candidate_ids && Array.isArray(candidate_ids)) {
       const results: Array<{ candidate_id: string; success: boolean; error?: string }> = []
 
       for (const id of candidate_ids) {
-        const { error } = await parseResume(supabase, id, organization_id)
+        const { error } = await parseResume(supabase, id, orgId)
         results.push({
           candidate_id: id,
           success: !error,
@@ -51,7 +49,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'candidate_id is required' }, { status: 400 })
     }
 
-    const { data, error } = await parseResume(supabase, candidate_id, organization_id)
+    const { data, error } = await parseResume(supabase, candidate_id, orgId)
 
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 500 })

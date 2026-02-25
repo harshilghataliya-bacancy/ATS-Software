@@ -11,6 +11,19 @@ interface OfferFilters {
   limit?: number
 }
 
+interface SalaryComponent {
+  name: string
+  monthly: number
+  annual: number
+  section?: string
+}
+
+interface BonusComponent {
+  name: string
+  amount: number
+  frequency: string
+}
+
 interface OfferData {
   application_id: string
   candidate_id: string
@@ -20,6 +33,15 @@ interface OfferData {
   start_date?: string
   expiry_date?: string
   template_html?: string
+  salary_components?: SalaryComponent[]
+  bonus_components?: BonusComponent[]
+  reporting_manager?: string
+  employment_type?: string
+  location?: string
+  remuneration_type?: string
+  pf_applicable?: boolean
+  work_type?: string
+  business_unit?: string
 }
 
 // ---------------------------------------------------------------------------
@@ -49,6 +71,7 @@ export async function getOffers(
       { count: 'exact' }
     )
     .eq('organization_id', orgId)
+    .is('deleted_at', null)
     .order('created_at', { ascending: false })
     .range(from, to)
 
@@ -80,6 +103,7 @@ export async function getOfferById(
     )
     .eq('id', offerId)
     .eq('organization_id', orgId)
+    .is('deleted_at', null)
     .single()
 
   return { data, error }
@@ -215,9 +239,10 @@ export async function deleteOffer(
 ) {
   const { error } = await supabase
     .from('offer_letters')
-    .delete()
+    .update({ deleted_at: new Date().toISOString() })
     .eq('id', offerId)
     .eq('organization_id', orgId)
+    .is('deleted_at', null)
 
   return { error }
 }
@@ -233,6 +258,33 @@ export async function expireOffer(
       status: 'expired',
       updated_at: new Date().toISOString(),
     })
+    .eq('id', offerId)
+    .eq('organization_id', orgId)
+    .eq('status', 'sent')
+    .select()
+    .single()
+
+  return { data, error }
+}
+
+export async function revokeOffer(
+  supabase: SupabaseClient,
+  offerId: string,
+  orgId: string,
+  notes?: string
+) {
+  const updatePayload: Record<string, unknown> = {
+    status: 'revoked',
+    responded_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  }
+  if (notes) {
+    updatePayload.response_notes = notes
+  }
+
+  const { data, error } = await supabase
+    .from('offer_letters')
+    .update(updatePayload)
     .eq('id', offerId)
     .eq('organization_id', orgId)
     .eq('status', 'sent')

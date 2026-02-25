@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
-import { respondToOffer, expireOffer } from '@/lib/services/offers'
+import { respondToOffer, expireOffer, revokeOffer } from '@/lib/services/offers'
 import { hireApplication } from '@/lib/services/applications'
 
 export async function POST(
@@ -19,6 +19,7 @@ export async function POST(
     .from('organization_members')
     .select('organization_id')
     .eq('user_id', user.id)
+    .is('deleted_at', null)
     .single()
 
   if (!membership) {
@@ -26,14 +27,22 @@ export async function POST(
   }
 
   const body = await request.json()
-  const { status, notes } = body as { status: 'accepted' | 'declined' | 'expired'; notes?: string }
+  const { status, notes } = body as { status: 'accepted' | 'declined' | 'expired' | 'revoked'; notes?: string }
 
-  if (!status || !['accepted', 'declined', 'expired'].includes(status)) {
-    return NextResponse.json({ error: 'Invalid status. Must be accepted, declined, or expired.' }, { status: 400 })
+  if (!status || !['accepted', 'declined', 'expired', 'revoked'].includes(status)) {
+    return NextResponse.json({ error: 'Invalid status. Must be accepted, declined, expired, or revoked.' }, { status: 400 })
   }
 
   if (status === 'expired') {
     const { data, error } = await expireOffer(supabase, id, membership.organization_id)
+    if (error) {
+      return NextResponse.json({ error: error.message }, { status: 500 })
+    }
+    return NextResponse.json({ success: true, data })
+  }
+
+  if (status === 'revoked') {
+    const { data, error } = await revokeOffer(supabase, id, membership.organization_id, notes)
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 500 })
     }

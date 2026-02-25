@@ -121,6 +121,7 @@ export default function MembersPage() {
     admin: 'bg-purple-100 text-purple-700',
     recruiter: 'bg-blue-100 text-blue-700',
     hiring_manager: 'bg-green-100 text-green-700',
+    interviewer: 'bg-orange-100 text-orange-700',
   }
 
   return (
@@ -172,6 +173,7 @@ export default function MembersPage() {
                     <SelectItem value="admin">Admin</SelectItem>
                     <SelectItem value="recruiter">Recruiter</SelectItem>
                     <SelectItem value="hiring_manager">Hiring Manager</SelectItem>
+                    <SelectItem value="interviewer">Interviewer</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -247,6 +249,7 @@ export default function MembersPage() {
                               <SelectItem value="admin">Admin</SelectItem>
                               <SelectItem value="recruiter">Recruiter</SelectItem>
                               <SelectItem value="hiring_manager">Hiring Manager</SelectItem>
+                              <SelectItem value="interviewer">Interviewer</SelectItem>
                             </SelectContent>
                           </Select>
 

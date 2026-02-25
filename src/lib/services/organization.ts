@@ -115,6 +115,7 @@ export async function getMembers(
     .from('organization_members')
     .select('*')
     .eq('organization_id', orgId)
+    .is('deleted_at', null)
     .order('created_at', { ascending: true })
 
   return { data, error }
@@ -144,6 +145,7 @@ export async function inviteMember(
     .select('id')
     .eq('organization_id', orgId)
     .eq('user_id', targetUser.id)
+    .is('deleted_at', null)
     .maybeSingle()
 
   if (existing) {
@@ -193,12 +195,14 @@ export async function removeMember(
     .select('id')
     .eq('organization_id', orgId)
     .eq('role', 'admin')
+    .is('deleted_at', null)
 
   const targetMember = await supabase
     .from('organization_members')
     .select('role')
     .eq('id', memberId)
     .eq('organization_id', orgId)
+    .is('deleted_at', null)
     .single()
 
   if (
@@ -214,9 +218,10 @@ export async function removeMember(
 
   const { data, error } = await supabase
     .from('organization_members')
-    .delete()
+    .update({ deleted_at: new Date().toISOString() })
     .eq('id', memberId)
     .eq('organization_id', orgId)
+    .is('deleted_at', null)
     .select()
     .single()
 
@@ -240,6 +245,7 @@ export async function getUserOrganizations(
     `
     )
     .eq('user_id', userId)
+    .is('deleted_at', null)
     .order('created_at', { ascending: true })
 
   if (error) {

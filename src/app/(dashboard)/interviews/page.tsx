@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback } from 'react'
 import Link from 'next/link'
 import { useUser, useRole } from '@/lib/hooks/use-user'
 import { createClient } from '@/lib/supabase/client'
-import { getInterviews, cancelInterview } from '@/lib/services/interviews'
+import { getInterviews, cancelInterview, updateInterview } from '@/lib/services/interviews'
 import { INTERVIEW_TYPES, ITEMS_PER_PAGE } from '@/lib/constants'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -51,8 +51,8 @@ const STATUS_CONFIG: Record<string, { label: string; variant: 'default' | 'secon
 }
 
 export default function InterviewsPage() {
-  const { organization, isLoading } = useUser()
-  const { canManageJobs } = useRole()
+  const { user, organization, isLoading } = useUser()
+  const { canManageJobs, isInterviewer } = useRole()
   const [interviews, setInterviews] = useState<Interview[]>([])
   const [loading, setLoading] = useState(true)
   const [statusFilter, setStatusFilter] = useState<string>('scheduled')
@@ -66,11 +66,15 @@ export default function InterviewsPage() {
     const supabase = createClient()
     const filters: Record<string, unknown> = { page }
     if (statusFilter !== 'all') filters.status = statusFilter
+    // Interviewers only see their assigned interviews
+    if (isInterviewer && user?.id) {
+      filters.panelistUserId = user.id
+    }
     const { data, count } = await getInterviews(supabase, organization.id, filters)
     if (data) setInterviews(data as Interview[])
     if (count !== undefined && count !== null) setTotal(count)
     setLoading(false)
-  }, [organization, statusFilter, page])
+  }, [organization, statusFilter, page, isInterviewer, user])
 
   useEffect(() => {
     if (organization) loadInterviews()
@@ -87,6 +91,28 @@ export default function InterviewsPage() {
     if (err) {
       console.error('[Cancel Interview Error]', err)
       setCancelError(err.message ?? 'Failed to cancel interview')
+    }
+    await loadInterviews()
+  }
+
+  async function handleMarkComplete(interviewId: string) {
+    if (!organization) return
+    setCancelError(null)
+    const supabase = createClient()
+    const { error: err } = await updateInterview(supabase, interviewId, organization.id, { status: 'completed' })
+    if (err) {
+      setCancelError(err.message ?? 'Failed to mark as completed')
+    }
+    await loadInterviews()
+  }
+
+  async function handleNoShow(interviewId: string) {
+    if (!organization) return
+    setCancelError(null)
+    const supabase = createClient()
+    const { error: err } = await updateInterview(supabase, interviewId, organization.id, { status: 'no_show' })
+    if (err) {
+      setCancelError(err.message ?? 'Failed to mark as no show')
     }
     await loadInterviews()
   }
@@ -128,9 +154,13 @@ export default function InterviewsPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Interviews</h1>
+          <h1 className="text-2xl font-bold text-gray-900">
+            {isInterviewer ? 'My Interviews' : 'Interviews'}
+          </h1>
           <p className="text-gray-500 mt-1">
-            {total > 0 ? `${total} total interviews` : 'Manage interview schedules'}
+            {isInterviewer
+              ? total > 0 ? `${total} interviews assigned to you` : 'No interviews assigned yet'
+              : total > 0 ? `${total} total interviews` : 'Manage interview schedules'}
           </p>
         </div>
       </div>
@@ -195,7 +225,7 @@ export default function InterviewsPage() {
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-3">
-                          <Link href={`/interviews/${interview.id}`} className="text-base font-semibold text-gray-900 hover:text-blue-600">
+                          <Link href={`/interviews/${interview.id}?from=interviews`} className="text-base font-semibold text-gray-900 hover:text-blue-600">
                             {candidate ? `${candidate.first_name} ${candidate.last_name}` : 'Unknown'}
                           </Link>
                           {statusConfig && (
@@ -228,29 +258,57 @@ export default function InterviewsPage() {
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
-                      <Link href={`/interviews/${interview.id}`}>
+                      <Link href={`/interviews/${interview.id}?from=interviews`}>
                         <Button variant="outline" size="sm">View</Button>
                       </Link>
-                      {interview.status === 'scheduled' && canManageJobs && (
-                        <AlertDialog>
-                          <AlertDialogTrigger asChild>
-                            <Button variant="ghost" size="sm" className="text-red-600">Cancel</Button>
-                          </AlertDialogTrigger>
-                          <AlertDialogContent>
-                            <AlertDialogHeader>
-                              <AlertDialogTitle>Cancel interview?</AlertDialogTitle>
-                              <AlertDialogDescription>
-                                This will cancel the interview with {candidate?.first_name} {candidate?.last_name}.
-                              </AlertDialogDescription>
-                            </AlertDialogHeader>
-                            <AlertDialogFooter>
-                              <AlertDialogCancel>Keep</AlertDialogCancel>
-                              <AlertDialogAction onClick={() => handleCancel(interview.id)} className="bg-red-600 hover:bg-red-700">
-                                Cancel Interview
-                              </AlertDialogAction>
-                            </AlertDialogFooter>
-                          </AlertDialogContent>
-                        </AlertDialog>
+                      {interview.status === 'scheduled' && (
+                        <>
+                          <Button size="sm" onClick={() => handleMarkComplete(interview.id)}>
+                            Mark Complete
+                          </Button>
+                          <AlertDialog>
+                            <AlertDialogTrigger asChild>
+                              <Button variant="outline" size="sm" className="text-orange-600 border-orange-200 hover:bg-orange-50">
+                                Not Shown
+                              </Button>
+                            </AlertDialogTrigger>
+                            <AlertDialogContent>
+                              <AlertDialogHeader>
+                                <AlertDialogTitle>Candidate not shown?</AlertDialogTitle>
+                                <AlertDialogDescription>
+                                  Mark that {candidate?.first_name} {candidate?.last_name} did not show up for this interview.
+                                </AlertDialogDescription>
+                              </AlertDialogHeader>
+                              <AlertDialogFooter>
+                                <AlertDialogCancel>Go Back</AlertDialogCancel>
+                                <AlertDialogAction onClick={() => handleNoShow(interview.id)} className="bg-orange-600 hover:bg-orange-700">
+                                  Candidate Not Shown
+                                </AlertDialogAction>
+                              </AlertDialogFooter>
+                            </AlertDialogContent>
+                          </AlertDialog>
+                          {canManageJobs && (
+                            <AlertDialog>
+                              <AlertDialogTrigger asChild>
+                                <Button variant="ghost" size="sm" className="text-red-600">Cancel</Button>
+                              </AlertDialogTrigger>
+                              <AlertDialogContent>
+                                <AlertDialogHeader>
+                                  <AlertDialogTitle>Cancel interview?</AlertDialogTitle>
+                                  <AlertDialogDescription>
+                                    This will cancel the interview with {candidate?.first_name} {candidate?.last_name}.
+                                  </AlertDialogDescription>
+                                </AlertDialogHeader>
+                                <AlertDialogFooter>
+                                  <AlertDialogCancel>Keep</AlertDialogCancel>
+                                  <AlertDialogAction onClick={() => handleCancel(interview.id)} className="bg-red-600 hover:bg-red-700">
+                                    Cancel Interview
+                                  </AlertDialogAction>
+                                </AlertDialogFooter>
+                              </AlertDialogContent>
+                            </AlertDialog>
+                          )}
+                        </>
                       )}
                     </div>
                   </div>

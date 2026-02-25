@@ -187,11 +187,8 @@ export function SendEmailDialog({
         ) : !connected ? (
           <div className="py-6 text-center">
             <p className="text-sm text-gray-600 mb-3">
-              Gmail is not connected. Connect your Gmail account to send emails.
+              Gmail is not connected. Please ask an admin to connect Gmail in Settings.
             </p>
-            <Button asChild>
-              <a href="/api/gmail/connect">Connect Gmail</a>
-            </Button>
           </div>
         ) : (
           <>

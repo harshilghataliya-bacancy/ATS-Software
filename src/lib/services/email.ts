@@ -39,6 +39,7 @@ export async function getEmailTemplates(
     .from('email_templates')
     .select('*')
     .eq('organization_id', orgId)
+    .is('deleted_at', null)
     .order('name', { ascending: true })
 
   if (templateType) {
@@ -93,9 +94,10 @@ export async function deleteEmailTemplate(
 ) {
   const { data, error } = await supabase
     .from('email_templates')
-    .delete()
+    .update({ deleted_at: new Date().toISOString() })
     .eq('id', templateId)
     .eq('organization_id', orgId)
+    .is('deleted_at', null)
     .select()
     .single()
 

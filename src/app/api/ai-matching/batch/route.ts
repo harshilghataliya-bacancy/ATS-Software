@@ -13,33 +13,36 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json()
-    const { job_id, organization_id, rescore } = body
+    const { job_id, rescore } = body
 
-    if (!job_id || !organization_id) {
+    if (!job_id) {
       return NextResponse.json(
-        { error: 'job_id and organization_id are required' },
+        { error: 'job_id is required' },
         { status: 400 }
       )
     }
 
-    // Verify user belongs to this organization
+    // Derive org from user's membership
     const { data: member } = await supabase
       .from('organization_members')
-      .select('role')
-      .eq('organization_id', organization_id)
+      .select('organization_id')
       .eq('user_id', user.id)
+      .is('deleted_at', null)
       .single()
 
     if (!member) {
-      return NextResponse.json({ error: 'Not a member of this organization' }, { status: 403 })
+      return NextResponse.json({ error: 'No organization' }, { status: 403 })
     }
 
-    // Get ALL applications for the job (not filtered by status)
+    const orgId = member.organization_id
+
+    // Get ALL active applications for the job
     const { data: applications, error: appsError } = await supabase
       .from('applications')
       .select('id')
       .eq('job_id', job_id)
-      .eq('organization_id', organization_id)
+      .eq('organization_id', orgId)
+      .is('deleted_at', null)
 
     if (appsError) {
       return NextResponse.json({ error: appsError.message }, { status: 500 })
@@ -56,7 +59,7 @@ export async function POST(request: NextRequest) {
         .from('candidate_match_scores')
         .select('application_id')
         .eq('job_id', job_id)
-        .eq('organization_id', organization_id)
+        .eq('organization_id', orgId)
 
       const scoredAppIds = new Set(existingScores?.map((s) => s.application_id) ?? [])
       appsToScore = applications.filter((a) => !scoredAppIds.has(a.id))
@@ -72,7 +75,7 @@ export async function POST(request: NextRequest) {
 
     for (const app of appsToScore) {
       try {
-        const { error } = await scoreCandidate(supabase, app.id, organization_id)
+        const { error } = await scoreCandidate(supabase, app.id, orgId)
         if (error) {
           errors.push(`${app.id}: ${error.message}`)
         } else {

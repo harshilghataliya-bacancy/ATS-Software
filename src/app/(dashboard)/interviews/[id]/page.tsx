@@ -38,6 +38,11 @@ interface InterviewDetail {
       first_name: string
       last_name: string
       email: string
+      phone?: string | null
+      current_title?: string | null
+      current_company?: string | null
+      location?: string | null
+      resume_url?: string | null
     }
     job: { id: string; title: string; department: string; status: string }
     current_stage: { id: string; name: string; stage_type: string } | null
@@ -66,7 +71,7 @@ export default function InterviewDetailPage() {
   const params = useParams()
   const router = useRouter()
   const { user, organization, isLoading: userLoading } = useUser()
-  const { canManageJobs } = useRole()
+  const { canManageJobs, isInterviewer } = useRole()
   const [interview, setInterview] = useState<InterviewDetail | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -185,6 +190,19 @@ export default function InterviewDetailPage() {
     }
   }
 
+  async function handleNoShow() {
+    if (!organization || !interview) return
+    const supabase = createClient()
+    const { error: updateError } = await updateInterview(supabase, interview.id, organization.id, {
+      status: 'no_show',
+    })
+    if (updateError) {
+      setError(updateError.message)
+    } else {
+      loadInterview()
+    }
+  }
+
   async function handleCancel() {
     if (!organization || !interview) return
     const supabase = createClient()
@@ -252,9 +270,10 @@ export default function InterviewDetailPage() {
     return (
       <div className="text-center py-12">
         <p className="text-gray-500">{error || 'Interview not found'}</p>
-        <Button variant="outline" className="mt-4" onClick={() => router.push('/interviews')}>
-          Back to Interviews
-        </Button>
+        <button onClick={() => router.back()} className="inline-flex items-center gap-1 text-sm text-gray-500 hover:text-gray-900 transition-colors mt-4">
+          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" /></svg>
+          Back
+        </button>
       </div>
     )
   }
@@ -264,6 +283,8 @@ export default function InterviewDetailPage() {
   const statusConfig = STATUS_CONFIG[interview.status]
   const typeLabel = INTERVIEW_TYPES.find((t) => t.value === interview.interview_type)?.label ?? interview.interview_type
   const hasSubmittedFeedback = interview.feedback?.some((f) => f.user_id === user?.id)
+  const isPanelist = interview.interview_panelists?.some((p) => p.user_id === user?.id)
+  const canManageThisInterview = canManageJobs || (isInterviewer && isPanelist)
 
   function formatDateTime(dateStr: string) {
     const date = new Date(dateStr)
@@ -280,6 +301,12 @@ export default function InterviewDetailPage() {
 
   return (
     <div className="max-w-4xl space-y-6">
+      {/* Back link */}
+      <button onClick={() => router.back()} className="inline-flex items-center gap-1 text-sm text-gray-500 hover:text-gray-900 transition-colors">
+        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" /></svg>
+        Back
+      </button>
+
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
@@ -292,9 +319,13 @@ export default function InterviewDetailPage() {
           {job && (
             <p className="text-gray-500 mt-1">
               {typeLabel} for{' '}
-              <Link href={`/jobs/${job.id}`} className="text-blue-600 hover:underline">
-                {job.title}
-              </Link>
+              {isInterviewer ? (
+                <span className="font-medium text-gray-700">{job.title}</span>
+              ) : (
+                <Link href={`/jobs/${job.id}`} className="text-blue-600 hover:underline">
+                  {job.title}
+                </Link>
+              )}
             </p>
           )}
         </div>
@@ -302,14 +333,20 @@ export default function InterviewDetailPage() {
           {interview.status === 'scheduled' && canManageJobs && (
             <>
               <Button variant="outline" onClick={startEdit}>Edit</Button>
-              <Button onClick={handleMarkCompleted}>Mark Completed</Button>
               <Button variant="destructive" onClick={handleCancel}>Cancel</Button>
             </>
           )}
-          {interview.status === 'completed' && !hasSubmittedFeedback && (
+          {interview.status === 'scheduled' && canManageThisInterview && (
+            <>
+              <Button onClick={handleMarkCompleted}>Mark Completed</Button>
+              <Button variant="outline" className="text-orange-600 border-orange-200 hover:bg-orange-50" onClick={handleNoShow}>
+                Candidate Not Shown
+              </Button>
+            </>
+          )}
+          {interview.status === 'completed' && !hasSubmittedFeedback && isPanelist && (
             <Button onClick={() => setShowFeedback(true)}>Submit Feedback</Button>
           )}
-          <Button variant="outline" onClick={() => router.push('/interviews')}>Back</Button>
         </div>
       </div>
 
@@ -558,7 +595,7 @@ export default function InterviewDetailPage() {
             </CardHeader>
             <CardContent>
               {candidate && (
-                <div className="space-y-2 text-sm">
+                <div className="space-y-3 text-sm">
                   <div className="flex items-center gap-3">
                     <div className="w-10 h-10 rounded-full bg-purple-100 text-purple-700 flex items-center justify-center text-sm font-semibold">
                       {candidate.first_name?.[0]}{candidate.last_name?.[0]}
@@ -570,6 +607,24 @@ export default function InterviewDetailPage() {
                       <p className="text-gray-500 text-xs">{candidate.email}</p>
                     </div>
                   </div>
+                  {candidate.phone && (
+                    <div>
+                      <span className="text-gray-500 text-xs">Phone</span>
+                      <p className="text-gray-700">{candidate.phone}</p>
+                    </div>
+                  )}
+                  {candidate.current_title && (
+                    <div>
+                      <span className="text-gray-500 text-xs">Current Role</span>
+                      <p className="text-gray-700">{candidate.current_title}{candidate.current_company ? ` at ${candidate.current_company}` : ''}</p>
+                    </div>
+                  )}
+                  {candidate.location && (
+                    <div>
+                      <span className="text-gray-500 text-xs">Location</span>
+                      <p className="text-gray-700">{candidate.location}</p>
+                    </div>
+                  )}
                 </div>
               )}
             </CardContent>
@@ -582,9 +637,13 @@ export default function InterviewDetailPage() {
             <CardContent>
               {job && (
                 <div className="text-sm space-y-1">
-                  <Link href={`/jobs/${job.id}`} className="font-medium text-blue-600 hover:underline">
-                    {job.title}
-                  </Link>
+                  {isInterviewer ? (
+                    <p className="font-medium text-gray-900">{job.title}</p>
+                  ) : (
+                    <Link href={`/jobs/${job.id}`} className="font-medium text-blue-600 hover:underline">
+                      {job.title}
+                    </Link>
+                  )}
                   <p className="text-gray-500">{job.department}</p>
                 </div>
               )}
@@ -630,9 +689,10 @@ export default function InterviewDetailPage() {
             </CardContent>
           </Card>
 
-          <Button variant="outline" className="w-full" onClick={() => router.push('/interviews')}>
-            Back to Interviews
-          </Button>
+          <button onClick={() => router.back()} className="inline-flex items-center gap-1 text-sm text-gray-500 hover:text-gray-900 transition-colors w-full justify-center">
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" /></svg>
+            Back
+          </button>
         </div>
       </div>
     </div>

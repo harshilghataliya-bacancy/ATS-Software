@@ -1,6 +1,6 @@
 import { z } from 'zod'
 
-const orgRoleEnum = z.enum(['admin', 'recruiter', 'hiring_manager'])
+const orgRoleEnum = z.enum(['admin', 'recruiter', 'hiring_manager', 'interviewer'])
 
 export const createOrganizationSchema = z.object({
   name: z.string().min(2, 'Name must be at least 2 characters').max(100),

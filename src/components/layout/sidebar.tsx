@@ -62,8 +62,16 @@ function NavItem({ href, label, icon, active, collapsed }: { href: string; label
 export function Sidebar() {
   const pathname = usePathname()
   const { user, organization } = useUser()
-  const { canManageMembers, canViewReports } = useRole()
+  const { role, canManageMembers, canViewReports, isInterviewer } = useRole()
   const [collapsed, setCollapsed] = useState(false)
+
+  const roleBadge: Record<string, { label: string; color: string }> = {
+    admin: { label: 'Admin', color: 'bg-purple-100 text-purple-700' },
+    recruiter: { label: 'Recruiter', color: 'bg-blue-100 text-blue-700' },
+    hiring_manager: { label: 'Hiring Manager', color: 'bg-green-100 text-green-700' },
+    interviewer: { label: 'Interviewer', color: 'bg-orange-100 text-orange-700' },
+  }
+  const currentRole = role ? roleBadge[role] : null
 
   const initials = user?.full_name
     ?.split(' ')
@@ -118,6 +126,7 @@ export function Sidebar() {
           {mainNav
             .filter((item) => {
               if (item.href === '/reports' && !canViewReports) return false
+              if (isInterviewer && !['/dashboard', '/interviews'].includes(item.href)) return false
               return true
             })
             .map((item) => (
@@ -129,16 +138,20 @@ export function Sidebar() {
               />
             ))}
 
-          <Separator className="my-3" />
+          {!isInterviewer && (
+            <>
+              <Separator className="my-3" />
 
-          {secondaryNav.map((item) => (
-            <NavItem
-              key={item.href}
-              {...item}
-              collapsed={collapsed}
-              active={pathname === item.href || pathname.startsWith(item.href + '/')}
-            />
-          ))}
+              {secondaryNav.map((item) => (
+                <NavItem
+                  key={item.href}
+                  {...item}
+                  collapsed={collapsed}
+                  active={pathname === item.href || pathname.startsWith(item.href + '/')}
+                />
+              ))}
+            </>
+          )}
 
           {canManageMembers && (
             <>
@@ -177,6 +190,7 @@ export function Sidebar() {
               <TooltipContent side="right" sideOffset={8}>
                 <p className="font-medium">{user?.full_name}</p>
                 <p className="text-xs text-gray-400">{user?.email}</p>
+                {currentRole && <p className="text-xs font-medium mt-1">{currentRole.label}</p>}
               </TooltipContent>
             </Tooltip>
           ) : (
@@ -188,7 +202,14 @@ export function Sidebar() {
               </Avatar>
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-medium truncate">{user?.full_name}</p>
-                <p className="text-xs text-gray-500 truncate">{user?.email}</p>
+                <div className="flex items-center gap-1.5 mt-0.5">
+                  <p className="text-xs text-gray-500 truncate">{user?.email}</p>
+                </div>
+                {currentRole && (
+                  <span className={`inline-block text-[10px] font-medium px-1.5 py-0.5 rounded mt-1 ${currentRole.color}`}>
+                    {currentRole.label}
+                  </span>
+                )}
               </div>
             </div>
           )}

@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 
 export async function GET() {
   const supabase = await createClient()
@@ -13,21 +14,54 @@ export async function GET() {
     .from('organization_members')
     .select('organization_id')
     .eq('user_id', user.id)
+    .is('deleted_at', null)
     .single()
 
   if (!membership) {
     return NextResponse.json({ connected: false })
   }
 
-  const { data: token } = await supabase
+  const orgId = membership.organization_id
+
+  // Check current user's token first
+  const { data: ownToken } = await supabase
     .from('google_oauth_tokens')
     .select('id')
     .eq('user_id', user.id)
-    .eq('organization_id', membership.organization_id)
+    .eq('organization_id', orgId)
     .eq('provider', 'gmail')
-    .single()
+    .maybeSingle()
 
-  return NextResponse.json({ connected: !!token })
+  if (ownToken) {
+    return NextResponse.json({ connected: true })
+  }
+
+  // Fallback: check if any admin in the org has connected Gmail
+  const adminSupabase = createAdminClient()
+  const { data: adminMembers } = await adminSupabase
+    .from('organization_members')
+    .select('user_id')
+    .eq('organization_id', orgId)
+    .eq('role', 'admin')
+    .is('deleted_at', null)
+
+  if (adminMembers) {
+    for (const admin of adminMembers) {
+      const { data: adminToken } = await adminSupabase
+        .from('google_oauth_tokens')
+        .select('id')
+        .eq('user_id', admin.user_id)
+        .eq('organization_id', orgId)
+        .eq('provider', 'gmail')
+        .maybeSingle()
+
+      if (adminToken) {
+        return NextResponse.json({ connected: true })
+      }
+    }
+  }
+
+  return NextResponse.json({ connected: false })
 }
 
 export async function DELETE() {
@@ -42,6 +76,7 @@ export async function DELETE() {
     .from('organization_members')
     .select('organization_id')
     .eq('user_id', user.id)
+    .is('deleted_at', null)
     .single()
 
   if (!membership) {

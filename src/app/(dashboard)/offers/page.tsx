@@ -191,7 +191,7 @@ export default function OffersPage() {
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-3">
-                          <Link href={`/offers/${offer.id}`} className="text-base font-semibold text-gray-900 hover:text-blue-600">
+                          <Link href={`/offers/${offer.id}?from=offers`} className="text-base font-semibold text-gray-900 hover:text-blue-600">
                             {candidateName}
                           </Link>
                           <Badge variant={statusConfig?.variant ?? 'secondary'}>
@@ -220,7 +220,7 @@ export default function OffersPage() {
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
-                      <Link href={`/offers/${offer.id}`}>
+                      <Link href={`/offers/${offer.id}?from=offers`}>
                         <Button variant="outline" size="sm">View</Button>
                       </Link>
                       {canManageOffers && (

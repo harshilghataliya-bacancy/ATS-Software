@@ -36,6 +36,7 @@ export async function getFeedbackForInterview(
     .select('*')
     .eq('interview_id', interviewId)
     .eq('organization_id', orgId)
+    .is('deleted_at', null)
     .order('created_at', { ascending: false })
 
   return { data, error }
@@ -60,6 +61,7 @@ export async function getFeedbackForApplication(
     )
     .eq('application_id', applicationId)
     .eq('organization_id', orgId)
+    .is('deleted_at', null)
     .order('created_at', { ascending: false })
 
   return { data, error }
@@ -82,6 +84,7 @@ export async function submitFeedback(
     .eq('interview_id', data.interview_id)
     .eq('user_id', userId)
     .eq('organization_id', orgId)
+    .is('deleted_at', null)
     .maybeSingle()
 
   if (existing) {
@@ -144,6 +147,7 @@ export async function getAggregatedScorecard(
     .select('id, overall_rating, recommendation, user_id')
     .eq('application_id', applicationId)
     .eq('organization_id', orgId)
+    .is('deleted_at', null)
 
   if (fbError) return { data: null, error: fbError }
   if (!feedbackList || feedbackList.length === 0) {

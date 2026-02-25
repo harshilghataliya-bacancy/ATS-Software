@@ -4,6 +4,7 @@ import { getOfferById, sendOffer } from '@/lib/services/offers'
 import { getValidAccessToken, sendGmailEmail } from '@/lib/services/gmail'
 import { logEmail } from '@/lib/services/email'
 import { substituteOfferVariables, formatSalary } from '@/lib/offer-template'
+import { DEFAULT_OFFER_TEMPLATE, EMPLOYMENT_TYPE_OPTIONS, WORK_TYPE_OPTIONS } from '@/lib/constants'
 import { renderToBuffer } from '@react-pdf/renderer'
 import { OfferPDFDocument } from '@/components/offers/offer-pdf-document'
 import React from 'react'
@@ -24,6 +25,7 @@ export async function POST(
     .from('organization_members')
     .select('organization_id')
     .eq('user_id', user.id)
+    .is('deleted_at', null)
     .single()
 
   if (!membership) {
@@ -63,30 +65,38 @@ export async function POST(
     return NextResponse.json({ error: tokenResult.error || 'Gmail not connected' }, { status: 400 })
   }
 
-  // Substitute variables in template
-  const html = substituteOfferVariables(offer.template_html || '', {
-    candidate_name: `${candidate.first_name} ${candidate.last_name}`,
+  const candidateName = `${candidate.first_name} ${candidate.last_name}`
+  const salaryFormatted = formatSalary(offer.salary || 0, offer.salary_currency || 'INR')
+  const startDate = offer.start_date
+    ? new Date(offer.start_date).toLocaleDateString('en-US', { dateStyle: 'long' })
+    : 'TBD'
+  const expiryDate = offer.expiry_date
+    ? new Date(offer.expiry_date).toLocaleDateString('en-US', { dateStyle: 'long' })
+    : 'TBD'
+
+  // Simple email body — full details are in the PDF
+  const emailTemplate = offer.template_html || DEFAULT_OFFER_TEMPLATE
+  const emailHtml = substituteOfferVariables(emailTemplate, {
+    candidate_name: candidateName,
     job_title: job?.title || '',
     department: job?.department || '',
-    salary: formatSalary(offer.salary, offer.salary_currency || 'USD'),
-    start_date: offer.start_date ? new Date(offer.start_date).toLocaleDateString('en-US', { dateStyle: 'long' }) : '',
-    expiry_date: offer.expiry_date ? new Date(offer.expiry_date).toLocaleDateString('en-US', { dateStyle: 'long' }) : '',
+    salary: salaryFormatted,
+    start_date: startDate,
+    expiry_date: expiryDate,
     company_name: org?.name || '',
+    location: offer.location || job?.location || '',
   })
+
+  const empLabel = EMPLOYMENT_TYPE_OPTIONS.find((e) => e.value === offer.employment_type)?.label || offer.employment_type || ''
+  const workLabel = WORK_TYPE_OPTIONS.find((w) => w.value === offer.work_type)?.label || offer.work_type || ''
 
   const subject = `Offer Letter - ${job?.title || 'Position'} at ${org?.name || 'Our Company'}`
   const fromEmail = tokenResult.fromEmail || user.email!
 
   try {
-    // Generate PDF attachment
-    const candidateName = `${candidate.first_name} ${candidate.last_name}`
-    const salaryFormatted = formatSalary(offer.salary || 0, offer.salary_currency || 'USD')
-    const startDate = offer.start_date
-      ? new Date(offer.start_date).toLocaleDateString('en-US', { dateStyle: 'long' })
-      : 'TBD'
-    const expiryDate = offer.expiry_date
-      ? new Date(offer.expiry_date).toLocaleDateString('en-US', { dateStyle: 'long' })
-      : 'TBD'
+    // Generate full offer letter PDF
+    const salaryComponents = Array.isArray(offer.salary_components) ? offer.salary_components : []
+    const bonusComponents = Array.isArray(offer.bonus_components) ? offer.bonus_components : []
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const pdfElement = React.createElement(OfferPDFDocument, {
@@ -95,11 +105,19 @@ export async function POST(
       candidateEmail: candidate.email,
       jobTitle: job?.title || '',
       department: job?.department || '',
+      businessUnit: offer.business_unit || undefined,
+      employmentType: empLabel,
+      workType: workLabel,
+      location: offer.location || job?.location || undefined,
+      reportingManager: offer.reporting_manager || undefined,
       salary: salaryFormatted,
+      salaryCurrency: offer.salary_currency || 'INR',
       startDate,
       expiryDate,
-      templateContent: html,
       createdDate: new Date(offer.created_at).toLocaleDateString('en-US', { dateStyle: 'long' }),
+      salaryComponents: salaryComponents.length > 0 ? salaryComponents : undefined,
+      bonusComponents: bonusComponents.length > 0 ? bonusComponents : undefined,
+      pfApplicable: offer.pf_applicable ?? false,
     }) as any
     const pdfBuffer = await renderToBuffer(pdfElement)
     const pdfFilename = `offer-${candidate.last_name.toLowerCase()}-${job?.title?.toLowerCase().replace(/\s+/g, '-') || 'position'}.pdf`
@@ -108,7 +126,7 @@ export async function POST(
       from: fromEmail,
       to: candidate.email,
       subject,
-      html,
+      html: emailHtml,
       attachments: [{
         filename: pdfFilename,
         content: new Uint8Array(pdfBuffer),
@@ -122,17 +140,17 @@ export async function POST(
       return NextResponse.json({ error: sendError.message }, { status: 500 })
     }
 
-    // Log the email
-    await logEmail(supabase, orgId, {
+    // Log the email in background
+    logEmail(supabase, orgId, {
       candidate_id: candidate.id,
       application_id: offer.application_id,
       subject,
-      body_html: html,
+      body_html: emailHtml,
       to_email: candidate.email,
       from_email: fromEmail,
       status: 'sent',
       sent_at: new Date().toISOString(),
-    })
+    }).catch((err) => console.error('[Offer Email Log Error]', err))
 
     return NextResponse.json({ success: true })
   } catch (err) {

@@ -6,6 +6,18 @@ interface Props {
   params: Promise<{ slug: string; jobId: string }>
 }
 
+const EXPERIENCE_LABELS: Record<string, string> = {
+  entry: 'Entry Level', mid: 'Mid Level', senior: 'Senior Level',
+  lead: 'Lead', director: 'Director', vp: 'VP', c_level: 'C-Level',
+}
+const REMOTE_LABELS: Record<string, string> = {
+  on_site: 'On-site', hybrid: 'Hybrid', remote: 'Remote',
+}
+const EDUCATION_LABELS: Record<string, string> = {
+  any: 'Any', high_school: 'High School', associate: 'Associate Degree',
+  bachelor: "Bachelor's Degree", master: "Master's Degree", doctorate: 'Doctorate / PhD',
+}
+
 export default async function JobDetailPage({ params }: Props) {
   const { slug, jobId } = await params
   const supabase = await createClient()
@@ -59,13 +71,22 @@ export default async function JobDetailPage({ params }: Props) {
       ? `${job.salary_currency ?? 'USD'} ${job.salary_min.toLocaleString()} - ${job.salary_max.toLocaleString()}`
       : job.salary_min
         ? `From ${job.salary_currency ?? 'USD'} ${job.salary_min.toLocaleString()}`
-        : null
+        : job.salary_max
+          ? `Up to ${job.salary_currency ?? 'USD'} ${job.salary_max.toLocaleString()}`
+          : null
+
+  const expLabel = job.experience_level ? EXPERIENCE_LABELS[job.experience_level] ?? job.experience_level : null
+  const remoteLabel = job.remote_policy ? REMOTE_LABELS[job.remote_policy] ?? job.remote_policy : null
+  const eduLabel = job.education_level ? EDUCATION_LABELS[job.education_level] ?? job.education_level : null
+  const deadline = job.application_deadline
+    ? new Date(job.application_deadline).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
+    : null
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
       {/* Header */}
       <header style={{ background: `linear-gradient(to right, ${primaryColor}, ${accentColor})` }} className="text-white">
-        <div className="max-w-4xl mx-auto px-6 py-8">
+        <div className="max-w-5xl mx-auto px-6 py-8">
           <Link href={`/careers/${slug}`} className="inline-flex items-center gap-1 text-sm text-white/70 hover:text-white transition-colors mb-4">
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" /></svg>
             All positions at {displayName}
@@ -88,6 +109,16 @@ export default async function JobDetailPage({ params }: Props) {
               <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
               {job.employment_type.replace('_', ' ')}
             </span>
+            {remoteLabel && (
+              <span className="inline-flex items-center gap-1 text-xs font-medium bg-white/15 px-2.5 py-1 rounded-full">
+                {remoteLabel}
+              </span>
+            )}
+            {expLabel && (
+              <span className="inline-flex items-center gap-1 text-xs font-medium bg-white/15 px-2.5 py-1 rounded-full">
+                {expLabel}
+              </span>
+            )}
             {salaryRange && (
               <span className="inline-flex items-center gap-1 text-xs font-medium bg-white/15 px-2.5 py-1 rounded-full">
                 <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 6v12m-3-2.818l.879.659c1.171.879 3.07.879 4.242 0 1.172-.879 1.172-2.303 0-3.182C13.536 12.219 12.768 12 12 12c-.725 0-1.45-.22-2.003-.659-1.106-.879-1.106-2.303 0-3.182s2.9-.879 4.006 0l.415.33M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
@@ -98,10 +129,89 @@ export default async function JobDetailPage({ params }: Props) {
         </div>
       </header>
 
-      <main className="max-w-4xl mx-auto px-6 py-8 flex-1 w-full">
-        <div className="grid grid-cols-3 gap-8">
-          {/* Job details */}
-          <div className="col-span-2 space-y-6">
+      <main className="max-w-5xl mx-auto px-6 py-8 flex-1 w-full">
+        <div className="grid grid-cols-1 lg:grid-cols-5 gap-8">
+          {/* Job details - left */}
+          <div className="lg:col-span-3 space-y-6">
+            {/* Job overview card */}
+            <div className="bg-white rounded-xl border p-6">
+              <h2 className="text-lg font-semibold text-gray-900 mb-4">Job Overview</h2>
+              <div className="grid grid-cols-2 gap-4 text-sm">
+                {job.department && (
+                  <div>
+                    <p className="text-gray-400 text-xs mb-0.5">Department</p>
+                    <p className="text-gray-800 font-medium">{job.department}</p>
+                  </div>
+                )}
+                {job.location && (
+                  <div>
+                    <p className="text-gray-400 text-xs mb-0.5">Location</p>
+                    <p className="text-gray-800 font-medium">{job.location}</p>
+                  </div>
+                )}
+                <div>
+                  <p className="text-gray-400 text-xs mb-0.5">Employment Type</p>
+                  <p className="text-gray-800 font-medium capitalize">{job.employment_type.replace('_', ' ')}</p>
+                </div>
+                {remoteLabel && (
+                  <div>
+                    <p className="text-gray-400 text-xs mb-0.5">Work Mode</p>
+                    <p className="text-gray-800 font-medium">{remoteLabel}</p>
+                  </div>
+                )}
+                {expLabel && (
+                  <div>
+                    <p className="text-gray-400 text-xs mb-0.5">Experience Level</p>
+                    <p className="text-gray-800 font-medium">
+                      {expLabel}
+                      {(job.experience_min !== null || job.experience_max !== null) && (
+                        <span className="text-gray-500 font-normal"> ({job.experience_min ?? 0}{job.experience_max ? `-${job.experience_max}` : '+'} years)</span>
+                      )}
+                    </p>
+                  </div>
+                )}
+                {eduLabel && eduLabel !== 'Any' && (
+                  <div>
+                    <p className="text-gray-400 text-xs mb-0.5">Education</p>
+                    <p className="text-gray-800 font-medium">{eduLabel}</p>
+                  </div>
+                )}
+                {salaryRange && (
+                  <div>
+                    <p className="text-gray-400 text-xs mb-0.5">Compensation</p>
+                    <p className="text-green-700 font-medium">{salaryRange}</p>
+                  </div>
+                )}
+                {job.num_openings > 1 && (
+                  <div>
+                    <p className="text-gray-400 text-xs mb-0.5">Openings</p>
+                    <p className="text-gray-800 font-medium">{job.num_openings} positions</p>
+                  </div>
+                )}
+                {deadline && (
+                  <div>
+                    <p className="text-gray-400 text-xs mb-0.5">Apply Before</p>
+                    <p className="text-gray-800 font-medium">{deadline}</p>
+                  </div>
+                )}
+              </div>
+
+              {/* Skills */}
+              {job.skills && job.skills.length > 0 && (
+                <div className="mt-4 pt-4 border-t">
+                  <p className="text-gray-400 text-xs mb-2">Skills</p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {job.skills.map((s: string) => (
+                      <span key={s} className="text-xs font-medium px-2.5 py-1 rounded-full" style={{ backgroundColor: `${primaryColor}10`, color: primaryColor }}>
+                        {s}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* About This Role */}
             {job.description && (
               <div className="bg-white rounded-xl border p-6">
                 <h2 className="text-lg font-semibold text-gray-900 mb-3">About This Role</h2>
@@ -110,6 +220,8 @@ export default async function JobDetailPage({ params }: Props) {
                 </div>
               </div>
             )}
+
+            {/* Requirements */}
             {job.requirements && (
               <div className="bg-white rounded-xl border p-6">
                 <h2 className="text-lg font-semibold text-gray-900 mb-3">Requirements</h2>
@@ -118,17 +230,39 @@ export default async function JobDetailPage({ params }: Props) {
                 </div>
               </div>
             )}
+
+            {/* Nice to Have */}
+            {job.nice_to_have && (
+              <div className="bg-white rounded-xl border p-6">
+                <h2 className="text-lg font-semibold text-gray-900 mb-3">Nice to Have</h2>
+                <div className="text-gray-700 text-sm leading-relaxed whitespace-pre-wrap">
+                  {job.nice_to_have}
+                </div>
+              </div>
+            )}
+
+            {/* Benefits */}
+            {job.benefits && (
+              <div className="bg-white rounded-xl border p-6">
+                <h2 className="text-lg font-semibold text-gray-900 mb-3">Benefits & Perks</h2>
+                <div className="text-gray-700 text-sm leading-relaxed whitespace-pre-wrap">
+                  {job.benefits}
+                </div>
+              </div>
+            )}
           </div>
 
-          {/* Apply form */}
-          <div className="sticky top-6 self-start">
-            <ApplyForm jobId={jobId} orgId={org.id} />
+          {/* Apply form - right */}
+          <div className="lg:col-span-2">
+            <div className="lg:sticky lg:top-6">
+              <ApplyForm jobId={jobId} orgId={org.id} />
+            </div>
           </div>
         </div>
       </main>
 
       <footer className="border-t bg-white mt-auto">
-        <div className="max-w-4xl mx-auto px-6 py-6 text-center text-sm text-gray-400">
+        <div className="max-w-5xl mx-auto px-6 py-6 text-center text-sm text-gray-400">
           {branding?.brand_name ? `\u00A9 ${new Date().getFullYear()} ${branding.brand_name}` : 'Powered by HireFlow'}
         </div>
       </footer>

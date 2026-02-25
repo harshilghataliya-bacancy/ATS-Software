@@ -23,6 +23,7 @@ export async function getTimeToHire(
     .select('applied_at, hired_at, job:jobs(id, title, department)')
     .eq('organization_id', orgId)
     .eq('status', 'hired')
+    .is('deleted_at', null)
     .not('hired_at', 'is', null)
     .not('applied_at', 'is', null)
 
@@ -101,6 +102,7 @@ export async function getPipelineConversion(
     .from('pipeline_stages')
     .select('id, name, display_order, stage_type, job_id')
     .eq('organization_id', orgId)
+    .neq('stage_type', 'assessment')
     .order('display_order', { ascending: true })
 
   if (jobId) {
@@ -129,6 +131,7 @@ export async function getPipelineConversion(
     .select('current_stage_id')
     .eq('organization_id', orgId)
     .eq('status', 'active')
+    .is('deleted_at', null)
 
   if (jobId) {
     appsQuery = appsQuery.eq('job_id', jobId)
@@ -220,6 +223,7 @@ export async function getSourceBreakdown(
     .from('applications')
     .select('status, candidate:candidates(source)')
     .eq('organization_id', orgId)
+    .is('deleted_at', null)
 
   if (dateRange) {
     query = query
@@ -301,7 +305,8 @@ export async function getDashboardStats(
         .from('applications')
         .select('candidate_id', { count: 'exact', head: true })
         .eq('organization_id', orgId)
-        .eq('status', 'active'),
+        .eq('status', 'active')
+        .is('deleted_at', null),
 
       // Interviews this week
       supabase
@@ -309,6 +314,7 @@ export async function getDashboardStats(
         .select('id', { count: 'exact', head: true })
         .eq('organization_id', orgId)
         .eq('status', 'scheduled')
+        .is('deleted_at', null)
         .gte('scheduled_at', startOfWeek.toISOString())
         .lt('scheduled_at', endOfWeek.toISOString()),
 
@@ -317,7 +323,8 @@ export async function getDashboardStats(
         .from('offer_letters')
         .select('id', { count: 'exact', head: true })
         .eq('organization_id', orgId)
-        .eq('status', 'sent'),
+        .eq('status', 'sent')
+        .is('deleted_at', null),
     ])
 
   const error =
@@ -353,6 +360,7 @@ export async function getOfferAcceptanceRate(
     .from('offer_letters')
     .select('status')
     .eq('organization_id', orgId)
+    .is('deleted_at', null)
     .in('status', ['sent', 'accepted', 'declined', 'expired'])
 
   if (error) {
@@ -391,6 +399,7 @@ export async function getHiringVelocity(
     .select('hired_at')
     .eq('organization_id', orgId)
     .eq('status', 'hired')
+    .is('deleted_at', null)
     .not('hired_at', 'is', null)
     .gte('hired_at', since.toISOString())
 

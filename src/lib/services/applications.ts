@@ -18,7 +18,8 @@ interface ApplicationData {
 export async function getApplicationsForJob(
   supabase: SupabaseClient,
   jobId: string,
-  orgId: string
+  orgId: string,
+  statusFilter: string = 'active'
 ) {
   // Fetch the pipeline stages for the job
   const { data: stages, error: stagesError } = await supabase
@@ -26,14 +27,15 @@ export async function getApplicationsForJob(
     .select('*')
     .eq('job_id', jobId)
     .eq('organization_id', orgId)
+    .neq('stage_type', 'assessment')
     .order('display_order', { ascending: true })
 
   if (stagesError) {
     return { data: null, error: stagesError }
   }
 
-  // Fetch all active applications for this job
-  const { data: applications, error: appsError } = await supabase
+  // Fetch applications for this job (filtered by status)
+  let query = supabase
     .from('applications')
     .select(
       `
@@ -46,6 +48,13 @@ export async function getApplicationsForJob(
     )
     .eq('job_id', jobId)
     .eq('organization_id', orgId)
+    .is('deleted_at', null)
+
+  if (statusFilter !== 'all') {
+    query = query.eq('status', statusFilter)
+  }
+
+  const { data: applications, error: appsError } = await query
     .order('created_at', { ascending: false })
 
   if (appsError) {
@@ -74,19 +83,21 @@ export async function getApplicationById(
       `
       *,
       candidate:candidates(*),
-      job:jobs(id, title, department, status, employment_type),
+      job:jobs(id, title, department, status, employment_type, pipeline_stages(id, name, stage_type, display_order)),
       current_stage:pipeline_stages(id, name, stage_type, display_order),
       interviews(
         *,
-        interview_panelists(*)
+        interview_panelists(*),
+        interview_feedback(id, overall_rating, recommendation)
       ),
       feedback:interview_feedback(*),
-      offer_letters(id, status, salary, salary_currency, sent_at),
+      offer_letters(id, status, salary, salary_currency, sent_at, responded_at),
       stage_movements(*)
     `
     )
     .eq('id', applicationId)
     .eq('organization_id', orgId)
+    .is('deleted_at', null)
     .single()
 
   return { data, error }
@@ -126,6 +137,7 @@ export async function createApplication(
     .eq('job_id', data.job_id)
     .eq('organization_id', orgId)
     .eq('status', 'active')
+    .is('deleted_at', null)
     .maybeSingle()
 
   if (existing) {
@@ -170,6 +182,7 @@ export async function moveApplication(
     .eq('id', applicationId)
     .eq('organization_id', orgId)
     .eq('status', 'active')
+    .is('deleted_at', null)
     .single()
 
   if (fetchError || !app) {
@@ -218,6 +231,7 @@ export async function rejectApplication(
   applicationId: string,
   orgId: string,
   reason: string,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   userId: string
 ) {
   const { data, error } = await supabase
@@ -225,7 +239,6 @@ export async function rejectApplication(
     .update({
       status: 'rejected',
       rejection_reason: reason,
-      rejected_by: userId,
       rejected_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     })
