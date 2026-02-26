@@ -259,22 +259,46 @@ export default function ApplicationsPage() {
               current_stage: targetStage
                 ? { id: targetStage.id, name: targetStage.name, stage_type: targetStage.stage_type, display_order: targetStage.display_order }
                 : a.current_stage,
+              status: targetStage?.stage_type === 'rejected' ? 'rejected' : a.status,
             }
           : a
       )
     )
 
-    const supabase = createClient()
-    const { error: moveError } = await moveApplication(
-      supabase, app.id, organization.id, newStageId, user.id
-    )
+    if (targetStage?.stage_type === 'rejected') {
+      // Auto-reject: update status + send rejection email + move stage
+      try {
+        const res = await fetch('/api/applications/reject', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ applicationId: app.id, reason: '', stageId: newStageId }),
+        })
+        if (!res.ok) {
+          const data = await res.json()
+          setError(data.error || 'Failed to reject application')
+          await loadData()
+          return
+        }
+      } catch {
+        setError('Failed to reject application')
+        await loadData()
+        return
+      }
+    } else {
+      // Normal stage move
+      const supabase = createClient()
+      const { error: moveError } = await moveApplication(
+        supabase, app.id, organization.id, newStageId, user.id
+      )
 
-    if (moveError) {
-      setError(moveError.message)
-      await loadData()
-      return
+      if (moveError) {
+        setError(moveError.message)
+        await loadData()
+        return
+      }
     }
 
+    const supabase = createClient()
     await logActivity(
       supabase,
       organization.id,
@@ -494,7 +518,7 @@ export default function ApplicationsPage() {
                 <TableHead>AI Score</TableHead>
                 <TableHead>Email</TableHead>
                 <TableHead>Phone</TableHead>
-                {filterStatus !== 'rejected' && <TableHead>Current Stage</TableHead>}
+                <TableHead>Current Stage</TableHead>
                 <TableHead>Applied</TableHead>
                 <TableHead className="w-[60px]"></TableHead>
               </TableRow>
@@ -559,31 +583,29 @@ export default function ApplicationsPage() {
                   <TableCell className="text-sm text-gray-600">
                     {app.candidate.phone || '-'}
                   </TableCell>
-                  {filterStatus !== 'rejected' && (
-                    <TableCell>
-                      {canManageJobs ? (
-                        <Select
-                          value={app.current_stage_id}
-                          onValueChange={(val) => handleStageChange(app, val)}
-                        >
-                          <SelectTrigger className="w-[160px] h-8 text-xs">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {stages.map((stage) => (
-                              <SelectItem key={stage.id} value={stage.id}>
-                                {stage.name}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      ) : (
-                        <Badge variant="outline" className="text-xs">
-                          {app.current_stage?.name ?? '-'}
-                        </Badge>
-                      )}
-                    </TableCell>
-                  )}
+                  <TableCell>
+                    {app.status === 'active' && canManageJobs ? (
+                      <Select
+                        value={app.current_stage_id}
+                        onValueChange={(val) => handleStageChange(app, val)}
+                      >
+                        <SelectTrigger className="w-[160px] h-8 text-xs">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {stages.map((stage) => (
+                            <SelectItem key={stage.id} value={stage.id}>
+                              {stage.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    ) : (
+                      <Badge variant="outline" className="text-xs">
+                        {app.current_stage?.name ?? '-'}
+                      </Badge>
+                    )}
+                  </TableCell>
                   <TableCell className="text-sm text-gray-600">
                     {new Date(app.applied_at).toLocaleDateString()}
                   </TableCell>

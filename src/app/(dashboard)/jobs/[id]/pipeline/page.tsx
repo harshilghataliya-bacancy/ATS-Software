@@ -108,16 +108,20 @@ function StageColumn({ stage, children }: { stage: PipelineStage; children: Reac
 function ApplicationCardUI({
   app,
   isDragging,
+  draggable = true,
 }: {
   app: ApplicationCard
   isDragging?: boolean
+  draggable?: boolean
 }) {
   const initials = `${app.candidate.first_name?.[0] ?? ''}${app.candidate.last_name?.[0] ?? ''}`.toUpperCase()
   const statusConfig = APPLICATION_STATUS_CONFIG[app.status as keyof typeof APPLICATION_STATUS_CONFIG]
 
   return (
     <Card
-      className={`cursor-grab active:cursor-grabbing transition-shadow ${
+      className={`transition-shadow ${
+        draggable ? 'cursor-grab active:cursor-grabbing' : ''
+      } ${
         isDragging ? 'shadow-lg ring-2 ring-blue-300 opacity-90' : 'hover:shadow-md'
       }`}
     >
@@ -240,16 +244,25 @@ export default function PipelinePage() {
     const appId = active.id as string
     const targetStageId = over.id as string
 
-    // Find source stage
+    // Find source stage and the app itself
     let sourceStageId: string | null = null
+    let draggedApp: ApplicationCard | undefined
     for (const stage of stages) {
-      if (stage.applications.find((a) => a.id === appId)) {
+      const found = stage.applications.find((a) => a.id === appId)
+      if (found) {
         sourceStageId = stage.id
+        draggedApp = found
         break
       }
     }
 
     if (!sourceStageId || sourceStageId === targetStageId) return
+
+    // Don't allow moving non-active apps
+    if (draggedApp && draggedApp.status !== 'active') return
+
+    // Check if target stage is a "rejected" stage
+    const targetStage = stages.find((s) => s.id === targetStageId)
 
     // Optimistic UI update
     setStages((prev) => {
@@ -264,26 +277,52 @@ export default function PipelinePage() {
           return { ...stage, applications: stage.applications.filter((a) => a.id !== appId) }
         }
         if (stage.id === targetStageId) {
-          return { ...stage, applications: [...stage.applications, { ...app, current_stage_id: targetStageId }] }
+          return {
+            ...stage,
+            applications: [
+              ...stage.applications,
+              { ...app, current_stage_id: targetStageId, status: targetStage?.stage_type === 'rejected' ? 'rejected' : app.status },
+            ],
+          }
         }
         return stage
       })
     })
 
-    // Server update
     setMoving(true)
-    const supabase = createClient()
-    const { error: moveError } = await moveApplication(
-      supabase,
-      appId,
-      organization.id,
-      targetStageId,
-      user.id
-    )
 
-    if (moveError) {
-      setError(moveError.message)
-      await loadPipeline()
+    if (targetStage?.stage_type === 'rejected') {
+      // Auto-reject: update status + send rejection email + move stage
+      try {
+        const res = await fetch('/api/applications/reject', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ applicationId: appId, reason: '', stageId: targetStageId }),
+        })
+        if (!res.ok) {
+          const data = await res.json()
+          setError(data.error || 'Failed to reject application')
+          await loadPipeline()
+        }
+      } catch {
+        setError('Failed to reject application')
+        await loadPipeline()
+      }
+    } else {
+      // Normal stage move
+      const supabase = createClient()
+      const { error: moveError } = await moveApplication(
+        supabase,
+        appId,
+        organization.id,
+        targetStageId,
+        user.id
+      )
+
+      if (moveError) {
+        setError(moveError.message)
+        await loadPipeline()
+      }
     }
     setMoving(false)
   }
@@ -349,9 +388,9 @@ export default function PipelinePage() {
           {stages.map((stage) => (
             <StageColumn key={stage.id} stage={stage}>
               {stage.applications.map((app) => (
-                canManageJobs
+                canManageJobs && app.status === 'active'
                   ? <DraggableApplicationCard key={app.id} app={app} />
-                  : <ApplicationCardUI key={app.id} app={app} />
+                  : <ApplicationCardUI key={app.id} app={app} draggable={false} />
               ))}
               {stage.applications.length === 0 && (
                 <div className="flex items-center justify-center h-16 text-xs text-gray-400 border-2 border-dashed border-gray-200 rounded-lg">

@@ -7,6 +7,7 @@ import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { updateJobSchema, type UpdateJobInput } from '@/lib/validators/job'
 import { useUser, useRole } from '@/lib/hooks/use-user'
+import { getAssignableRecruiters } from '../actions'
 import { createClient } from '@/lib/supabase/client'
 import { getJobById, updateJob, getScorecardCriteria, upsertScorecardCriteria } from '@/lib/services/jobs'
 import {
@@ -25,13 +26,21 @@ import { useToast } from '@/hooks/use-toast'
 import { BulkResumeUploadDialog } from '@/components/bulk-upload/bulk-resume-upload-dialog'
 import { Upload } from 'lucide-react'
 
+interface Recruiter {
+  id: string
+  email: string
+  full_name: string
+  role: string
+}
+
 export default function JobDetailPage() {
   const params = useParams()
   const router = useRouter()
   const { toast } = useToast()
   const { organization, isLoading: userLoading } = useUser()
-  const { canManageJobs } = useRole()
+  const { canManageJobs, isAdmin } = useRole()
   const [job, setJob] = useState<Record<string, unknown> | null>(null)
+  const [recruiters, setRecruiters] = useState<Recruiter[]>([])
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [criteria, setCriteria] = useState<Array<{ name: string; description: string; weight: number }>>([])
@@ -54,6 +63,14 @@ export default function JobDetailPage() {
     const skillsDirty = JSON.stringify(skills) !== initialSkillsRef.current
     setHasChanges(isDirty || criteriaDirty || skillsDirty)
   }, [isDirty, criteria, skills])
+
+  useEffect(() => {
+    if (organization && isAdmin) {
+      getAssignableRecruiters(organization.id).then(({ data }) => {
+        if (data) setRecruiters(data)
+      })
+    }
+  }, [organization, isAdmin])
 
   useEffect(() => {
     if (!organization) return
@@ -93,6 +110,7 @@ export default function JobDetailPage() {
         experience_min: data.experience_min ?? null,
         experience_max: data.experience_max ?? null,
         priority: data.priority ?? 'medium',
+        assigned_to: data.assigned_to ?? null,
       })
 
       if (!criteriaLoaded) {
@@ -400,6 +418,23 @@ export default function JobDetailPage() {
                   <Label htmlFor="application_deadline">Application Deadline</Label>
                   <Input id="application_deadline" type="date" {...register('application_deadline')} disabled={!canManageJobs} />
                 </div>
+                {isAdmin && recruiters.length > 0 && (
+                  <div className="space-y-2">
+                    <Label>Assign Recruiter</Label>
+                    <Select
+                      defaultValue={(job.assigned_to as string) ?? '__unassigned'}
+                      onValueChange={(val) => setValue('assigned_to', val === '__unassigned' ? null : val, { shouldDirty: true })}
+                    >
+                      <SelectTrigger><SelectValue placeholder="Unassigned" /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="__unassigned">Unassigned</SelectItem>
+                        {recruiters.map((r) => (
+                          <SelectItem key={r.id} value={r.id}>{r.full_name} ({r.role})</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
               </CardContent>
             </Card>
 

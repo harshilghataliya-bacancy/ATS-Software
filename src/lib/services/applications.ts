@@ -231,22 +231,52 @@ export async function rejectApplication(
   applicationId: string,
   orgId: string,
   reason: string,
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  userId: string
+  userId: string,
+  stageId?: string
 ) {
+  // If stageId provided, get current stage for movement log
+  let fromStageId: string | null = null
+  if (stageId) {
+    const { data: app } = await supabase
+      .from('applications')
+      .select('current_stage_id')
+      .eq('id', applicationId)
+      .eq('organization_id', orgId)
+      .single()
+    fromStageId = app?.current_stage_id ?? null
+  }
+
+  const updatePayload: Record<string, unknown> = {
+    status: 'rejected',
+    rejection_reason: reason,
+    rejected_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  }
+
+  if (stageId) {
+    updatePayload.current_stage_id = stageId
+  }
+
   const { data, error } = await supabase
     .from('applications')
-    .update({
-      status: 'rejected',
-      rejection_reason: reason,
-      rejected_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    })
+    .update(updatePayload)
     .eq('id', applicationId)
     .eq('organization_id', orgId)
     .eq('status', 'active')
     .select()
     .single()
+
+  // Log stage movement if stage changed
+  if (!error && stageId && fromStageId && fromStageId !== stageId) {
+    await supabase.from('stage_movements').insert({
+      application_id: applicationId,
+      organization_id: orgId,
+      from_stage_id: fromStageId,
+      to_stage_id: stageId,
+      moved_by: userId,
+      moved_at: new Date().toISOString(),
+    })
+  }
 
   return { data, error }
 }

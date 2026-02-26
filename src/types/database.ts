@@ -70,6 +70,7 @@ export interface Job {
   priority: string
   published_at: string | null
   closed_at: string | null
+  assigned_to: string | null
   created_by: string
   created_at: string
   updated_at: string

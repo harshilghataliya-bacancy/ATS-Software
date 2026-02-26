@@ -12,6 +12,7 @@ interface JobFilters {
   location?: string
   employment_type?: string
   priority?: string
+  assigned_to?: string
   page?: number
   limit?: number
 }
@@ -32,7 +33,7 @@ export async function getJobs(
   orgId: string,
   filters: JobFilters = {}
 ) {
-  const { status, search, department, location, employment_type, priority, page = 1, limit = ITEMS_PER_PAGE } = filters
+  const { status, search, department, location, employment_type, priority, assigned_to, page = 1, limit = ITEMS_PER_PAGE } = filters
   const from = (page - 1) * limit
   const to = from + limit - 1
 
@@ -41,12 +42,13 @@ export async function getJobs(
     .select(
       `
       *,
-      applications:applications(count)
+      applications:applications!left(count)
     `,
       { count: 'exact' }
     )
     .eq('organization_id', orgId)
     .is('deleted_at', null)
+    .is('applications.deleted_at', null)
     .order('created_at', { ascending: false })
     .range(from, to)
 
@@ -72,6 +74,10 @@ export async function getJobs(
 
   if (priority) {
     query = query.eq('priority', priority)
+  }
+
+  if (assigned_to) {
+    query = query.eq('assigned_to', assigned_to)
   }
 
   const { data, error, count } = await query

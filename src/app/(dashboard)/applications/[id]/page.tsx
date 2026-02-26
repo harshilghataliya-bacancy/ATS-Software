@@ -110,6 +110,7 @@ export default function ApplicationDetailPage() {
 
   const loadApplication = useCallback(async () => {
     if (!organization) return
+    setError(null)
     const supabase = createClient()
     const { data, error: fetchError } = await getApplicationById(
       supabase, params.id as string, organization.id
@@ -195,6 +196,28 @@ export default function ApplicationDetailPage() {
 
   async function handleStageChange(newStageId: string) {
     if (!organization || !user || !application || newStageId === application.current_stage?.id) return
+
+    const targetStage = stages.find((s) => s.id === newStageId)
+
+    if (targetStage?.stage_type === 'rejected') {
+      // Auto-reject: update status + send rejection email + move stage
+      try {
+        const res = await fetch('/api/applications/reject', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ applicationId: application.id, reason: '', stageId: newStageId }),
+        })
+        if (!res.ok) {
+          const data = await res.json()
+          setError(data.error || 'Failed to reject application')
+        }
+      } catch {
+        setError('Failed to reject application')
+      }
+      await loadApplication()
+      return
+    }
+
     const supabase = createClient()
     const { error: moveError } = await moveApplication(
       supabase, application.id, organization.id, newStageId, user.id
@@ -313,6 +336,11 @@ export default function ApplicationDetailPage() {
             <Link href={`/candidates/${candidate?.id}`}>
               <Button size="sm" variant="outline">View Profile</Button>
             </Link>
+          )}
+          {isActive && canManageCandidates && (
+            <Button size="sm" variant="destructive" onClick={() => setRejectOpen(true)}>
+              Reject
+            </Button>
           )}
         </div>
       </div>

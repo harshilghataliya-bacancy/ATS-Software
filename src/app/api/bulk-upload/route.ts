@@ -244,6 +244,9 @@ async function processPdf(
       .single()
 
     if (insertError || !newCandidate) {
+      if (insertError?.message?.includes('candidates_org_email_unique')) {
+        return { filename, status: 'skipped', candidateName, error: 'A candidate with this email already exists' }
+      }
       return { filename, status: 'failed', error: insertError?.message || 'Failed to create candidate' }
     }
 

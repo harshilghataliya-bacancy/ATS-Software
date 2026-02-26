@@ -1,11 +1,11 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { createJobSchema, type CreateJobInput } from '@/lib/validators/job'
-import { useUser } from '@/lib/hooks/use-user'
+import { useUser, useRole } from '@/lib/hooks/use-user'
 import { createClient } from '@/lib/supabase/client'
 import { createJob, upsertScorecardCriteria } from '@/lib/services/jobs'
 import {
@@ -20,11 +20,21 @@ import { Textarea } from '@/components/ui/textarea'
 import { Badge } from '@/components/ui/badge'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { useToast } from '@/hooks/use-toast'
+import { getAssignableRecruiters } from '../actions'
+
+interface Recruiter {
+  id: string
+  email: string
+  full_name: string
+  role: string
+}
 
 export default function NewJobPage() {
   const router = useRouter()
   const { toast } = useToast()
   const { user, organization } = useUser()
+  const { isAdmin } = useRole()
+  const [recruiters, setRecruiters] = useState<Recruiter[]>([])
   const [saving, setSaving] = useState(false)
   const [skillInput, setSkillInput] = useState('')
   const [skills, setSkills] = useState<string[]>([])
@@ -33,6 +43,14 @@ export default function NewJobPage() {
     { name: 'Communication', description: '', weight: 6 },
     { name: 'Culture Fit', description: '', weight: 5 },
   ])
+
+  useEffect(() => {
+    if (organization && isAdmin) {
+      getAssignableRecruiters(organization.id).then(({ data }) => {
+        if (data) setRecruiters(data)
+      })
+    }
+  }, [organization, isAdmin])
 
   // AI JD Generator state
   const [aiPrompt, setAiPrompt] = useState('')
@@ -397,6 +415,24 @@ export default function NewJobPage() {
                   <Input id="application_deadline" type="date" {...register('application_deadline')} />
                   {errors.application_deadline && <p className="text-sm text-red-600">{errors.application_deadline.message}</p>}
                 </div>
+                {isAdmin && recruiters.length > 0 && (
+                  <div className="space-y-2">
+                    <Label>Assign Recruiter</Label>
+                    <Select
+                      key={`ar-${formKey}`}
+                      defaultValue={getValues('assigned_to') ?? '__unassigned'}
+                      onValueChange={(val) => setValue('assigned_to', val === '__unassigned' ? null : val)}
+                    >
+                      <SelectTrigger><SelectValue placeholder="Unassigned" /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="__unassigned">Unassigned</SelectItem>
+                        {recruiters.map((r) => (
+                          <SelectItem key={r.id} value={r.id}>{r.full_name} ({r.role})</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
               </CardContent>
             </Card>
 

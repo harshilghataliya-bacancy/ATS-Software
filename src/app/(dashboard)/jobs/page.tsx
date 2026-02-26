@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { useUser, useRole } from '@/lib/hooks/use-user'
 import { createClient } from '@/lib/supabase/client'
 import { getJobs, deleteJob } from '@/lib/services/jobs'
+import { resolveUserNames } from './actions'
 import {
   JOB_STATUS_CONFIG, EMPLOYMENT_TYPES, EXPERIENCE_LEVELS,
   REMOTE_POLICIES, JOB_PRIORITIES, ITEMS_PER_PAGE,
@@ -42,10 +43,11 @@ interface Job {
   education_level: string | null
   experience_min: number | null
   experience_max: number | null
+  assigned_to: string | null
 }
 
 export default function JobsPage() {
-  const { organization, isLoading } = useUser()
+  const { user, organization, isLoading } = useUser()
   const { canManageJobs, isAdmin } = useRole()
   const [jobs, setJobs] = useState<Job[]>([])
   const [loading, setLoading] = useState(true)
@@ -55,17 +57,19 @@ export default function JobsPage() {
   const [locationFilter, setLocationFilter] = useState<string>('all')
   const [typeFilter, setTypeFilter] = useState<string>('all')
   const [priorityFilter, setPriorityFilter] = useState<string>('all')
+  const [myJobsOnly, setMyJobsOnly] = useState(false)
   const [departments, setDepartments] = useState<string[]>([])
   const [locations, setLocations] = useState<string[]>([])
+  const [recruiterNames, setRecruiterNames] = useState<Record<string, string>>({})
   const [total, setTotal] = useState(0)
   const [page, setPage] = useState(1)
 
   useEffect(() => {
     if (!organization) return
     loadJobs()
-  }, [organization, statusFilter, deptFilter, locationFilter, typeFilter, priorityFilter, page])
+  }, [organization, statusFilter, deptFilter, locationFilter, typeFilter, priorityFilter, myJobsOnly, page])
 
-  useEffect(() => { setPage(1) }, [statusFilter, deptFilter, locationFilter, typeFilter, priorityFilter])
+  useEffect(() => { setPage(1) }, [statusFilter, deptFilter, locationFilter, typeFilter, priorityFilter, myJobsOnly])
 
   async function loadJobs() {
     if (!organization) return
@@ -78,14 +82,23 @@ export default function JobsPage() {
     if (typeFilter !== 'all') filters.employment_type = typeFilter
     if (priorityFilter !== 'all') filters.priority = priorityFilter
     if (search) filters.search = search
+    if (myJobsOnly && user) filters.assigned_to = user.id
     const { data, count } = await getJobs(supabase, organization.id, filters)
     if (data) {
-      setJobs(data as Job[])
+      const jobList = data as Job[]
+      setJobs(jobList)
       if (deptFilter === 'all' && locationFilter === 'all' && typeFilter === 'all' && statusFilter === 'all' && !search) {
-        const depts = Array.from(new Set((data as Job[]).map((j) => j.department).filter(Boolean))).sort()
-        const locs = Array.from(new Set((data as Job[]).map((j) => j.location).filter(Boolean))).sort()
+        const depts = Array.from(new Set(jobList.map((j) => j.department).filter(Boolean))).sort()
+        const locs = Array.from(new Set(jobList.map((j) => j.location).filter(Boolean))).sort()
         setDepartments(depts)
         setLocations(locs)
+      }
+      // Resolve recruiter names for assigned jobs
+      const assignedIds = Array.from(new Set(jobList.map((j) => j.assigned_to).filter(Boolean))) as string[]
+      const newIds = assignedIds.filter((id) => !recruiterNames[id])
+      if (newIds.length > 0) {
+        const { data: names } = await resolveUserNames(newIds)
+        if (names) setRecruiterNames((prev) => ({ ...prev, ...names }))
       }
     }
     if (count !== undefined && count !== null) setTotal(count)
@@ -145,7 +158,7 @@ export default function JobsPage() {
 
   function downloadCSV() {
     if (jobs.length === 0) return
-    const headers = ['Title', 'Department', 'Location', 'Employment Type', 'Status', 'Priority', 'Openings', 'Applicants', 'Deadline', 'Created At']
+    const headers = ['Title', 'Department', 'Location', 'Employment Type', 'Status', 'Priority', 'Openings', 'Applicants', 'Deadline', 'Assigned Recruiter', 'Created At']
     const rows = jobs.map((job) => [
       job.title,
       job.department || '',
@@ -156,6 +169,7 @@ export default function JobsPage() {
       String(job.num_openings || 1),
       String(job.application_count),
       job.application_deadline || '',
+      job.assigned_to ? (recruiterNames[job.assigned_to] || '') : '',
       new Date(job.created_at).toLocaleDateString(),
     ])
     const csv = [headers, ...rows].map((r) => r.map((v) => `"${v.replace(/"/g, '""')}"`).join(',')).join('\n')
@@ -206,6 +220,15 @@ export default function JobsPage() {
             onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
           />
         </div>
+        {(isAdmin || canManageJobs) && (
+          <Button
+            variant={myJobsOnly ? 'default' : 'outline'}
+            onClick={() => setMyJobsOnly(!myJobsOnly)}
+            className={myJobsOnly ? 'bg-blue-600 hover:bg-blue-700' : ''}
+          >
+            My Assigned Jobs
+          </Button>
+        )}
         <Select value={statusFilter} onValueChange={setStatusFilter}>
           <SelectTrigger className="w-36">
             <SelectValue placeholder="Status" />
@@ -335,6 +358,14 @@ export default function JobsPage() {
                         </span>
                       )}
                     </div>
+
+                    {/* Assigned Recruiter */}
+                    {job.assigned_to && recruiterNames[job.assigned_to] && (
+                      <div className="flex items-center gap-1.5 text-sm text-indigo-600 mb-2">
+                        <svg className="w-3.5 h-3.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z" /></svg>
+                        {recruiterNames[job.assigned_to]}
+                      </div>
+                    )}
 
                     {/* Info Grid */}
                     <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm mb-3">

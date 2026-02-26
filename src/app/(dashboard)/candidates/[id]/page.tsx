@@ -72,6 +72,9 @@ export default function CandidateDetailPage() {
   // Email dialog
   const [emailOpen, setEmailOpen] = useState(false)
 
+  // Reject
+  const [rejectingAppId, setRejectingAppId] = useState<string | null>(null)
+
   // Edit form state
   const [formData, setFormData] = useState<AnyData>({})
 
@@ -166,6 +169,27 @@ export default function CandidateDetailPage() {
       await loadCandidate()
     }
     setApplying(false)
+  }
+
+  async function handleRejectApplication(applicationId: string) {
+    setRejectingAppId(applicationId)
+    setError(null)
+    try {
+      const res = await fetch('/api/applications/reject', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ applicationId, reason: '' }),
+      })
+      if (!res.ok) {
+        const data = await res.json()
+        setError(data.error || 'Failed to reject application')
+      } else {
+        await loadCandidate()
+      }
+    } catch {
+      setError('Failed to reject application')
+    }
+    setRejectingAppId(null)
   }
 
   if (userLoading || loading) {
@@ -557,36 +581,51 @@ export default function CandidateDetailPage() {
               <CardContent className="space-y-3">
                 {candidate.applications?.length > 0 ? (
                   candidate.applications.map((app: AnyData) => (
-                    <Link
-                      key={app.id}
-                      href={`/applications/${app.id}?from=candidate`}
-                      className="block border rounded-lg p-3 hover:border-blue-300 hover:bg-blue-50/50 transition-colors"
-                    >
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="min-w-0">
-                          <p className="font-medium text-sm text-gray-900 truncate">
-                            {app.job?.title || 'Unknown Job'}
-                          </p>
-                          <p className="text-xs text-gray-500">{app.job?.department}</p>
+                    <div key={app.id} className="border rounded-lg p-3 hover:border-blue-300 hover:bg-blue-50/50 transition-colors">
+                      <Link
+                        href={`/applications/${app.id}?from=candidate`}
+                        className="block"
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="min-w-0">
+                            <p className="font-medium text-sm text-gray-900 truncate">
+                              {app.job?.title || 'Unknown Job'}
+                            </p>
+                            <p className="text-xs text-gray-500">{app.job?.department}</p>
+                          </div>
+                          <Badge className={`text-[10px] shrink-0 ${STATUS_COLORS[app.status] || 'bg-gray-100 text-gray-800'}`}>
+                            {app.status}
+                          </Badge>
                         </div>
-                        <Badge className={`text-[10px] shrink-0 ${STATUS_COLORS[app.status] || 'bg-gray-100 text-gray-800'}`}>
-                          {app.status}
-                        </Badge>
-                      </div>
 
-                      {app.current_stage && (
-                        <Badge className={`text-xs mt-2 ${STAGE_COLORS[app.current_stage.stage_type] || 'bg-gray-100 text-gray-800'}`}>
-                          {app.current_stage.name}
-                        </Badge>
-                      )}
-
-                      <div className="flex items-center gap-3 mt-2 text-xs text-gray-400">
-                        <span>Applied {new Date(app.applied_at).toLocaleDateString()}</span>
-                        {app.interviews?.length > 0 && (
-                          <span>{app.interviews.length} interview{app.interviews.length !== 1 ? 's' : ''}</span>
+                        {app.current_stage && (
+                          <Badge className={`text-xs mt-2 ${STAGE_COLORS[app.current_stage.stage_type] || 'bg-gray-100 text-gray-800'}`}>
+                            {app.current_stage.name}
+                          </Badge>
                         )}
-                      </div>
-                    </Link>
+
+                        <div className="flex items-center gap-3 mt-2 text-xs text-gray-400">
+                          <span>Applied {new Date(app.applied_at).toLocaleDateString()}</span>
+                          {app.interviews?.length > 0 && (
+                            <span>{app.interviews.length} interview{app.interviews.length !== 1 ? 's' : ''}</span>
+                          )}
+                        </div>
+                      </Link>
+
+                      {canManageCandidates && app.status === 'active' && (
+                        <div className="mt-2 pt-2 border-t">
+                          <Button
+                            size="sm"
+                            variant="destructive"
+                            className="h-7 text-xs"
+                            disabled={rejectingAppId === app.id}
+                            onClick={() => handleRejectApplication(app.id)}
+                          >
+                            {rejectingAppId === app.id ? 'Rejecting...' : 'Reject'}
+                          </Button>
+                        </div>
+                      )}
+                    </div>
                   ))
                 ) : (
                   <p className="text-sm text-gray-400 text-center py-4">

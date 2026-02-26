@@ -48,18 +48,19 @@ export async function POST(request: NextRequest) {
   const companyName = (membership.organization as any)?.name || 'Our Company'
 
   const body = await request.json()
-  const { applicationId, reason } = body as {
+  const { applicationId, reason, stageId } = body as {
     applicationId: string
     reason: string
+    stageId?: string
   }
 
   if (!applicationId) {
     return NextResponse.json({ error: 'Missing applicationId' }, { status: 400 })
   }
 
-  // 1. Reject the application in the database
+  // 1. Reject the application in the database (optionally move to rejected stage)
   const { error: rejectError } = await rejectApplication(
-    supabase, applicationId, orgId, reason || '', user.id
+    supabase, applicationId, orgId, reason || '', user.id, stageId
   )
 
   if (rejectError) {

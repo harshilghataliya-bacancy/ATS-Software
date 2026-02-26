@@ -46,9 +46,9 @@ export function SendWhatsAppDialog({
   const [success, setSuccess] = useState(false)
   const chatEndRef = useRef<HTMLDivElement>(null)
 
-  const loadMessages = useCallback(async () => {
+  const loadMessages = useCallback(async (showLoading = true) => {
     if (!candidateId) return
-    setMessagesLoading(true)
+    if (showLoading) setMessagesLoading(true)
     try {
       const res = await fetch(`/api/whatsapp/messages?candidateId=${candidateId}`)
       const data = await res.json()
@@ -56,16 +56,23 @@ export function SendWhatsAppDialog({
     } catch {
       // ignore
     }
-    setMessagesLoading(false)
+    if (showLoading) setMessagesLoading(false)
   }, [candidateId])
 
-  // Load conversation history when dialog opens
+  // Load conversation history when dialog opens + poll for new messages
   useEffect(() => {
     if (open && candidateId) {
       loadMessages()
       setError(null)
       setSuccess(false)
       setMessageBody('')
+
+      // Poll every 5 seconds for new inbound messages
+      const interval = setInterval(() => {
+        loadMessages(false)
+      }, 5000)
+
+      return () => clearInterval(interval)
     }
   }, [open, candidateId, loadMessages])
 
