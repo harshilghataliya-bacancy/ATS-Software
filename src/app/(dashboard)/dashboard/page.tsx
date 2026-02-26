@@ -23,6 +23,37 @@ const DashboardCharts = dynamic(() => import('./dashboard-charts'), {
   ssr: false,
 })
 
+const AdminWidgets = dynamic(() => import('./admin-widgets'), {
+  loading: () => (
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      {[1, 2].map((i) => <Skeleton key={i} className="h-[180px] rounded-xl" />)}
+    </div>
+  ),
+  ssr: false,
+})
+
+const RecruiterWidgets = dynamic(() => import('./recruiter-widgets'), {
+  loading: () => (
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      {[1, 2].map((i) => <Skeleton key={i} className="h-[180px] rounded-xl" />)}
+    </div>
+  ),
+  ssr: false,
+})
+
+const InterviewerWidgets = dynamic(
+  () => import('./interviewer-widgets').then((mod) => ({
+    default: ({ orgId, userId, interviews }: { orgId: string; userId: string; interviews: UpcomingInterview[] }) => (
+      <>
+        <mod.TodaysScheduleCard interviews={interviews as never[]} />
+        <mod.PendingFeedbackCard orgId={orgId} userId={userId} />
+        <mod.FeedbackStatsCard orgId={orgId} userId={userId} />
+      </>
+    ),
+  })),
+  { ssr: false }
+)
+
 interface ActivityLog {
   id: string
   entity_type: string
@@ -116,12 +147,14 @@ const ENTITY_COLORS: Record<string, string> = {
 
 export default function DashboardPage() {
   const { user, organization, isLoading } = useUser()
-  const { isInterviewer } = useRole()
+  const { isAdmin, isRecruiter, isInterviewer } = useRole()
   const [stats, setStats] = useState<{
     open_jobs: number
     active_candidates: number
     interviews_this_week: number
     pending_offers: number
+    team_members?: number
+    pending_feedback?: number
   } | null>(null)
   const [activities, setActivities] = useState<ActivityLog[]>([])
   const [interviews, setInterviews] = useState<UpcomingInterview[]>([])
@@ -142,7 +175,7 @@ export default function DashboardPage() {
       const myInterviewIds = (panelistData ?? []).map((p: { interview_id: string }) => p.interview_id)
 
       if (myInterviewIds.length === 0) {
-        setStats({ open_jobs: 0, active_candidates: 0, interviews_this_week: 0, pending_offers: 0 })
+        setStats({ open_jobs: 0, active_candidates: 0, interviews_this_week: 0, pending_offers: 0, pending_feedback: 0 })
         setInterviews([])
         setActivities([])
         setLoading(false)
@@ -202,11 +235,33 @@ export default function DashboardPage() {
         .eq('status', 'completed')
         .is('deleted_at', null)
 
+      // Count pending feedback: completed interviews minus already-submitted feedback
+      const completedIds = await supabase
+        .from('interviews')
+        .select('id')
+        .in('id', myInterviewIds)
+        .eq('organization_id', organization.id)
+        .eq('status', 'completed')
+        .is('deleted_at', null)
+
+      let pendingFeedbackCount = 0
+      if (completedIds.data && completedIds.data.length > 0) {
+        const cIds = completedIds.data.map((i: { id: string }) => i.id)
+        const { count: feedbackCount } = await supabase
+          .from('interview_feedback')
+          .select('id', { count: 'exact', head: true })
+          .eq('user_id', user.id)
+          .eq('organization_id', organization.id)
+          .in('interview_id', cIds)
+        pendingFeedbackCount = cIds.length - (feedbackCount ?? 0)
+      }
+
       setStats({
         open_jobs: totalScheduled ?? 0,
         active_candidates: totalCompleted ?? 0,
         interviews_this_week: weekCount ?? 0,
         pending_offers: (upcomingData ?? []).length,
+        pending_feedback: Math.max(0, pendingFeedbackCount),
       })
       if (upcomingData) setInterviews(upcomingData as unknown as UpcomingInterview[])
       setActivities([])
@@ -215,7 +270,7 @@ export default function DashboardPage() {
     }
 
     // Full dashboard for non-interviewers
-    const [statsResult, activityResult, interviewsResult] = await Promise.all([
+    const [statsResult, activityResult, interviewsResult, teamResult] = await Promise.all([
       getDashboardStats(supabase, organization.id),
       supabase
         .from('activity_logs')
@@ -238,13 +293,26 @@ export default function DashboardPage() {
         .gte('scheduled_at', new Date(new Date().setHours(0, 0, 0, 0)).toISOString())
         .order('scheduled_at', { ascending: true })
         .limit(5),
+      isAdmin
+        ? supabase
+            .from('organization_members')
+            .select('id', { count: 'exact', head: true })
+            .eq('organization_id', organization.id)
+            .not('user_id', 'is', null)
+            .is('deleted_at', null)
+        : Promise.resolve({ count: null }),
     ])
 
-    if (statsResult.data) setStats(statsResult.data)
+    if (statsResult.data) {
+      setStats({
+        ...statsResult.data,
+        ...(isAdmin && teamResult.count != null ? { team_members: teamResult.count } : {}),
+      })
+    }
     if (activityResult.data) setActivities(activityResult.data as ActivityLog[])
     if (interviewsResult.data) setInterviews(interviewsResult.data as unknown as UpcomingInterview[])
     setLoading(false)
-  }, [organization, user, isInterviewer])
+  }, [organization, user, isInterviewer, isAdmin])
 
   useEffect(() => {
     if (organization) loadDashboard()
@@ -306,7 +374,26 @@ export default function DashboardPage() {
   const greeting =
     today.getHours() < 12 ? 'Good morning' : today.getHours() < 18 ? 'Good afternoon' : 'Good evening'
 
-  // Interviewer-specific KPI config
+  // Admin gets 5th KPI: Team Members
+  const ADMIN_KPI = [
+    ...KPI_CONFIG,
+    {
+      key: 'team_members',
+      label: 'Team Members',
+      sub: 'Active org members',
+      href: '/settings',
+      icon: (
+        <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M18 18.72a9.094 9.094 0 003.741-.479 3 3 0 00-4.682-2.72m.94 3.198l.001.031c0 .225-.012.447-.037.666A11.944 11.944 0 0112 21c-2.17 0-4.207-.576-5.963-1.584A6.062 6.062 0 016 18.719m12 0a5.971 5.971 0 00-.941-3.197m0 0A5.995 5.995 0 0012 12.75a5.995 5.995 0 00-5.058 2.772m0 0a3 3 0 00-4.681 2.72 8.986 8.986 0 003.74.477m.94-3.197a5.971 5.971 0 00-.94 3.197M15 6.75a3 3 0 11-6 0 3 3 0 016 0zm6 3a2.25 2.25 0 11-4.5 0 2.25 2.25 0 014.5 0zm-13.5 0a2.25 2.25 0 11-4.5 0 2.25 2.25 0 014.5 0z" />
+        </svg>
+      ),
+      bg: 'bg-indigo-50',
+      iconColor: 'text-indigo-600',
+      accent: 'border-l-indigo-500',
+    },
+  ]
+
+  // Interviewer-specific KPI config (4 cards including Pending Feedback)
   const INTERVIEWER_KPI = [
     {
       key: 'open_jobs',
@@ -338,9 +425,23 @@ export default function DashboardPage() {
       iconColor: 'text-amber-600',
       accent: 'border-l-amber-500',
     },
+    {
+      key: 'pending_feedback',
+      label: 'Pending Feedback',
+      sub: 'Awaiting your review',
+      href: '/interviews',
+      icon: (
+        <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M7.5 8.25h9m-9 3H12m-9.75 1.51c0 1.6 1.123 2.994 2.707 3.227 1.129.166 2.27.293 3.423.379.35.026.67.21.865.501L12 21l2.755-4.133a1.14 1.14 0 01.865-.501 48.172 48.172 0 003.423-.379c1.584-.233 2.707-1.626 2.707-3.228V6.741c0-1.602-1.123-2.995-2.707-3.228A48.394 48.394 0 0012 3c-2.392 0-4.744.175-7.043.513C3.373 3.746 2.25 5.14 2.25 6.741v6.018z" />
+        </svg>
+      ),
+      bg: 'bg-orange-50',
+      iconColor: 'text-orange-600',
+      accent: 'border-l-orange-500',
+    },
   ]
 
-  const kpiList = isInterviewer ? INTERVIEWER_KPI : KPI_CONFIG
+  const kpiList = isInterviewer ? INTERVIEWER_KPI : isAdmin ? ADMIN_KPI : KPI_CONFIG
 
   return (
     <div className="space-y-6">
@@ -362,7 +463,7 @@ export default function DashboardPage() {
       </div>
 
       {/* KPI Cards */}
-      <div className={`grid grid-cols-1 md:grid-cols-2 ${isInterviewer ? 'lg:grid-cols-3' : 'lg:grid-cols-4'} gap-4`}>
+      <div className={`grid grid-cols-1 md:grid-cols-2 ${isAdmin ? 'lg:grid-cols-5' : isInterviewer ? 'lg:grid-cols-4' : 'lg:grid-cols-4'} gap-4`}>
         {kpiList.map((kpi) => (
           <Link key={kpi.key} href={kpi.href}>
             <Card className={`hover:shadow-lg transition-all duration-200 cursor-pointer border-l-4 ${kpi.accent} group`}>
@@ -385,8 +486,19 @@ export default function DashboardPage() {
         ))}
       </div>
 
+      {/* Role-specific widgets */}
+      {isAdmin && organization && <AdminWidgets orgId={organization.id} />}
+      {isRecruiter && organization && user && <RecruiterWidgets orgId={organization.id} userId={user.id} />}
+
       {/* Charts — only for non-interviewers */}
       {!isInterviewer && organization && <DashboardCharts orgId={organization.id} />}
+
+      {/* Interviewer widgets: Today's Schedule + Pending Feedback + Feedback Stats */}
+      {isInterviewer && organization && user && (
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+          <InterviewerWidgets orgId={organization.id} userId={user.id} interviews={interviews} />
+        </div>
+      )}
 
       {/* Activity + Interviews */}
       <div className={`grid grid-cols-1 ${isInterviewer ? '' : 'lg:grid-cols-2'} gap-6`}>

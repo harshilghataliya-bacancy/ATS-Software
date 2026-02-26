@@ -40,12 +40,19 @@ interface DayPoint {
   applications: number
 }
 
+interface DeptBreakdown {
+  department: string
+  open_jobs: number
+  active_apps: number
+}
+
 export default function DashboardCharts({ orgId }: { orgId: string }) {
   const [velocity, setVelocity] = useState<Array<{ month: string; hires: number }>>([])
   const [pipeline, setPipeline] = useState<Array<{ stage_name: string; current_count: number }>>([])
   const [offerRate, setOfferRate] = useState<{ accepted: number; declined: number; total_sent: number } | null>(null)
   const [jobApps, setJobApps] = useState<JobApps[]>([])
   const [appTrend, setAppTrend] = useState<DayPoint[]>([])
+  const [deptData, setDeptData] = useState<DeptBreakdown[]>([])
   const [loading, setLoading] = useState(true)
 
   const loadCharts = useCallback(async () => {
@@ -54,7 +61,7 @@ export default function DashboardCharts({ orgId }: { orgId: string }) {
     const thirtyDaysAgo = new Date()
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30)
 
-    const [velocityResult, pipelineResult, offerResult, appsResult] = await Promise.all([
+    const [velocityResult, pipelineResult, offerResult, appsResult, deptResult] = await Promise.all([
       getHiringVelocity(supabase, orgId),
       getPipelineConversion(supabase, orgId),
       getOfferAcceptanceRate(supabase, orgId),
@@ -62,6 +69,12 @@ export default function DashboardCharts({ orgId }: { orgId: string }) {
         .from('applications')
         .select('status, applied_at, job:jobs(title)')
         .eq('organization_id', orgId)
+        .is('deleted_at', null),
+      supabase
+        .from('jobs')
+        .select('department, status, applications(id, status)')
+        .eq('organization_id', orgId)
+        .eq('status', 'published')
         .is('deleted_at', null),
     ])
 
@@ -110,6 +123,23 @@ export default function DashboardCharts({ orgId }: { orgId: string }) {
         trendData.push({ date: key, applications: dayMap.get(key) ?? 0 })
       }
       setAppTrend(trendData)
+    }
+
+    if (deptResult.data) {
+      const deptMap = new Map<string, { open_jobs: number; active_apps: number }>()
+      for (const job of deptResult.data) {
+        const dept = (job.department as string) || 'Unassigned'
+        const existing = deptMap.get(dept) ?? { open_jobs: 0, active_apps: 0 }
+        existing.open_jobs += 1
+        const apps = Array.isArray(job.applications) ? job.applications : []
+        existing.active_apps += apps.filter((a: { status: string }) => a.status === 'active').length
+        deptMap.set(dept, existing)
+      }
+      setDeptData(
+        Array.from(deptMap.entries())
+          .map(([department, counts]) => ({ department, ...counts }))
+          .sort((a, b) => b.open_jobs - a.open_jobs)
+      )
     }
 
     setLoading(false)
@@ -327,6 +357,108 @@ export default function DashboardCharts({ orgId }: { orgId: string }) {
               </AreaChart>
             </ResponsiveContainer>
           )}
+        </CardContent>
+      </Card>
+
+      {/* Department Breakdown */}
+      <Card className="lg:col-span-2 shadow-sm hover:shadow-md transition-shadow">
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm font-medium">Department Breakdown</CardTitle>
+          <CardDescription className="text-xs">Open jobs & active applications by department</CardDescription>
+        </CardHeader>
+        <CardContent>
+          {loading ? (
+            <Skeleton className="h-[220px] w-full" />
+          ) : deptData.length === 0 ? (
+            <p className="text-sm text-gray-500 text-center py-16">No published jobs yet</p>
+          ) : (
+            <ResponsiveContainer width="100%" height={Math.max(200, deptData.length * 40)}>
+              <BarChart data={deptData} layout="vertical" margin={{ top: 5, right: 20, left: 10, bottom: 5 }}>
+                <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#f0f0f0" />
+                <XAxis type="number" tick={{ fontSize: 11 }} allowDecimals={false} />
+                <YAxis
+                  type="category"
+                  dataKey="department"
+                  tick={{ fontSize: 11 }}
+                  width={100}
+                  tickFormatter={(v: string) => v.length > 16 ? v.slice(0, 14) + '...' : v}
+                />
+                <Tooltip />
+                <Legend wrapperStyle={{ fontSize: 11 }} />
+                <Bar dataKey="open_jobs" fill="#6366f1" name="Open Jobs" radius={[0, 0, 0, 0]} />
+                <Bar dataKey="active_apps" fill="#f59e0b" name="Active Apps" radius={[0, 4, 4, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Recruitment Summary */}
+      <Card className="shadow-sm hover:shadow-md transition-shadow">
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm font-medium">Recruitment Summary</CardTitle>
+          <CardDescription className="text-xs">Key hiring metrics at a glance</CardDescription>
+        </CardHeader>
+        <CardContent>
+          {loading ? (
+            <Skeleton className="h-[220px] w-full" />
+          ) : (() => {
+            const totalApps = jobApps.reduce((s, j) => s + j.total, 0)
+            const totalHired = jobApps.reduce((s, j) => s + j.hired, 0)
+            const totalRejected = jobApps.reduce((s, j) => s + j.rejected, 0)
+            const hireRate = totalApps > 0 ? Math.round((totalHired / totalApps) * 100) : 0
+            const acceptRate = offerRate && offerRate.total_sent > 0
+              ? Math.round((offerRate.accepted / offerRate.total_sent) * 100)
+              : null
+            const metrics = [
+              {
+                label: 'Total Applications',
+                value: totalApps,
+                color: 'text-blue-600',
+                bg: 'bg-blue-50',
+              },
+              {
+                label: 'Total Hired',
+                value: totalHired,
+                color: 'text-emerald-600',
+                bg: 'bg-emerald-50',
+              },
+              {
+                label: 'Rejected',
+                value: totalRejected,
+                color: 'text-red-600',
+                bg: 'bg-red-50',
+              },
+              {
+                label: 'Hire Rate',
+                value: `${hireRate}%`,
+                color: 'text-violet-600',
+                bg: 'bg-violet-50',
+              },
+              {
+                label: 'Offer Accept Rate',
+                value: acceptRate !== null ? `${acceptRate}%` : 'N/A',
+                color: 'text-amber-600',
+                bg: 'bg-amber-50',
+              },
+              {
+                label: 'Open Positions',
+                value: deptData.reduce((s, d) => s + d.open_jobs, 0),
+                color: 'text-indigo-600',
+                bg: 'bg-indigo-50',
+              },
+            ]
+            return (
+              <div className="grid grid-cols-2 gap-3">
+                {metrics.map((m) => (
+                  <div key={m.label} className={`${m.bg} rounded-lg p-3 text-center`}>
+                    <p className={`text-xl font-bold ${m.color}`}>{m.value}</p>
+                    <p className="text-[11px] text-gray-500 mt-0.5">{m.label}</p>
+                  </div>
+                ))}
+              </div>
+            )
+          })()}
         </CardContent>
       </Card>
     </div>

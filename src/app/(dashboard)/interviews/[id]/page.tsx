@@ -212,6 +212,28 @@ export default function InterviewDetailPage() {
 
   async function handleSubmitFeedback() {
     if (!organization || !user || !interview) return
+
+    // Validate required fields
+    if (!fbStrengths.trim()) {
+      setError('Strengths is required')
+      return
+    }
+    if (!fbWeaknesses.trim()) {
+      setError('Weaknesses is required')
+      return
+    }
+    if (!fbNotes.trim()) {
+      setError('Notes is required')
+      return
+    }
+    if (scorecardCriteria.length > 0) {
+      const unrated = scorecardCriteria.filter((c) => !criteriaRatings[c.id] || criteriaRatings[c.id] === 0)
+      if (unrated.length > 0) {
+        setError(`Please rate all evaluation criteria. Missing: ${unrated.map((c) => c.name).join(', ')}`)
+        return
+      }
+    }
+
     setFbSaving(true)
     setError(null)
 
@@ -221,9 +243,9 @@ export default function InterviewDetailPage() {
       application_id: interview.application_id,
       overall_rating: fbRating,
       recommendation: fbRecommendation,
-      strengths: fbStrengths || undefined,
-      weaknesses: fbWeaknesses || undefined,
-      notes: fbNotes || undefined,
+      strengths: fbStrengths,
+      weaknesses: fbWeaknesses,
+      notes: fbNotes,
     }
 
     // Add criteria ratings if any were filled
@@ -459,7 +481,7 @@ export default function InterviewDetailPage() {
                 <div className="space-y-4">
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-2">
-                      <Label>Rating</Label>
+                      <Label>Rating <span className="text-red-500">*</span></Label>
                       <Select value={String(fbRating)} onValueChange={(v) => setFbRating(Number(v))}>
                         <SelectTrigger><SelectValue /></SelectTrigger>
                         <SelectContent>
@@ -470,7 +492,7 @@ export default function InterviewDetailPage() {
                       </Select>
                     </div>
                     <div className="space-y-2">
-                      <Label>Recommendation</Label>
+                      <Label>Recommendation <span className="text-red-500">*</span></Label>
                       <Select value={fbRecommendation} onValueChange={setFbRecommendation}>
                         <SelectTrigger><SelectValue /></SelectTrigger>
                         <SelectContent>
@@ -483,7 +505,7 @@ export default function InterviewDetailPage() {
                   </div>
                   {scorecardCriteria.length > 0 && (
                     <div className="space-y-3 border rounded-lg p-4 bg-gray-50">
-                      <Label className="text-sm font-medium">Evaluation Criteria</Label>
+                      <Label className="text-sm font-medium">Evaluation Criteria <span className="text-red-500">*</span></Label>
                       {scorecardCriteria.map((c) => (
                         <div key={c.id} className="flex items-center gap-3">
                           <div className="flex-1">
@@ -498,7 +520,6 @@ export default function InterviewDetailPage() {
                               <SelectValue placeholder="Rate" />
                             </SelectTrigger>
                             <SelectContent>
-                              <SelectItem value="0">Not rated</SelectItem>
                               {[1, 2, 3, 4, 5].map((r) => (
                                 <SelectItem key={r} value={String(r)}>{r} - {RATING_LABELS[r]}</SelectItem>
                               ))}
@@ -510,17 +531,20 @@ export default function InterviewDetailPage() {
                   )}
 
                   <div className="space-y-2">
-                    <Label>Strengths</Label>
-                    <Textarea rows={3} value={fbStrengths} onChange={(e) => setFbStrengths(e.target.value)} placeholder="What went well?" />
+                    <Label>Strengths <span className="text-red-500">*</span></Label>
+                    <Textarea rows={3} value={fbStrengths} onChange={(e) => setFbStrengths(e.target.value)} placeholder="What went well?" required />
                   </div>
                   <div className="space-y-2">
-                    <Label>Weaknesses</Label>
-                    <Textarea rows={3} value={fbWeaknesses} onChange={(e) => setFbWeaknesses(e.target.value)} placeholder="Areas of concern?" />
+                    <Label>Weaknesses <span className="text-red-500">*</span></Label>
+                    <Textarea rows={3} value={fbWeaknesses} onChange={(e) => setFbWeaknesses(e.target.value)} placeholder="Areas of concern?" required />
                   </div>
                   <div className="space-y-2">
-                    <Label>Notes</Label>
-                    <Textarea rows={2} value={fbNotes} onChange={(e) => setFbNotes(e.target.value)} />
+                    <Label>Notes <span className="text-red-500">*</span></Label>
+                    <Textarea rows={2} value={fbNotes} onChange={(e) => setFbNotes(e.target.value)} placeholder="Additional notes" required />
                   </div>
+                  {error && (
+                    <div className="bg-red-50 text-red-700 text-sm p-3 rounded-md">{error}</div>
+                  )}
                   <div className="flex gap-2">
                     <Button onClick={handleSubmitFeedback} disabled={fbSaving}>
                       {fbSaving ? 'Submitting...' : 'Submit Feedback'}

@@ -76,9 +76,30 @@ export async function POST(request: NextRequest) {
       .single()
 
     if (createError) {
-      return NextResponse.json({ error: createError.message }, { status: 500 })
+      // Race condition: candidate was created between our check and insert
+      if (createError.message.includes('candidates_org_email_unique')) {
+        const { data: raceCandidate } = await supabase
+          .from('candidates')
+          .select('id')
+          .eq('organization_id', orgId)
+          .eq('email', form.email)
+          .single()
+
+        if (raceCandidate) {
+          await supabase
+            .from('candidates')
+            .update({ ...candidatePayload, updated_at: new Date().toISOString() })
+            .eq('id', raceCandidate.id)
+          candidateId = raceCandidate.id
+        } else {
+          return NextResponse.json({ error: 'A candidate with this email already exists. Please try again.' }, { status: 409 })
+        }
+      } else {
+        return NextResponse.json({ error: createError.message }, { status: 500 })
+      }
+    } else {
+      candidateId = newCandidate.id
     }
-    candidateId = newCandidate.id
   }
 
   // 2. Update resume URL if provided
