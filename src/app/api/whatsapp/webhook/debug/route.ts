@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { findOrgByWhatsAppNumber, findCandidateByPhone } from '@/lib/services/whatsapp'
+import { findOrgByWhatsAppNumber, findCandidateByPhone, logWhatsAppMessage } from '@/lib/services/whatsapp'
 
 /**
  * Debug endpoint to test webhook matching logic.
@@ -67,7 +67,26 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ ...debug, result: 'FAILED at step 2: No candidate found for this phone number' })
     }
 
-    return NextResponse.json({ ...debug, result: 'SUCCESS: Would log message for ' + candidate.first_name + ' ' + candidate.last_name })
+    // Step 3: Actually try to insert the message
+    const messageSid = formData.get('MessageSid') as string | null
+    const { data: insertData, error: insertError } = await logWhatsAppMessage(adminSupabase, orgConfig.organization_id, {
+      candidate_id: candidate.id,
+      from_number: fromClean,
+      to_number: toClean,
+      message_body: body,
+      direction: 'inbound',
+      twilio_message_sid: messageSid || undefined,
+      status: 'delivered',
+    })
+
+    debug.insertData = insertData
+    debug.insertError = insertError?.message || null
+
+    if (insertError) {
+      return NextResponse.json({ ...debug, result: 'FAILED at step 3: Insert failed — ' + insertError.message })
+    }
+
+    return NextResponse.json({ ...debug, result: 'SUCCESS: Message logged for ' + candidate.first_name + ' ' + candidate.last_name })
   } catch (err) {
     return NextResponse.json({ error: String(err) }, { status: 500 })
   }
