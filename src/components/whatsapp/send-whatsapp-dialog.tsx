@@ -50,14 +50,16 @@ export function SendWhatsAppDialog({
     if (!candidateId) return
     if (showLoading) setMessagesLoading(true)
     try {
-      const res = await fetch(`/api/whatsapp/messages?candidateId=${candidateId}`)
+      const params = new URLSearchParams({ candidateId })
+      if (candidatePhone) params.set('phone', candidatePhone)
+      const res = await fetch(`/api/whatsapp/messages?${params.toString()}`)
       const data = await res.json()
       if (data.data) setMessages(data.data)
     } catch {
       // ignore
     }
     if (showLoading) setMessagesLoading(false)
-  }, [candidateId])
+  }, [candidateId, candidatePhone])
 
   // Load conversation history when dialog opens + poll for new messages
   useEffect(() => {

@@ -19,6 +19,7 @@ export async function GET(request: NextRequest) {
 
   const { searchParams } = new URL(request.url)
   const candidateId = searchParams.get('candidateId')
+  const phone = searchParams.get('phone')
 
   if (!candidateId) {
     return NextResponse.json({ error: 'candidateId is required' }, { status: 400 })
@@ -28,7 +29,8 @@ export async function GET(request: NextRequest) {
   const { data, error } = await getWhatsAppMessages(
     adminSupabase,
     membership.organization_id,
-    candidateId
+    candidateId,
+    phone
   )
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })

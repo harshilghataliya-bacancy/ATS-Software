@@ -201,8 +201,24 @@ export async function getWhatsAppMessages(
   supabase: SupabaseClient,
   orgId: string,
   candidateId: string,
+  phone?: string | null,
   limit: number = 50
 ) {
+  // If phone is provided, fetch all messages to/from that number (handles duplicate candidates)
+  if (phone) {
+    const clean = phone.replace(/[\s\-()]/g, '')
+    const { data, error } = await supabase
+      .from('whatsapp_messages')
+      .select('*')
+      .eq('organization_id', orgId)
+      .or(`from_number.eq.${clean},to_number.eq.${clean}`)
+      .order('created_at', { ascending: true })
+      .limit(limit)
+
+    return { data, error }
+  }
+
+  // Fallback: fetch by candidate_id only
   const { data, error } = await supabase
     .from('whatsapp_messages')
     .select('*')
