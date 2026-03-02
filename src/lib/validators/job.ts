@@ -45,6 +45,7 @@ export const createJobSchema = z.object({
   ),
   priority: priorityEnum.default('medium'),
   assigned_to: z.string().uuid().nullable().optional(),
+  testgorilla_assessment_id: z.string().nullable().optional(),
 })
 
 export type CreateJobInput = z.infer<typeof createJobSchema>
@@ -88,6 +89,7 @@ export const updateJobSchema = z.object({
   ),
   priority: priorityEnum.optional(),
   assigned_to: z.string().uuid().nullable().optional(),
+  testgorilla_assessment_id: z.string().nullable().optional(),
 })
 
 export type UpdateJobInput = z.infer<typeof updateJobSchema>

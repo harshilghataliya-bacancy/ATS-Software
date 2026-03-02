@@ -27,7 +27,6 @@ export async function getApplicationsForJob(
     .select('*')
     .eq('job_id', jobId)
     .eq('organization_id', orgId)
-    .neq('stage_type', 'assessment')
     .order('display_order', { ascending: true })
 
   if (stagesError) {
@@ -301,11 +300,112 @@ export async function withdrawApplication(
   return { data, error }
 }
 
+export async function moveApplicationToJob(
+  supabase: SupabaseClient,
+  applicationId: string,
+  orgId: string,
+  targetJobId: string
+) {
+  // Get current application
+  const { data: app, error: fetchError } = await supabase
+    .from('applications')
+    .select('id, job_id, candidate_id, status')
+    .eq('id', applicationId)
+    .eq('organization_id', orgId)
+    .eq('status', 'active')
+    .is('deleted_at', null)
+    .single()
+
+  if (fetchError || !app) {
+    return { data: null, error: fetchError ?? new Error('Application not found or not active') }
+  }
+
+  if (app.job_id === targetJobId) {
+    return { data: null, error: new Error('Application is already for this job') }
+  }
+
+  // Check no duplicate active application exists for candidate + target job
+  const { data: existing } = await supabase
+    .from('applications')
+    .select('id')
+    .eq('candidate_id', app.candidate_id)
+    .eq('job_id', targetJobId)
+    .eq('organization_id', orgId)
+    .eq('status', 'active')
+    .is('deleted_at', null)
+    .maybeSingle()
+
+  if (existing) {
+    return { data: null, error: new Error('Candidate already has an active application for the target job') }
+  }
+
+  // Find first pipeline stage of target job
+  const { data: firstStage, error: stageError } = await supabase
+    .from('pipeline_stages')
+    .select('id')
+    .eq('job_id', targetJobId)
+    .eq('organization_id', orgId)
+    .order('display_order', { ascending: true })
+    .limit(1)
+    .single()
+
+  if (stageError || !firstStage) {
+    return { data: null, error: stageError ?? new Error('No pipeline stages found for target job') }
+  }
+
+  // Update the application
+  const { data: updated, error: updateError } = await supabase
+    .from('applications')
+    .update({
+      job_id: targetJobId,
+      current_stage_id: firstStage.id,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', applicationId)
+    .eq('organization_id', orgId)
+    .select()
+    .single()
+
+  if (updateError) {
+    return { data: null, error: updateError }
+  }
+
+  // Update interviews to point to new job
+  await supabase
+    .from('interviews')
+    .update({ job_id: targetJobId, updated_at: new Date().toISOString() })
+    .eq('application_id', applicationId)
+    .eq('organization_id', orgId)
+
+  // Soft-delete draft offer letters for this application
+  await supabase
+    .from('offer_letters')
+    .update({ deleted_at: new Date().toISOString() })
+    .eq('application_id', applicationId)
+    .eq('organization_id', orgId)
+    .eq('status', 'draft')
+
+  // Delete stale candidate_match_scores
+  await supabase
+    .from('candidate_match_scores')
+    .delete()
+    .eq('application_id', applicationId)
+
+  // Delete stale stage_movements (old stage refs are no longer valid)
+  await supabase
+    .from('stage_movements')
+    .delete()
+    .eq('application_id', applicationId)
+    .eq('organization_id', orgId)
+
+  return { data: updated, error: null }
+}
+
 export async function hireApplication(
   supabase: SupabaseClient,
   applicationId: string,
   orgId: string,
-  userId: string
+  userId: string | null
 ) {
   // Get the application to find the job's "hired" stage
   const { data: app, error: fetchError } = await supabase

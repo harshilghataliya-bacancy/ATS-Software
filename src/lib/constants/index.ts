@@ -4,9 +4,10 @@ export const APP_DESCRIPTION = 'Modern Applicant Tracking System'
 export const DEFAULT_PIPELINE_STAGES = [
   { name: 'Applied', display_order: 0, stage_type: 'applied' as const },
   { name: 'Screening', display_order: 1, stage_type: 'screening' as const },
-  { name: 'Interview', display_order: 2, stage_type: 'interview' as const },
-  { name: 'Offer', display_order: 3, stage_type: 'offer' as const },
-  { name: 'Hired', display_order: 4, stage_type: 'hired' as const },
+  { name: 'Assessment', display_order: 2, stage_type: 'assessment' as const },
+  { name: 'Interview', display_order: 3, stage_type: 'interview' as const },
+  { name: 'Offer', display_order: 4, stage_type: 'offer' as const },
+  { name: 'Hired', display_order: 5, stage_type: 'hired' as const },
 ]
 
 export const EMPLOYMENT_TYPES = [
@@ -89,6 +90,13 @@ export const APPLICATION_STATUS_CONFIG = {
   hired: { label: 'Hired', variant: 'default' as const },
 }
 
+export const ASSESSMENT_STATUS_CONFIG = {
+  invited: { label: 'Invited', variant: 'secondary' as const, className: 'bg-amber-100 text-amber-700 border-amber-200' },
+  started: { label: 'In Progress', variant: 'secondary' as const, className: 'bg-blue-100 text-blue-700 border-blue-200' },
+  completed: { label: 'Completed', variant: 'default' as const, className: 'bg-green-100 text-green-700 border-green-200' },
+  expired: { label: 'Expired', variant: 'outline' as const, className: 'text-gray-500' },
+}
+
 export const OFFER_STATUS_CONFIG = {
   draft: { label: 'Draft', variant: 'secondary' as const },
   sent: { label: 'Sent', variant: 'default' as const },
@@ -159,6 +167,13 @@ export const REMUNERATION_TYPES = [
   { value: 'monthly', label: 'Monthly' },
 ] as const
 
+export const REAPPLY_RESTRICTION_OPTIONS = [
+  { value: 0, label: 'No restriction' },
+  { value: 3, label: '3 Months' },
+  { value: 6, label: '6 Months' },
+  { value: 12, label: '1 Year' },
+] as const
+
 export const OFFER_TEMPLATE_VARIABLES = [
   '{{candidate_name}}',
   '{{job_title}}',
@@ -168,6 +183,58 @@ export const OFFER_TEMPLATE_VARIABLES = [
   '{{expiry_date}}',
   '{{company_name}}',
   '{{location}}',
+] as const
+
+export const OFFER_PDF_DEFAULTS = {
+  primary_color: '#1e3a5f',
+  accent_color: '#2563eb',
+  header_subtitle: 'Confidential',
+  greeting_text: 'Dear {{candidate_name}},',
+  intro_text: 'We are pleased to inform you that you have been selected for the position of {{job_title}} at {{company_name}}. Based on your qualifications, experience, and performance during the interview process, we believe you will be a valuable addition to our team.\n\nWe are delighted to present you with the following terms and conditions of your employment:',
+  closing_text: 'Please sign below and return a copy of this letter to indicate your acceptance of the above terms and conditions. We look forward to welcoming you to the {{company_name}} team.',
+  validity_text: 'This offer is valid until {{expiry_date}}. If we do not receive your signed acceptance by this date, this offer shall stand withdrawn automatically.',
+  acceptance_text: 'Please sign below and return a copy of this letter to indicate your acceptance of the above terms and conditions.',
+  signatory_label: 'Authorized Signatory',
+  candidate_sig_label: 'Acceptance by Candidate',
+  footer_text: 'This is a system-generated offer letter by {{company_name}}. Strictly Confidential.',
+} as const
+
+export const OFFER_TEMPLATE_VARIABLE_CATEGORIES = [
+  {
+    category: 'Candidate',
+    variables: [
+      { key: '{{candidate_name}}', label: 'Candidate Name' },
+      { key: '{{candidate_email}}', label: 'Candidate Email' },
+    ],
+  },
+  {
+    category: 'Job',
+    variables: [
+      { key: '{{job_title}}', label: 'Job Title' },
+      { key: '{{department}}', label: 'Department' },
+      { key: '{{business_unit}}', label: 'Business Unit' },
+      { key: '{{location}}', label: 'Location' },
+    ],
+  },
+  {
+    category: 'Offer',
+    variables: [
+      { key: '{{salary}}', label: 'Salary (formatted)' },
+      { key: '{{start_date}}', label: 'Start Date' },
+      { key: '{{expiry_date}}', label: 'Expiry Date' },
+      { key: '{{employment_type}}', label: 'Employment Type' },
+      { key: '{{work_type}}', label: 'Work Type' },
+      { key: '{{reporting_manager}}', label: 'Reporting Manager' },
+    ],
+  },
+  {
+    category: 'Company',
+    variables: [
+      { key: '{{company_name}}', label: 'Company Name' },
+      { key: '{{signatory_name}}', label: 'Signatory Name' },
+      { key: '{{signatory_title}}', label: 'Signatory Title' },
+    ],
+  },
 ] as const
 
 // Email body template — brief notification email. Full details go in the attached PDF.

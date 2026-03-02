@@ -111,6 +111,7 @@ export default function JobDetailPage() {
         experience_max: data.experience_max ?? null,
         priority: data.priority ?? 'medium',
         assigned_to: data.assigned_to ?? null,
+        testgorilla_assessment_id: data.testgorilla_assessment_id ?? null,
       })
 
       if (!criteriaLoaded) {
@@ -499,6 +500,26 @@ export default function JobDetailPage() {
                     </SelectContent>
                   </Select>
                 </div>
+              </CardContent>
+            </Card>
+
+            {/* Assessment */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-lg">Assessment</CardTitle>
+                <p className="text-sm text-gray-500">Link a TestGorilla assessment to this job</p>
+              </CardHeader>
+              <CardContent className="space-y-2">
+                <Label htmlFor="testgorilla_assessment_id">TestGorilla Assessment ID</Label>
+                <Input
+                  id="testgorilla_assessment_id"
+                  placeholder="Paste Assessment ID from TestGorilla"
+                  {...register('testgorilla_assessment_id')}
+                  disabled={!canManageJobs}
+                />
+                <p className="text-xs text-gray-500">
+                  Optional. Get this from your TestGorilla dashboard.
+                </p>
               </CardContent>
             </Card>
 

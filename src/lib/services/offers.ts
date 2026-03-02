@@ -109,6 +109,61 @@ export async function getOfferById(
   return { data, error }
 }
 
+export async function getOfferByToken(
+  supabase: SupabaseClient,
+  token: string
+) {
+  const { data, error } = await supabase
+    .from('offer_letters')
+    .select('id, status, application_id, organization_id, candidate_id, job_id')
+    .eq('response_token', token)
+    .is('deleted_at', null)
+    .maybeSingle()
+
+  return { data, error }
+}
+
+export async function respondToOfferByToken(
+  supabase: SupabaseClient,
+  token: string,
+  status: 'accepted' | 'declined'
+) {
+  // Find the offer by token
+  const { data: offer, error: findError } = await getOfferByToken(supabase, token)
+
+  if (findError || !offer) {
+    return { data: null, error: findError ?? new Error('Invalid or expired link') }
+  }
+
+  if (offer.status !== 'sent') {
+    return { data: null, error: new Error('This offer has already been responded to') }
+  }
+
+  // Update status and nullify token (single-use)
+  const { data: updated, error: updateError } = await supabase
+    .from('offer_letters')
+    .update({
+      status,
+      responded_at: new Date().toISOString(),
+      response_token: null,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', offer.id)
+    .eq('status', 'sent')
+    .select('id, application_id, organization_id')
+    .maybeSingle()
+
+  if (updateError) {
+    return { data: null, error: updateError }
+  }
+
+  if (!updated) {
+    return { data: null, error: new Error('This offer has already been responded to') }
+  }
+
+  return { data: updated, error: null }
+}
+
 // ---------------------------------------------------------------------------
 // Mutations
 // ---------------------------------------------------------------------------

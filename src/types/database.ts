@@ -6,7 +6,7 @@
 export type OrgRole = 'admin' | 'recruiter' | 'hiring_manager' | 'interviewer'
 export type JobStatus = 'draft' | 'published' | 'closed' | 'archived'
 export type EmploymentType = 'full_time' | 'part_time' | 'contract' | 'internship'
-export type StageType = 'applied' | 'screening' | 'interview' | 'offer' | 'hired' | 'rejected'
+export type StageType = 'applied' | 'screening' | 'assessment' | 'interview' | 'offer' | 'hired' | 'rejected'
 export type ApplicationStatus = 'active' | 'withdrawn' | 'rejected' | 'hired'
 export type InterviewType = 'phone' | 'video' | 'onsite' | 'technical' | 'cultural'
 export type InterviewStatus = 'scheduled' | 'completed' | 'cancelled' | 'no_show'
@@ -27,6 +27,7 @@ export interface Organization {
   slug: string
   logo_url: string | null
   careers_page_config: Record<string, unknown> | null
+  offer_reapply_restriction_months: number
   created_at: string
   updated_at: string
 }
@@ -71,6 +72,7 @@ export interface Job {
   published_at: string | null
   closed_at: string | null
   assigned_to: string | null
+  testgorilla_assessment_id: string | null
   created_by: string
   created_at: string
   updated_at: string
@@ -284,7 +286,48 @@ export interface OfferLetter {
   pf_applicable: boolean
   work_type: string | null
   business_unit: string | null
+  response_token: string | null
   created_by: string
+  created_at: string
+  updated_at: string
+  deleted_at: string | null
+}
+
+export interface OfferTemplate {
+  id: string
+  organization_id: string
+  name: string
+  is_active: boolean
+  logo_url: string | null
+  company_name: string | null
+  terms_and_conditions: string | null
+  // Branding
+  primary_color: string | null
+  accent_color: string | null
+  header_subtitle: string | null
+  // PDF Content Sections
+  greeting_text: string | null
+  intro_text: string | null
+  closing_text: string | null
+  validity_text: string | null
+  acceptance_text: string | null
+  // Signature
+  signatory_name: string | null
+  signatory_title: string | null
+  signatory_label: string | null
+  candidate_sig_label: string | null
+  // Section toggles
+  show_salary_breakdown: boolean
+  show_bonus_section: boolean
+  show_terms_section: boolean
+  show_acceptance_section: boolean
+  show_signature_block: boolean
+  // Footer
+  footer_text: string | null
+  // Email customization
+  email_subject: string | null
+  email_body: string | null
+  created_by: string | null
   created_at: string
   updated_at: string
   deleted_at: string | null
@@ -431,4 +474,35 @@ export interface InterviewWithDetails extends Interview {
 
 export interface CandidateWithApplications extends Candidate {
   applications: (Application & { jobs: Job })[]
+}
+
+// TestGorilla Integration Types
+export type AssessmentInvitationStatus = 'invited' | 'started' | 'completed' | 'expired'
+
+export interface TestGorillaConfig {
+  id: string
+  organization_id: string
+  api_key: string
+  is_enabled: boolean
+  created_at: string
+  updated_at: string
+}
+
+export interface AssessmentInvitation {
+  id: string
+  organization_id: string
+  application_id: string
+  candidate_id: string
+  job_id: string
+  testgorilla_assessment_id: string
+  testgorilla_test_taker_id: string | null
+  testgorilla_candidature_id: string | null
+  status: AssessmentInvitationStatus
+  score: number | null
+  results_data: Record<string, unknown>
+  invited_at: string
+  completed_at: string | null
+  invited_by: string | null
+  created_at: string
+  updated_at: string
 }

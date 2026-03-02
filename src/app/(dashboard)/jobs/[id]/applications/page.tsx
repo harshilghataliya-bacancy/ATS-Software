@@ -17,6 +17,7 @@ import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from '@/components/ui/table'
 import { ScoreBreakdownDialog } from './score-breakdown-dialog'
+import { ASSESSMENT_STATUS_CONFIG } from '@/lib/constants'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -72,6 +73,15 @@ interface StageGroup {
   applications: ApplicationRow[]
 }
 
+interface AssessmentInv {
+  id: string
+  application_id: string
+  status: string
+  score: number | null
+  invited_at: string
+  completed_at: string | null
+}
+
 // ---------------------------------------------------------------------------
 // Page
 // ---------------------------------------------------------------------------
@@ -99,6 +109,10 @@ export default function ApplicationsPage() {
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const batchFiredRef = useRef(false)
 
+  // Assessment invitations
+  const [assessmentInvitations, setAssessmentInvitations] = useState<Record<string, AssessmentInv>>({})
+  const [sendingAssessment, setSendingAssessment] = useState<string | null>(null)
+
   const fetchScores = useCallback(async (): Promise<Record<string, MatchScore>> => {
     if (!organization) return {}
     try {
@@ -121,6 +135,46 @@ export default function ApplicationsPage() {
     }
     return {}
   }, [organization, params.id])
+
+  const fetchAssessmentInvitations = useCallback(async () => {
+    if (!organization) return
+    try {
+      const res = await fetch(`/api/testgorilla/results?job_id=${params.id}`)
+      if (res.ok) {
+        const { invitations } = await res.json()
+        if (invitations) {
+          const map: Record<string, AssessmentInv> = {}
+          for (const inv of invitations) {
+            map[inv.application_id] = inv
+          }
+          setAssessmentInvitations(map)
+        }
+      }
+    } catch {
+      // Silently fail - assessments are supplementary
+    }
+  }, [organization, params.id])
+
+  async function handleSendAssessment(applicationId: string) {
+    setSendingAssessment(applicationId)
+    setError(null)
+    try {
+      const res = await fetch('/api/testgorilla/invite', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ application_id: applicationId }),
+      })
+      if (!res.ok) {
+        const data = await res.json()
+        setError(data.error || 'Failed to send assessment')
+      } else {
+        await fetchAssessmentInvitations()
+      }
+    } catch {
+      setError('Failed to send assessment')
+    }
+    setSendingAssessment(null)
+  }
 
   // Stop polling on unmount
   useEffect(() => {
@@ -178,8 +232,9 @@ export default function ApplicationsPage() {
 
     setLoading(false)
 
-    // Load existing scores first
+    // Load existing scores and assessment invitations
     const existingScores = await fetchScores()
+    fetchAssessmentInvitations()
 
     // Auto-parse unparsed resumes in background
     if (pipelineResult.data) {
@@ -236,7 +291,7 @@ export default function ApplicationsPage() {
         setBatchScoring(false)
       })
     }
-  }, [organization, params.id, filterStatus, fetchScores, startScorePolling])
+  }, [organization, params.id, filterStatus, fetchScores, startScorePolling, fetchAssessmentInvitations])
 
   useEffect(() => {
     if (!organization) return
@@ -516,6 +571,7 @@ export default function ApplicationsPage() {
                 <TableHead>Candidate</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead>AI Score</TableHead>
+                <TableHead>Assessment</TableHead>
                 <TableHead>Email</TableHead>
                 <TableHead>Phone</TableHead>
                 <TableHead>Current Stage</TableHead>
@@ -575,6 +631,35 @@ export default function ApplicationsPage() {
                           />
                         </button>
                       )
+                    })()}
+                  </TableCell>
+                  <TableCell>
+                    {(() => {
+                      const inv = assessmentInvitations[app.id]
+                      if (inv) {
+                        const config = ASSESSMENT_STATUS_CONFIG[inv.status as keyof typeof ASSESSMENT_STATUS_CONFIG]
+                        return (
+                          <Badge className={`text-[10px] ${config?.className || ''}`}>
+                            {inv.status === 'completed' && inv.score != null
+                              ? `${Math.round(inv.score)}%`
+                              : config?.label || inv.status}
+                          </Badge>
+                        )
+                      }
+                      if (job?.testgorilla_assessment_id && app.status === 'active') {
+                        return (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="text-[10px] h-6 px-2"
+                            disabled={sendingAssessment === app.id}
+                            onClick={() => handleSendAssessment(app.id)}
+                          >
+                            {sendingAssessment === app.id ? 'Sending...' : 'Send'}
+                          </Button>
+                        )
+                      }
+                      return <span className="text-xs text-gray-400">-</span>
                     })()}
                   </TableCell>
                   <TableCell className="text-sm text-gray-600">

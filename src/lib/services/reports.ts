@@ -102,7 +102,6 @@ export async function getPipelineConversion(
     .from('pipeline_stages')
     .select('id, name, display_order, stage_type, job_id')
     .eq('organization_id', orgId)
-    .neq('stage_type', 'assessment')
     .order('display_order', { ascending: true })
 
   if (jobId) {
