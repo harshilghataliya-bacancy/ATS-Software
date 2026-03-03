@@ -8,6 +8,12 @@ export async function updateSession(request: NextRequest) {
     return NextResponse.next()
   }
 
+  // Integration endpoints authenticate via integration keys and should not depend on user session/tenant resolution.
+  // Avoid extra Supabase calls and prevent middleware-level failures from impacting integrations.
+  if (request.nextUrl.pathname.startsWith('/api/integrations/')) {
+    return NextResponse.next()
+  }
+
   let supabaseResponse = NextResponse.next({
     request,
   })
@@ -44,6 +50,11 @@ export async function updateSession(request: NextRequest) {
   const {
     data: { user },
   } = await supabase.auth.getUser()
+
+  // Never redirect API callers (integration/webhook clients expect JSON, not HTML redirects).
+  if (request.nextUrl.pathname.startsWith('/api/')) {
+    return supabaseResponse
+  }
 
   const publicRoutes = ['/login', '/signup', '/forgot-password', '/set-password', '/careers', '/api/webhooks', '/api/public', '/api/whatsapp/webhook', '/api/whatsapp/webhook/debug', '/org/new']
   const isPublicRoute = publicRoutes.some(route => request.nextUrl.pathname.startsWith(route))
