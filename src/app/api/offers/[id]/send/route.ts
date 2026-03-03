@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { randomUUID } from 'crypto'
 import { createClient } from '@/lib/supabase/server'
 import { getOfferById, sendOffer } from '@/lib/services/offers'
+import { getActiveOfferTemplate } from '@/lib/services/offer-templates'
 import { getValidAccessToken, sendGmailEmail } from '@/lib/services/gmail'
 import { logEmail } from '@/lib/services/email'
 import { substituteOfferVariables, formatSalary } from '@/lib/offer-template'
@@ -8,6 +10,7 @@ import { DEFAULT_OFFER_TEMPLATE, EMPLOYMENT_TYPE_OPTIONS, WORK_TYPE_OPTIONS } fr
 import { renderToBuffer } from '@react-pdf/renderer'
 import { OfferPDFDocument } from '@/components/offers/offer-pdf-document'
 import React from 'react'
+import { resolveLogoForPdf } from '@/lib/utils/logo-converter'
 
 export async function POST(
   _request: NextRequest,
@@ -65,6 +68,13 @@ export async function POST(
     return NextResponse.json({ error: tokenResult.error || 'Gmail not connected' }, { status: 400 })
   }
 
+  // Generate response token and store on offer
+  const responseToken = randomUUID()
+  await supabase
+    .from('offer_letters')
+    .update({ response_token: responseToken })
+    .eq('id', id)
+
   const candidateName = `${candidate.first_name} ${candidate.last_name}`
   const salaryFormatted = formatSalary(offer.salary || 0, offer.salary_currency || 'INR')
   const startDate = offer.start_date
@@ -74,9 +84,10 @@ export async function POST(
     ? new Date(offer.expiry_date).toLocaleDateString('en-US', { dateStyle: 'long' })
     : 'TBD'
 
-  // Simple email body — full details are in the PDF
-  const emailTemplate = offer.template_html || DEFAULT_OFFER_TEMPLATE
-  const emailHtml = substituteOfferVariables(emailTemplate, {
+  // Fetch active offer template for email + PDF customization
+  const { data: activeTemplate } = await getActiveOfferTemplate(supabase, orgId)
+
+  const templateVars = {
     candidate_name: candidateName,
     job_title: job?.title || '',
     department: job?.department || '',
@@ -85,12 +96,30 @@ export async function POST(
     expiry_date: expiryDate,
     company_name: org?.name || '',
     location: offer.location || job?.location || '',
-  })
+  }
+
+  // Simple email body — full details are in the PDF
+  const emailTemplate = activeTemplate?.email_body || offer.template_html || DEFAULT_OFFER_TEMPLATE
+  let emailHtml = substituteOfferVariables(emailTemplate, templateVars)
+
+  // Append Accept/Decline buttons
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
+  const acceptUrl = `${appUrl}/offers/respond?token=${responseToken}&action=accept`
+  const declineUrl = `${appUrl}/offers/respond?token=${responseToken}&action=decline`
+
+  emailHtml += `
+<div style="margin-top:32px;padding-top:24px;border-top:1px solid #e5e7eb;text-align:center;">
+  <p style="font-size:14px;color:#374151;margin-bottom:16px;">Please respond to this offer:</p>
+  <a href="${acceptUrl}" style="display:inline-block;padding:12px 32px;background-color:#16a34a;color:#ffffff;text-decoration:none;border-radius:6px;font-weight:600;font-size:14px;margin-right:12px;">Accept Offer</a>
+  <a href="${declineUrl}" style="display:inline-block;padding:12px 32px;background-color:#dc2626;color:#ffffff;text-decoration:none;border-radius:6px;font-weight:600;font-size:14px;">Decline Offer</a>
+</div>`
 
   const empLabel = EMPLOYMENT_TYPE_OPTIONS.find((e) => e.value === offer.employment_type)?.label || offer.employment_type || ''
   const workLabel = WORK_TYPE_OPTIONS.find((w) => w.value === offer.work_type)?.label || offer.work_type || ''
 
-  const subject = `Offer Letter - ${job?.title || 'Position'} at ${org?.name || 'Our Company'}`
+  const subject = activeTemplate?.email_subject
+    ? substituteOfferVariables(activeTemplate.email_subject, templateVars)
+    : `Offer Letter - ${job?.title || 'Position'} at ${org?.name || 'Our Company'}`
   const fromEmail = tokenResult.fromEmail || user.email!
 
   try {
@@ -98,9 +127,12 @@ export async function POST(
     const salaryComponents = Array.isArray(offer.salary_components) ? offer.salary_components : []
     const bonusComponents = Array.isArray(offer.bonus_components) ? offer.bonus_components : []
 
+    // Resolve logo URL (converts SVG to PNG if needed)
+    const resolvedLogo = activeTemplate?.logo_url ? await resolveLogoForPdf(activeTemplate.logo_url) : undefined
+
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const pdfElement = React.createElement(OfferPDFDocument, {
-      companyName: org?.name || 'Company',
+      companyName: activeTemplate?.company_name || org?.name || 'Company',
       candidateName,
       candidateEmail: candidate.email,
       jobTitle: job?.title || '',
@@ -118,6 +150,28 @@ export async function POST(
       salaryComponents: salaryComponents.length > 0 ? salaryComponents : undefined,
       bonusComponents: bonusComponents.length > 0 ? bonusComponents : undefined,
       pfApplicable: offer.pf_applicable ?? false,
+      templateLogoUrl: resolvedLogo,
+      templateCompanyName: activeTemplate?.company_name || undefined,
+      templateTerms: activeTemplate?.terms_and_conditions || undefined,
+      // Full template customization
+      primaryColor: activeTemplate?.primary_color || undefined,
+      accentColor: activeTemplate?.accent_color || undefined,
+      headerSubtitle: activeTemplate?.header_subtitle || undefined,
+      greetingText: activeTemplate?.greeting_text || undefined,
+      introText: activeTemplate?.intro_text || undefined,
+      closingText: activeTemplate?.closing_text || undefined,
+      validityText: activeTemplate?.validity_text || undefined,
+      acceptanceText: activeTemplate?.acceptance_text || undefined,
+      signatoryName: activeTemplate?.signatory_name || undefined,
+      signatoryTitle: activeTemplate?.signatory_title || undefined,
+      signatoryLabel: activeTemplate?.signatory_label || undefined,
+      candidateSigLabel: activeTemplate?.candidate_sig_label || undefined,
+      showSalaryBreakdown: activeTemplate?.show_salary_breakdown ?? true,
+      showBonusSection: activeTemplate?.show_bonus_section ?? true,
+      showTermsSection: activeTemplate?.show_terms_section ?? true,
+      showAcceptanceSection: activeTemplate?.show_acceptance_section ?? true,
+      showSignatureBlock: activeTemplate?.show_signature_block ?? true,
+      footerText: activeTemplate?.footer_text || undefined,
     }) as any
     const pdfBuffer = await renderToBuffer(pdfElement)
     const pdfFilename = `offer-${candidate.last_name.toLowerCase()}-${job?.title?.toLowerCase().replace(/\s+/g, '-') || 'position'}.pdf`

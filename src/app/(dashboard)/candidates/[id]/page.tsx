@@ -75,6 +75,13 @@ export default function CandidateDetailPage() {
   // Reject
   const [rejectingAppId, setRejectingAppId] = useState<string | null>(null)
 
+  // Move to Job
+  const [moveDialogOpen, setMoveDialogOpen] = useState(false)
+  const [moveAppId, setMoveAppId] = useState<string | null>(null)
+  const [moveTargetJob, setMoveTargetJob] = useState<string>('')
+  const [moving, setMoving] = useState(false)
+  const [moveCurrentJobId, setMoveCurrentJobId] = useState<string | null>(null)
+
   // Edit form state
   const [formData, setFormData] = useState<AnyData>({})
 
@@ -169,6 +176,39 @@ export default function CandidateDetailPage() {
       await loadCandidate()
     }
     setApplying(false)
+  }
+
+  function openMoveDialog(applicationId: string, currentJobId: string) {
+    setMoveAppId(applicationId)
+    setMoveCurrentJobId(currentJobId)
+    setMoveTargetJob('')
+    setMoveDialogOpen(true)
+    if (jobs.length === 0) loadJobs()
+  }
+
+  async function handleMoveToJob() {
+    if (!moveAppId || !moveTargetJob) return
+    setMoving(true)
+    setError(null)
+    try {
+      const res = await fetch(`/api/applications/${moveAppId}/move`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ targetJobId: moveTargetJob }),
+      })
+      if (!res.ok) {
+        const data = await res.json()
+        setError(data.error || 'Failed to move application')
+      } else {
+        setMoveDialogOpen(false)
+        setMoveAppId(null)
+        setMoveTargetJob('')
+        await loadCandidate()
+      }
+    } catch {
+      setError('Failed to move application')
+    }
+    setMoving(false)
   }
 
   async function handleRejectApplication(applicationId: string) {
@@ -613,7 +653,15 @@ export default function CandidateDetailPage() {
                       </Link>
 
                       {canManageCandidates && app.status === 'active' && (
-                        <div className="mt-2 pt-2 border-t">
+                        <div className="mt-2 pt-2 border-t flex gap-2">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-7 text-xs"
+                            onClick={() => openMoveDialog(app.id, app.job_id || app.job?.id)}
+                          >
+                            Move to Job
+                          </Button>
                           <Button
                             size="sm"
                             variant="destructive"
@@ -650,6 +698,39 @@ export default function CandidateDetailPage() {
           candidateEmail={candidate.email}
         />
       )}
+
+      {/* Move to Job Dialog */}
+      <Dialog open={moveDialogOpen} onOpenChange={setMoveDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Move to Job</DialogTitle>
+            <DialogDescription>
+              Select a published job to move this application to. The application will be placed in the first stage of the new job.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-4">
+            <Select value={moveTargetJob} onValueChange={setMoveTargetJob}>
+              <SelectTrigger><SelectValue placeholder="Select a job..." /></SelectTrigger>
+              <SelectContent>
+                {jobs
+                  .filter((job) => job.id !== moveCurrentJobId)
+                  .map((job) => (
+                    <SelectItem key={job.id} value={job.id}>{job.title} - {job.department}</SelectItem>
+                  ))}
+              </SelectContent>
+            </Select>
+            {jobs.filter((j) => j.id !== moveCurrentJobId).length === 0 && (
+              <p className="text-sm text-gray-500 mt-2">No other published jobs available.</p>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setMoveDialogOpen(false)}>Cancel</Button>
+            <Button onClick={handleMoveToJob} disabled={!moveTargetJob || moving}>
+              {moving ? 'Moving...' : 'Move'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
