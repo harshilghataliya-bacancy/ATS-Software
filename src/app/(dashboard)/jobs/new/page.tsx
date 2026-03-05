@@ -499,25 +499,6 @@ export default function NewJobPage() {
               </CardContent>
             </Card>
 
-            {/* Assessment */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-lg">Assessment</CardTitle>
-                <p className="text-sm text-gray-500">Link a TestGorilla assessment to this job</p>
-              </CardHeader>
-              <CardContent className="space-y-2">
-                <Label htmlFor="testgorilla_assessment_id">TestGorilla Assessment ID</Label>
-                <Input
-                  id="testgorilla_assessment_id"
-                  placeholder="Paste Assessment ID from TestGorilla"
-                  {...register('testgorilla_assessment_id')}
-                />
-                <p className="text-xs text-gray-500">
-                  Optional. Get this from your TestGorilla dashboard.
-                </p>
-              </CardContent>
-            </Card>
-
             {/* Evaluation Criteria */}
             <Card>
               <CardHeader>

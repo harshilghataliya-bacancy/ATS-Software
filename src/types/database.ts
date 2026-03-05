@@ -72,7 +72,6 @@ export interface Job {
   published_at: string | null
   closed_at: string | null
   assigned_to: string | null
-  testgorilla_assessment_id: string | null
   created_by: string
   created_at: string
   updated_at: string
@@ -477,17 +476,8 @@ export interface CandidateWithApplications extends Candidate {
   applications: (Application & { jobs: Job })[]
 }
 
-// TestGorilla Integration Types
+// Assessment Integration Types
 export type AssessmentInvitationStatus = 'invited' | 'started' | 'completed' | 'expired'
-
-export interface TestGorillaConfig {
-  id: string
-  organization_id: string
-  api_key: string
-  is_enabled: boolean
-  created_at: string
-  updated_at: string
-}
 
 export interface AssessmentInvitation {
   id: string
@@ -495,12 +485,12 @@ export interface AssessmentInvitation {
   application_id: string
   candidate_id: string
   job_id: string
-  testgorilla_assessment_id: string
-  testgorilla_test_taker_id: string | null
-  testgorilla_candidature_id: string | null
+  assessment_link: string | null
+  instructions: string | null
+  expiry_date: string | null
+  sent_at: string | null
   status: AssessmentInvitationStatus
   score: number | null
-  results_data: Record<string, unknown>
   invited_at: string
   completed_at: string | null
   invited_by: string | null

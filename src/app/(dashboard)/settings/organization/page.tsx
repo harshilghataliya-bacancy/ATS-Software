@@ -8,7 +8,6 @@ import { updateOrganizationSchema, type UpdateOrganizationInput } from '@/lib/va
 import { useUser, useRole } from '@/lib/hooks/use-user'
 import { useGmailStatus } from '@/lib/hooks/use-gmail-status'
 import { useWhatsAppStatus } from '@/lib/hooks/use-whatsapp-status'
-import { useTestGorillaStatus } from '@/lib/hooks/use-testgorilla-status'
 import { createClient } from '@/lib/supabase/client'
 import { updateOrganization } from '@/lib/services/organization'
 import { REAPPLY_RESTRICTION_OPTIONS } from '@/lib/constants'
@@ -55,14 +54,6 @@ function OrganizationSettingsContent() {
   const [waSuccess, setWaSuccess] = useState(false)
   const [waError, setWaError] = useState<string | null>(null)
   const [waDisconnecting, setWaDisconnecting] = useState(false)
-
-  // TestGorilla state
-  const { configured: tgConfigured, loading: tgLoading, refresh: refreshTestGorilla } = useTestGorillaStatus()
-  const [tgApiKey, setTgApiKey] = useState('')
-  const [tgSaving, setTgSaving] = useState(false)
-  const [tgSuccess, setTgSuccess] = useState(false)
-  const [tgError, setTgError] = useState<string | null>(null)
-  const [tgDisconnecting, setTgDisconnecting] = useState(false)
 
   // Reapply restriction state
   const [reapplyMonths, setReapplyMonths] = useState(6)
@@ -318,43 +309,6 @@ function OrganizationSettingsContent() {
       // ignore
     }
     setWaDisconnecting(false)
-  }
-
-  async function handleSaveTestGorilla() {
-    setTgSaving(true)
-    setTgError(null)
-    try {
-      const res = await fetch('/api/testgorilla/config', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ api_key: tgApiKey }),
-      })
-      const data = await res.json()
-      if (!res.ok) {
-        setTgError(data.error || 'Failed to save')
-      } else {
-        setTgSuccess(true)
-        refreshTestGorilla()
-        setTimeout(() => setTgSuccess(false), 3000)
-      }
-    } catch {
-      setTgError('Failed to save TestGorilla configuration')
-    }
-    setTgSaving(false)
-  }
-
-  async function handleDisconnectTestGorilla() {
-    setTgDisconnecting(true)
-    try {
-      const res = await fetch('/api/testgorilla/config', { method: 'DELETE' })
-      if (res.ok) {
-        refreshTestGorilla()
-        setTgApiKey('')
-      }
-    } catch {
-      // ignore
-    }
-    setTgDisconnecting(false)
   }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -617,66 +571,6 @@ function OrganizationSettingsContent() {
                 </div>
                 <Button onClick={handleSaveWhatsApp} disabled={waSaving || !waSid || !waToken || !waNumber}>
                   {waSaving ? 'Saving...' : 'Save WhatsApp Config'}
-                </Button>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      )}
-
-      {/* TestGorilla Integration — admin only */}
-      {isAdmin && (
-        <Card>
-          <CardHeader>
-            <CardTitle>TestGorilla Assessments</CardTitle>
-            <CardDescription>
-              Connect your TestGorilla account to send pre-hire assessments to candidates.
-              Assessments can be linked to individual jobs.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {tgError && (
-              <div className="bg-red-50 text-red-700 text-sm p-3 rounded-md">{tgError}</div>
-            )}
-            {tgSuccess && (
-              <div className="bg-green-50 text-green-700 text-sm p-3 rounded-md">
-                TestGorilla configuration saved successfully!
-              </div>
-            )}
-
-            {tgLoading ? (
-              <Skeleton className="h-10 w-40" />
-            ) : tgConfigured ? (
-              <div className="flex items-center gap-4">
-                <div className="flex items-center gap-2">
-                  <div className="w-2 h-2 rounded-full bg-green-500" />
-                  <span className="text-sm text-gray-700">TestGorilla connected</span>
-                </div>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={handleDisconnectTestGorilla}
-                  disabled={tgDisconnecting}
-                >
-                  {tgDisconnecting ? 'Disconnecting...' : 'Disconnect'}
-                </Button>
-              </div>
-            ) : (
-              <div className="space-y-4 max-w-md">
-                <div className="space-y-2">
-                  <Label>API Key</Label>
-                  <Input
-                    type="password"
-                    placeholder="Your TestGorilla API key"
-                    value={tgApiKey}
-                    onChange={(e) => setTgApiKey(e.target.value)}
-                  />
-                  <p className="text-xs text-gray-500">
-                    Find your API key in TestGorilla Settings &gt; Integrations &gt; API.
-                  </p>
-                </div>
-                <Button onClick={handleSaveTestGorilla} disabled={tgSaving || !tgApiKey}>
-                  {tgSaving ? 'Saving...' : 'Save API Key'}
                 </Button>
               </div>
             )}

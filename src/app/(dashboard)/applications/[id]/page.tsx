@@ -7,7 +7,8 @@ import { useUser, useRole } from '@/lib/hooks/use-user'
 import { createClient } from '@/lib/supabase/client'
 import { getApplicationById, moveApplication, hireApplication } from '@/lib/services/applications'
 import { updateCandidate } from '@/lib/services/candidates'
-import { CANDIDATE_SOURCES, MAX_FILE_SIZE, ASSESSMENT_STATUS_CONFIG } from '@/lib/constants'
+import { CANDIDATE_SOURCES, MAX_FILE_SIZE } from '@/lib/constants'
+import { getComments, addComment, deleteComment } from '@/lib/services/comments'
 import { EDUCATION_LABELS, GENDER_OPTIONS, NOTICE_PERIOD_OPTIONS } from '@/lib/validators/candidate'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -105,6 +106,12 @@ export default function ApplicationDetailPage() {
   const [assessmentInvitation, setAssessmentInvitation] = useState<AnyData | null>(null)
   const [sendingAssessment, setSendingAssessment] = useState(false)
 
+  // Notes state
+  const [notes, setNotes] = useState<AnyData[]>([])
+  const [noteInput, setNoteInput] = useState('')
+  const [addingNote, setAddingNote] = useState(false)
+  const [noteError, setNoteError] = useState<string | null>(null)
+
   // Interviewers only have access to Dashboard + Interviews
   useEffect(() => {
     if (!userLoading && isInterviewer) {
@@ -136,14 +143,20 @@ export default function ApplicationDetailPage() {
 
       // Fetch assessment invitation
       try {
-        const res = await fetch(`/api/testgorilla/results?application_id=${data.id}`)
+        const res = await fetch(`/api/assessments?job_id=${data.job_id}`)
         if (res.ok) {
-          const { invitation } = await res.json()
-          setAssessmentInvitation(invitation || null)
+          const { invitations } = await res.json()
+          const inv = (invitations || []).find((i: AnyData) => i.application_id === data.id) || null
+          setAssessmentInvitation(inv)
         }
       } catch {
         // Silently fail
       }
+
+      // Load application notes
+      const supabase = createClient()
+      const commentsResult = await getComments(supabase, organization.id, 'application', data.id)
+      setNotes(commentsResult.data || [])
     }
     setLoading(false)
   }, [organization, params.id])
@@ -244,15 +257,20 @@ export default function ApplicationDetailPage() {
     }
   }
 
-  async function handleSendAssessment() {
+  async function handleSendAssessment(assessmentLink: string, instructions: string, expiryDate: string) {
     if (!application) return
     setSendingAssessment(true)
     setError(null)
     try {
-      const res = await fetch('/api/testgorilla/invite', {
+      const res = await fetch('/api/assessments', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ application_id: application.id }),
+        body: JSON.stringify({
+          application_id: application.id,
+          assessment_link: assessmentLink,
+          instructions: instructions || null,
+          expiry_date: expiryDate || null,
+        }),
       })
       if (!res.ok) {
         const data = await res.json()
@@ -264,6 +282,51 @@ export default function ApplicationDetailPage() {
       setError('Failed to send assessment')
     }
     setSendingAssessment(false)
+  }
+
+  async function handleSaveScore(invitationId: string, score: number) {
+    setError(null)
+    try {
+      const res = await fetch(`/api/assessments/${invitationId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ score }),
+      })
+      if (!res.ok) {
+        const data = await res.json()
+        setError(data.error || 'Failed to save score')
+      } else {
+        await loadApplication()
+      }
+    } catch {
+      setError('Failed to save score')
+    }
+  }
+
+  async function handleAddNote() {
+    if (!noteInput.trim() || !organization || !user || !application) return
+    setAddingNote(true)
+    setNoteError(null)
+    const supabase = createClient()
+    const { data: newNote, error } = await addComment(
+      supabase, organization.id, user.id, 'application', application.id, noteInput.trim()
+    )
+    if (error) {
+      setNoteError(error.message)
+    } else if (newNote) {
+      setNotes((prev) => [...prev, newNote])
+      setNoteInput('')
+    }
+    setAddingNote(false)
+  }
+
+  async function handleDeleteNote(commentId: string) {
+    if (!organization || !user) return
+    const supabase = createClient()
+    const { error } = await deleteComment(supabase, commentId, organization.id, user.id)
+    if (!error) {
+      setNotes((prev) => prev.filter((n) => n.id !== commentId))
+    }
   }
 
   // Block render while redirecting interviewer
@@ -394,7 +457,7 @@ export default function ApplicationDetailPage() {
               <Badge variant="secondary" className="ml-1.5 text-[10px] h-4 px-1.5">
                 {assessmentInvitation.status === 'completed' && assessmentInvitation.score != null
                   ? `${Math.round(assessmentInvitation.score)}%`
-                  : assessmentInvitation.status}
+                  : assessmentInvitation.status === 'invited' ? 'Sent' : assessmentInvitation.status}
               </Badge>
             )}
           </TabsTrigger>
@@ -408,6 +471,12 @@ export default function ApplicationDetailPage() {
             Offer & Hire
             {application.offer_letters?.length > 0 && (
               <Badge variant="secondary" className="ml-1.5 text-[10px] h-4 px-1.5">{application.offer_letters.length}</Badge>
+            )}
+          </TabsTrigger>
+          <TabsTrigger value="notes">
+            Notes
+            {notes.length > 0 && (
+              <Badge variant="secondary" className="ml-1.5 text-[10px] h-4 px-1.5">{notes.length}</Badge>
             )}
           </TabsTrigger>
         </TabsList>
@@ -667,109 +736,14 @@ export default function ApplicationDetailPage() {
 
         {/* ============ TAB 2.5: Assessment ============ */}
         <TabsContent value="assessment" className="mt-6 space-y-6">
-          {(() => {
-            const hasAssessmentId = !!job?.testgorilla_assessment_id
-
-            if (!hasAssessmentId) {
-              return (
-                <Card className="shadow-sm">
-                  <CardContent className="py-12 text-center">
-                    <svg className="w-12 h-12 mx-auto text-gray-300 mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h3.75M9 15h3.75M9 18h3.75m3 .75H18a2.25 2.25 0 002.25-2.25V6.108c0-1.135-.845-2.098-1.976-2.192a48.424 48.424 0 00-1.123-.08m-5.801 0c-.065.21-.1.433-.1.664 0 .414.336.75.75.75h4.5a.75.75 0 00.75-.75 2.25 2.25 0 00-.1-.664m-5.8 0A2.251 2.251 0 0113.5 2.25H15c1.012 0 1.867.668 2.15 1.586m-5.8 0c-.376.023-.75.05-1.124.08C9.095 4.01 8.25 4.973 8.25 6.108V8.25m0 0H4.875c-.621 0-1.125.504-1.125 1.125v11.25c0 .621.504 1.125 1.125 1.125h9.75c.621 0 1.125-.504 1.125-1.125V9.375c0-.621-.504-1.125-1.125-1.125H8.25z" />
-                    </svg>
-                    <p className="text-gray-500 text-sm">No assessment configured for this job</p>
-                    <p className="text-xs text-gray-400 mt-1">
-                      Add a TestGorilla Assessment ID in the job settings to enable assessments.
-                    </p>
-                  </CardContent>
-                </Card>
-              )
-            }
-
-            if (!assessmentInvitation) {
-              return (
-                <Card className="shadow-sm">
-                  <CardContent className="py-12 text-center">
-                    <svg className="w-12 h-12 mx-auto text-gray-300 mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h3.75M9 15h3.75M9 18h3.75m3 .75H18a2.25 2.25 0 002.25-2.25V6.108c0-1.135-.845-2.098-1.976-2.192a48.424 48.424 0 00-1.123-.08m-5.801 0c-.065.21-.1.433-.1.664 0 .414.336.75.75.75h4.5a.75.75 0 00.75-.75 2.25 2.25 0 00-.1-.664m-5.8 0A2.251 2.251 0 0113.5 2.25H15c1.012 0 1.867.668 2.15 1.586m-5.8 0c-.376.023-.75.05-1.124.08C9.095 4.01 8.25 4.973 8.25 6.108V8.25m0 0H4.875c-.621 0-1.125.504-1.125 1.125v11.25c0 .621.504 1.125 1.125 1.125h9.75c.621 0 1.125-.504 1.125-1.125V9.375c0-.621-.504-1.125-1.125-1.125H8.25z" />
-                    </svg>
-                    <p className="text-gray-500 text-sm">No assessment sent yet</p>
-                    {isActive && canManageCandidates && (
-                      <Button
-                        className="mt-4"
-                        onClick={handleSendAssessment}
-                        disabled={sendingAssessment}
-                      >
-                        {sendingAssessment ? 'Sending...' : 'Send Assessment'}
-                      </Button>
-                    )}
-                  </CardContent>
-                </Card>
-              )
-            }
-
-            const statusConfig = ASSESSMENT_STATUS_CONFIG[assessmentInvitation.status as keyof typeof ASSESSMENT_STATUS_CONFIG]
-
-            return (
-              <Card className="shadow-sm">
-                <CardHeader>
-                  <div className="flex items-center justify-between">
-                    <CardTitle className="text-base">Assessment Status</CardTitle>
-                    <Badge className={`text-xs ${statusConfig?.className || ''}`}>
-                      {statusConfig?.label || assessmentInvitation.status}
-                    </Badge>
-                  </div>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <span className="text-gray-500 text-xs uppercase tracking-wide">Status</span>
-                      <p className="font-medium mt-0.5">{statusConfig?.label || assessmentInvitation.status}</p>
-                    </div>
-                    <div>
-                      <span className="text-gray-500 text-xs uppercase tracking-wide">Invited</span>
-                      <p className="font-medium mt-0.5">
-                        {new Date(assessmentInvitation.invited_at).toLocaleDateString()}
-                      </p>
-                    </div>
-                    {assessmentInvitation.score != null && (
-                      <div>
-                        <span className="text-gray-500 text-xs uppercase tracking-wide">Score</span>
-                        <p className="font-medium mt-0.5 text-lg">{Math.round(assessmentInvitation.score)}%</p>
-                      </div>
-                    )}
-                    {assessmentInvitation.completed_at && (
-                      <div>
-                        <span className="text-gray-500 text-xs uppercase tracking-wide">Completed</span>
-                        <p className="font-medium mt-0.5">
-                          {new Date(assessmentInvitation.completed_at).toLocaleDateString()}
-                        </p>
-                      </div>
-                    )}
-                  </div>
-
-                  {assessmentInvitation.status !== 'completed' && (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={loadApplication}
-                    >
-                      Refresh Results
-                    </Button>
-                  )}
-
-                  {assessmentInvitation.status === 'completed' && assessmentInvitation.results_data && Object.keys(assessmentInvitation.results_data).length > 0 && (
-                    <div className="mt-4 border-t pt-4">
-                      <h4 className="text-sm font-semibold text-gray-700 mb-2">Detailed Results</h4>
-                      <pre className="text-xs bg-gray-50 p-3 rounded-lg overflow-auto max-h-64 whitespace-pre-wrap">
-                        {JSON.stringify(assessmentInvitation.results_data, null, 2)}
-                      </pre>
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-            )
-          })()}
+          <AssessmentTab
+            assessmentInvitation={assessmentInvitation}
+            isActive={isActive}
+            canManage={canManageCandidates}
+            sending={sendingAssessment}
+            onSend={handleSendAssessment}
+            onSaveScore={handleSaveScore}
+          />
         </TabsContent>
 
         {/* ============ TAB 3: Interviews ============ */}
@@ -1035,6 +1009,81 @@ export default function ApplicationDetailPage() {
             </Card>
           )}
         </TabsContent>
+
+        {/* ============ TAB 5: Notes ============ */}
+        <TabsContent value="notes" className="mt-6">
+          <div className="max-w-2xl space-y-4">
+            <Card className="shadow-sm">
+              <CardHeader className="pb-3">
+                <CardTitle className="text-base">Candidate Notes</CardTitle>
+                <p className="text-sm text-gray-500">
+                  Internal notes about {candidate?.first_name} {candidate?.last_name} for this application. Only visible to your team.
+                </p>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {canManageCandidates && (
+                  <div className="space-y-2">
+                    <Textarea
+                      rows={3}
+                      placeholder="Add a note about this candidate..."
+                      value={noteInput}
+                      onChange={(e) => setNoteInput(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) handleAddNote()
+                      }}
+                    />
+                    {noteError && <p className="text-xs text-red-600">{noteError}</p>}
+                    <div className="flex justify-end">
+                      <Button
+                        size="sm"
+                        onClick={handleAddNote}
+                        disabled={addingNote || !noteInput.trim()}
+                      >
+                        {addingNote ? 'Adding...' : 'Add Note'}
+                      </Button>
+                    </div>
+                  </div>
+                )}
+
+                <Separator />
+
+                {notes.length === 0 ? (
+                  <div className="text-center py-8 text-gray-400">
+                    <svg className="w-8 h-8 mx-auto mb-2 text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0115.75 21H5.25A2.25 2.25 0 013 18.75V8.25A2.25 2.25 0 015.25 6H10" />
+                    </svg>
+                    <p className="text-sm">No notes yet</p>
+                    <p className="text-xs mt-1">Add your first note above</p>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {notes.map((note) => (
+                      <div key={note.id} className="bg-amber-50 border border-amber-100 rounded-lg p-3">
+                        <div className="flex items-start justify-between gap-2">
+                          <p className="text-sm text-gray-800 whitespace-pre-wrap flex-1">{note.content}</p>
+                          {user?.id === note.user_id && (
+                            <button
+                              onClick={() => handleDeleteNote(note.id)}
+                              className="text-gray-400 hover:text-red-500 transition-colors shrink-0 mt-0.5"
+                              title="Delete note"
+                            >
+                              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" />
+                              </svg>
+                            </button>
+                          )}
+                        </div>
+                        <p className="text-xs text-gray-400 mt-1.5">
+                          {new Date(note.created_at).toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' })}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+        </TabsContent>
       </Tabs>
 
       {/* ====== ACTION DIALOGS ====== */}
@@ -1225,5 +1274,176 @@ function LinkField({ label, url, text }: { label: string; url: string | null | u
         ) : <span className="text-gray-300">-</span>}
       </p>
     </div>
+  )
+}
+
+/* ====== Assessment Tab Component ====== */
+
+function AssessmentTab({ assessmentInvitation, isActive, canManage, sending, onSend, onSaveScore }: {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  assessmentInvitation: any
+  isActive: boolean
+  canManage: boolean
+  sending: boolean
+  onSend: (link: string, instructions: string, expiryDate: string) => void
+  onSaveScore: (invitationId: string, score: number) => void
+}) {
+  const [link, setLink] = useState('')
+  const [instructions, setInstructions] = useState('')
+  const [expiryDate, setExpiryDate] = useState('')
+  const [scoreInput, setScoreInput] = useState('')
+  const [savingScore, setSavingScore] = useState(false)
+
+  async function handleScoreSave() {
+    if (!assessmentInvitation) return
+    const n = parseFloat(scoreInput)
+    if (isNaN(n) || n < 0 || n > 100) return
+    setSavingScore(true)
+    await onSaveScore(assessmentInvitation.id, n)
+    setSavingScore(false)
+  }
+
+  const STATUS_COLORS: Record<string, string> = {
+    invited: 'bg-amber-100 text-amber-700',
+    started: 'bg-blue-100 text-blue-700',
+    completed: 'bg-green-100 text-green-700',
+    expired: 'text-gray-500',
+  }
+  const STATUS_LABELS: Record<string, string> = {
+    invited: 'Sent',
+    started: 'In Progress',
+    completed: 'Completed',
+    expired: 'Expired',
+  }
+
+  if (!assessmentInvitation) {
+    return (
+      <Card className="shadow-sm">
+        <CardHeader>
+          <CardTitle className="text-base">Send Assessment</CardTitle>
+          <p className="text-sm text-gray-500">Send an online assessment link to this candidate via email.</p>
+        </CardHeader>
+        <CardContent className="space-y-4 max-w-lg">
+          <div className="space-y-2">
+            <Label>Assessment Link <span className="text-red-500">*</span></Label>
+            <input
+              type="url"
+              className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+              placeholder="https://your-assessment-platform.com/test/..."
+              value={link}
+              onChange={(e) => setLink(e.target.value)}
+            />
+          </div>
+          <div className="space-y-2">
+            <Label>Expiry Date</Label>
+            <input
+              type="date"
+              className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+              value={expiryDate}
+              onChange={(e) => setExpiryDate(e.target.value)}
+            />
+          </div>
+          <div className="space-y-2">
+            <Label>Instructions for Candidate</Label>
+            <Textarea
+              rows={3}
+              placeholder="Optional instructions or notes for the candidate..."
+              value={instructions}
+              onChange={(e) => setInstructions(e.target.value)}
+            />
+          </div>
+          {isActive && canManage && (
+            <Button
+              onClick={() => onSend(link, instructions, expiryDate)}
+              disabled={sending || !link.trim()}
+            >
+              {sending ? 'Sending...' : 'Send Assessment Email'}
+            </Button>
+          )}
+        </CardContent>
+      </Card>
+    )
+  }
+
+  const statusColor = STATUS_COLORS[assessmentInvitation.status] || 'bg-gray-100 text-gray-700'
+  const statusLabel = STATUS_LABELS[assessmentInvitation.status] || assessmentInvitation.status
+
+  return (
+    <Card className="shadow-sm">
+      <CardHeader>
+        <div className="flex items-center justify-between">
+          <CardTitle className="text-base">Assessment</CardTitle>
+          <Badge className={`text-xs ${statusColor}`}>{statusLabel}</Badge>
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="grid grid-cols-2 gap-4 text-sm">
+          <div>
+            <span className="text-gray-500 text-xs uppercase tracking-wide">Sent On</span>
+            <p className="font-medium mt-0.5">{new Date(assessmentInvitation.sent_at || assessmentInvitation.invited_at).toLocaleDateString()}</p>
+          </div>
+          {assessmentInvitation.expiry_date && (
+            <div>
+              <span className="text-gray-500 text-xs uppercase tracking-wide">Expires</span>
+              <p className="font-medium mt-0.5">{new Date(assessmentInvitation.expiry_date).toLocaleDateString()}</p>
+            </div>
+          )}
+          {assessmentInvitation.score != null && (
+            <div>
+              <span className="text-gray-500 text-xs uppercase tracking-wide">Score</span>
+              <p className="font-medium mt-0.5 text-lg">{Math.round(assessmentInvitation.score)}%</p>
+            </div>
+          )}
+          {assessmentInvitation.completed_at && (
+            <div>
+              <span className="text-gray-500 text-xs uppercase tracking-wide">Scored On</span>
+              <p className="font-medium mt-0.5">{new Date(assessmentInvitation.completed_at).toLocaleDateString()}</p>
+            </div>
+          )}
+        </div>
+
+        {assessmentInvitation.assessment_link && (
+          <div>
+            <span className="text-gray-500 text-xs uppercase tracking-wide">Assessment Link</span>
+            <a
+              href={assessmentInvitation.assessment_link}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="block text-sm text-blue-600 hover:underline mt-0.5 truncate"
+            >
+              {assessmentInvitation.assessment_link}
+            </a>
+          </div>
+        )}
+
+        {assessmentInvitation.instructions && (
+          <div>
+            <span className="text-gray-500 text-xs uppercase tracking-wide">Instructions</span>
+            <p className="text-sm text-gray-700 mt-0.5 whitespace-pre-wrap">{assessmentInvitation.instructions}</p>
+          </div>
+        )}
+
+        {canManage && assessmentInvitation.status !== 'completed' && (
+          <div className="border-t pt-4 space-y-2">
+            <Label className="text-sm font-medium">Enter Score (0-100)</Label>
+            <p className="text-xs text-gray-500">Once the candidate completes the assessment, enter their score manually.</p>
+            <div className="flex items-center gap-2">
+              <input
+                type="number"
+                min={0}
+                max={100}
+                className="flex h-9 w-24 rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                placeholder="e.g. 78"
+                value={scoreInput}
+                onChange={(e) => setScoreInput(e.target.value)}
+              />
+              <Button size="sm" onClick={handleScoreSave} disabled={savingScore || !scoreInput}>
+                {savingScore ? 'Saving...' : 'Save Score'}
+              </Button>
+            </div>
+          </div>
+        )}
+      </CardContent>
+    </Card>
   )
 }

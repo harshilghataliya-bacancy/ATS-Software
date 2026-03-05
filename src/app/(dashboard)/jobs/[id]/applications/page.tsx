@@ -17,7 +17,6 @@ import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from '@/components/ui/table'
 import { ScoreBreakdownDialog } from './score-breakdown-dialog'
-import { ASSESSMENT_STATUS_CONFIG } from '@/lib/constants'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -111,7 +110,6 @@ export default function ApplicationsPage() {
 
   // Assessment invitations
   const [assessmentInvitations, setAssessmentInvitations] = useState<Record<string, AssessmentInv>>({})
-  const [sendingAssessment, setSendingAssessment] = useState<string | null>(null)
 
   const fetchScores = useCallback(async (): Promise<Record<string, MatchScore>> => {
     if (!organization) return {}
@@ -139,7 +137,7 @@ export default function ApplicationsPage() {
   const fetchAssessmentInvitations = useCallback(async () => {
     if (!organization) return
     try {
-      const res = await fetch(`/api/testgorilla/results?job_id=${params.id}`)
+      const res = await fetch(`/api/assessments?job_id=${params.id}`)
       if (res.ok) {
         const { invitations } = await res.json()
         if (invitations) {
@@ -154,27 +152,6 @@ export default function ApplicationsPage() {
       // Silently fail - assessments are supplementary
     }
   }, [organization, params.id])
-
-  async function handleSendAssessment(applicationId: string) {
-    setSendingAssessment(applicationId)
-    setError(null)
-    try {
-      const res = await fetch('/api/testgorilla/invite', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ application_id: applicationId }),
-      })
-      if (!res.ok) {
-        const data = await res.json()
-        setError(data.error || 'Failed to send assessment')
-      } else {
-        await fetchAssessmentInvitations()
-      }
-    } catch {
-      setError('Failed to send assessment')
-    }
-    setSendingAssessment(null)
-  }
 
   // Stop polling on unmount
   useEffect(() => {
@@ -636,30 +613,23 @@ export default function ApplicationsPage() {
                   <TableCell>
                     {(() => {
                       const inv = assessmentInvitations[app.id]
-                      if (inv) {
-                        const config = ASSESSMENT_STATUS_CONFIG[inv.status as keyof typeof ASSESSMENT_STATUS_CONFIG]
-                        return (
-                          <Badge className={`text-[10px] ${config?.className || ''}`}>
-                            {inv.status === 'completed' && inv.score != null
-                              ? `${Math.round(inv.score)}%`
-                              : config?.label || inv.status}
-                          </Badge>
-                        )
+                      if (!inv) return <span className="text-xs text-gray-400">-</span>
+                      const statusColors: Record<string, string> = {
+                        invited: 'bg-amber-100 text-amber-700',
+                        started: 'bg-blue-100 text-blue-700',
+                        completed: 'bg-green-100 text-green-700',
+                        expired: 'text-gray-500',
                       }
-                      if (job?.testgorilla_assessment_id && app.status === 'active') {
-                        return (
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="text-[10px] h-6 px-2"
-                            disabled={sendingAssessment === app.id}
-                            onClick={() => handleSendAssessment(app.id)}
-                          >
-                            {sendingAssessment === app.id ? 'Sending...' : 'Send'}
-                          </Button>
-                        )
+                      const statusLabels: Record<string, string> = {
+                        invited: 'Sent', started: 'In Progress', completed: 'Completed', expired: 'Expired',
                       }
-                      return <span className="text-xs text-gray-400">-</span>
+                      return (
+                        <Badge className={`text-[10px] ${statusColors[inv.status] || ''}`}>
+                          {inv.status === 'completed' && inv.score != null
+                            ? `${Math.round(inv.score)}%`
+                            : statusLabels[inv.status] || inv.status}
+                        </Badge>
+                      )
                     })()}
                   </TableCell>
                   <TableCell className="text-sm text-gray-600">
