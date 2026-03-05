@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { randomUUID } from 'crypto'
 import { createClient } from '@/lib/supabase/server'
 import { getOfferById, sendOffer } from '@/lib/services/offers'
-import { getActiveOfferTemplate } from '@/lib/services/offer-templates'
+import { getActiveOfferTemplate, getOfferTemplateById } from '@/lib/services/offer-templates'
 import { getValidAccessToken, sendGmailEmail } from '@/lib/services/gmail'
 import { logEmail } from '@/lib/services/email'
 import { substituteOfferVariables, formatSalary } from '@/lib/offer-template'
@@ -44,8 +44,20 @@ export async function POST(
     return NextResponse.json({ error: 'Offer not found' }, { status: 404 })
   }
 
+  const resendableStatuses = ['draft', 'declined', 'expired']
+  if (!resendableStatuses.includes(offer.status)) {
+    return NextResponse.json(
+      { error: `Cannot send an offer with status "${offer.status}". Only draft, declined, or expired offers can be sent.` },
+      { status: 400 }
+    )
+  }
+
+  // Reset declined/expired offers back to draft before resending
   if (offer.status !== 'draft') {
-    return NextResponse.json({ error: 'Only draft offers can be sent' }, { status: 400 })
+    await supabase
+      .from('offer_letters')
+      .update({ status: 'draft', responded_at: null, response_notes: null, updated_at: new Date().toISOString() })
+      .eq('id', id)
   }
 
   const candidate = offer.application?.candidate
@@ -84,8 +96,16 @@ export async function POST(
     ? new Date(offer.expiry_date).toLocaleDateString('en-US', { dateStyle: 'long' })
     : 'TBD'
 
-  // Fetch active offer template for email + PDF customization
-  const { data: activeTemplate } = await getActiveOfferTemplate(supabase, orgId)
+  // Fetch the offer's saved template, falling back to the active template
+  let activeTemplate = null
+  if (offer.offer_template_id) {
+    const { data } = await getOfferTemplateById(supabase, offer.offer_template_id, orgId)
+    activeTemplate = data
+  }
+  if (!activeTemplate) {
+    const { data } = await getActiveOfferTemplate(supabase, orgId)
+    activeTemplate = data
+  }
 
   const templateVars = {
     candidate_name: candidateName,

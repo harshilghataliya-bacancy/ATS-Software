@@ -7,6 +7,7 @@ import { useGmailStatus } from '@/lib/hooks/use-gmail-status'
 import { createClient } from '@/lib/supabase/client'
 import { getApplicationById } from '@/lib/services/applications'
 import { getEmailTemplates } from '@/lib/services/email'
+import { getOfferTemplates } from '@/lib/services/offer-templates'
 import { substituteOfferVariables, formatSalary } from '@/lib/offer-template'
 import {
   DEFAULT_OFFER_TEMPLATE, SALARY_STRUCTURE_CONFIG,
@@ -19,7 +20,7 @@ import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Switch } from '@/components/ui/switch'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from '@/components/ui/select'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type AnyData = Record<string, any>
@@ -136,6 +137,9 @@ export default function NewOfferWizardPage() {
   // Application data
   const [application, setApplication] = useState<AnyData | null>(null)
   const [templates, setTemplates] = useState<AnyData[]>([])
+  const [offerTemplates, setOfferTemplates] = useState<AnyData[]>([])
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string>('default')
+  const [selectedOfferTemplate, setSelectedOfferTemplate] = useState<AnyData | null>(null)
 
   // Form state
   const [form, setForm] = useState<OfferFormData>({
@@ -171,9 +175,10 @@ export default function NewOfferWizardPage() {
     setLoading(true)
     const supabase = createClient()
 
-    const [appResult, templatesResult] = await Promise.all([
+    const [appResult, templatesResult, offerTplResult] = await Promise.all([
       getApplicationById(supabase, applicationId, organization.id),
       getEmailTemplates(supabase, organization.id, 'offer'),
+      getOfferTemplates(supabase, organization.id),
     ])
 
     if (appResult.error || !appResult.data) {
@@ -185,6 +190,7 @@ export default function NewOfferWizardPage() {
     const app = appResult.data
     setApplication(app)
     setTemplates(templatesResult.data || [])
+    setOfferTemplates(offerTplResult.data || [])
 
     // Pre-fill form from application data
     setForm((prev) => ({
@@ -276,13 +282,24 @@ export default function NewOfferWizardPage() {
   }
 
   function handleTemplateSelect(templateId: string) {
+    setSelectedTemplateId(templateId)
     if (templateId === 'default') {
+      setSelectedOfferTemplate(null)
       setForm((prev) => ({ ...prev, templateHtml: DEFAULT_OFFER_TEMPLATE }))
       return
     }
-    const t = templates.find((t) => t.id === templateId)
-    if (t) {
-      setForm((prev) => ({ ...prev, templateHtml: t.body_html }))
+    // Check email templates first
+    const emailTpl = templates.find((t) => t.id === templateId)
+    if (emailTpl) {
+      setSelectedOfferTemplate(null)
+      setForm((prev) => ({ ...prev, templateHtml: emailTpl.body_html }))
+      return
+    }
+    // Check offer templates (use email_body field + store full template for PDF)
+    const offerTpl = offerTemplates.find((t) => t.id === templateId)
+    if (offerTpl) {
+      setSelectedOfferTemplate(offerTpl)
+      setForm((prev) => ({ ...prev, templateHtml: offerTpl.email_body || DEFAULT_OFFER_TEMPLATE }))
     }
   }
 
@@ -347,6 +364,7 @@ export default function NewOfferWizardPage() {
           pf_applicable: form.pfApplicable,
           work_type: form.workType,
           business_unit: form.businessUnit || undefined,
+          offer_template_id: selectedOfferTemplate?.id ?? null,
         }),
       })
       const data = await res.json()
@@ -383,6 +401,7 @@ export default function NewOfferWizardPage() {
   function buildPdfPayload() {
     const empLabel = EMPLOYMENT_TYPE_OPTIONS.find((e) => e.value === form.employmentType)?.label || form.employmentType
     const workLabel = WORK_TYPE_OPTIONS.find((w) => w.value === form.workType)?.label || form.workType
+    const tpl = selectedOfferTemplate
     return {
       companyName: organization?.name || '',
       candidateName,
@@ -402,6 +421,31 @@ export default function NewOfferWizardPage() {
       salaryComponents: form.salaryComponents,
       bonusComponents: form.bonusComponents.filter((b) => b.name && b.amount > 0),
       pfApplicable: form.pfApplicable,
+      // Pass selected offer template data directly so PDF API uses it
+      ...(tpl ? {
+        templateLogoUrl: tpl.logo_url || undefined,
+        templateCompanyName: tpl.company_name || undefined,
+        templateTerms: tpl.terms_and_conditions || undefined,
+        primaryColor: tpl.primary_color || undefined,
+        accentColor: tpl.accent_color || undefined,
+        headerSubtitle: tpl.header_subtitle || undefined,
+        greetingText: tpl.greeting_text || undefined,
+        introText: tpl.intro_text || undefined,
+        closingText: tpl.closing_text || undefined,
+        validityText: tpl.validity_text || undefined,
+        acceptanceText: tpl.acceptance_text || undefined,
+        signatoryName: tpl.signatory_name || undefined,
+        signatoryTitle: tpl.signatory_title || undefined,
+        signatoryLabel: tpl.signatory_label || undefined,
+        candidateSigLabel: tpl.candidate_sig_label || undefined,
+        showSalaryBreakdown: tpl.show_salary_breakdown ?? true,
+        showBonusSection: tpl.show_bonus_section ?? true,
+        showTermsSection: tpl.show_terms_section ?? true,
+        showAcceptanceSection: tpl.show_acceptance_section ?? true,
+        showSignatureBlock: tpl.show_signature_block ?? true,
+        footerText: tpl.footer_text || undefined,
+        usePassedTemplate: true,
+      } : {}),
     }
   }
 
@@ -1044,15 +1088,31 @@ export default function NewOfferWizardPage() {
                 {/* Template selector */}
                 <div>
                   <Label>Select Template</Label>
-                  <Select onValueChange={handleTemplateSelect} defaultValue="default">
+                  <Select onValueChange={handleTemplateSelect} value={selectedTemplateId}>
                     <SelectTrigger>
                       <SelectValue placeholder="Choose a template..." />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="default">Default Email Template</SelectItem>
-                      {templates.map((t) => (
-                        <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>
-                      ))}
+                      <SelectGroup>
+                        <SelectLabel className="text-xs text-gray-400">Default</SelectLabel>
+                        <SelectItem value="default">Default Email Template</SelectItem>
+                      </SelectGroup>
+                      {offerTemplates.length > 0 && (
+                        <SelectGroup>
+                          <SelectLabel className="text-xs text-gray-400">Offer Templates</SelectLabel>
+                          {offerTemplates.map((t) => (
+                            <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>
+                          ))}
+                        </SelectGroup>
+                      )}
+                      {templates.length > 0 && (
+                        <SelectGroup>
+                          <SelectLabel className="text-xs text-gray-400">Email Templates</SelectLabel>
+                          {templates.map((t) => (
+                            <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>
+                          ))}
+                        </SelectGroup>
+                      )}
                     </SelectContent>
                   </Select>
                 </div>

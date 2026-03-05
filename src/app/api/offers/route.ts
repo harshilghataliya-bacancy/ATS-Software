@@ -100,6 +100,7 @@ export async function POST(request: NextRequest) {
       pf_applicable: parsed.data.pf_applicable,
       work_type: parsed.data.work_type,
       business_unit: parsed.data.business_unit,
+      offer_template_id: parsed.data.offer_template_id ?? null,
     },
     user.id
   )

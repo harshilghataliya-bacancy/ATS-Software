@@ -123,6 +123,9 @@ export default function OfferDetailPage() {
     : '??'
   const isDraft = offer?.status === 'draft'
   const isSent = offer?.status === 'sent'
+  const isDeclined = offer?.status === 'declined'
+  const isExpired = offer?.status === 'expired'
+  const canResend = isDeclined || isExpired
 
   async function loadPdfPreview() {
     if (!offer) return
@@ -338,6 +341,24 @@ export default function OfferDetailPage() {
                     Revoke
                   </Button>
                 </>
+              )}
+              {canManageOffers && canResend && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => {
+                    if (!gmailConnected && !gmailLoading) {
+                      setError('Please connect Gmail in Settings before sending offers.')
+                      return
+                    }
+                    setSendDialogOpen(true)
+                  }}
+                >
+                  <svg className="w-4 h-4 mr-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" />
+                  </svg>
+                  Resend Offer
+                </Button>
               )}
               {canManageOffers && isDraft && (
                 <Button size="sm" variant="destructive" onClick={() => setDeleteDialogOpen(true)}>
@@ -636,19 +657,22 @@ export default function OfferDetailPage() {
         </div>
       </div>
 
-      {/* Send Confirmation Dialog */}
+      {/* Send / Resend Confirmation Dialog */}
       <AlertDialog open={sendDialogOpen} onOpenChange={setSendDialogOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Send Offer?</AlertDialogTitle>
+            <AlertDialogTitle>{canResend ? 'Resend Offer?' : 'Send Offer?'}</AlertDialogTitle>
             <AlertDialogDescription>
-              This will send the offer letter to {candidate?.email} via Gmail with PDF attachment. The offer status will change to &quot;Sent&quot;.
+              {canResend
+                ? `The offer was previously ${offer?.status}. This will resend the offer letter to ${candidate?.email} via Gmail with a fresh PDF attachment. The offer status will be reset to "Sent".`
+                : `This will send the offer letter to ${candidate?.email} via Gmail with PDF attachment. The offer status will change to "Sent".`
+              }
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction onClick={handleSend} disabled={sending}>
-              {sending ? 'Sending...' : 'Send Offer'}
+              {sending ? 'Sending...' : canResend ? 'Resend Offer' : 'Send Offer'}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

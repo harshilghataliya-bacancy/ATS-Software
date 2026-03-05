@@ -42,6 +42,7 @@ interface OfferData {
   pf_applicable?: boolean
   work_type?: string
   business_unit?: string
+  offer_template_id?: string | null
 }
 
 // ---------------------------------------------------------------------------

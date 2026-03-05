@@ -31,6 +31,7 @@ const baseOfferSchema = z.object({
   pf_applicable: z.boolean().optional(),
   work_type: z.string().optional(),
   business_unit: z.string().optional(),
+  offer_template_id: z.string().uuid().optional().nullable(),
 })
 
 export const createOfferSchema = baseOfferSchema.refine(

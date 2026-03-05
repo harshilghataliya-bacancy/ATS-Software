@@ -26,19 +26,23 @@ export async function POST(request: NextRequest) {
       .is('deleted_at', null)
       .single()
 
-    let activeTemplate = null
-    if (membership) {
+    // Use template data passed directly from the client (selected template) OR fall back to active template
+    let tpl: Record<string, unknown> | null = null
+    if (body.usePassedTemplate) {
+      // Client passed full template fields — use them directly
+      tpl = body
+    } else if (membership) {
       const { data } = await getActiveOfferTemplate(supabase, membership.organization_id)
-      activeTemplate = data
+      tpl = data
     }
 
     // Resolve logo URL (converts SVG to PNG if needed)
-    const logoUrl = activeTemplate?.logo_url || undefined
+    const logoUrl = (tpl?.templateLogoUrl || tpl?.logo_url) as string | undefined
     const resolvedLogo = logoUrl ? await resolveLogoForPdf(logoUrl) : undefined
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const pdfElement = React.createElement(OfferPDFDocument, {
-      companyName: activeTemplate?.company_name || body.companyName || 'Company',
+      companyName: (tpl?.templateCompanyName || tpl?.company_name || body.companyName || 'Company') as string,
       candidateName: body.candidateName || '',
       candidateEmail: body.candidateEmail || '',
       jobTitle: body.jobTitle || '',
@@ -57,27 +61,27 @@ export async function POST(request: NextRequest) {
       bonusComponents: body.bonusComponents || undefined,
       pfApplicable: body.pfApplicable ?? false,
       templateLogoUrl: resolvedLogo,
-      templateCompanyName: activeTemplate?.company_name || undefined,
-      templateTerms: activeTemplate?.terms_and_conditions || undefined,
+      templateCompanyName: (tpl?.templateCompanyName || tpl?.company_name) as string | undefined,
+      templateTerms: (tpl?.templateTerms || tpl?.terms_and_conditions) as string | undefined,
       // Full template customization
-      primaryColor: activeTemplate?.primary_color || undefined,
-      accentColor: activeTemplate?.accent_color || undefined,
-      headerSubtitle: activeTemplate?.header_subtitle || undefined,
-      greetingText: activeTemplate?.greeting_text || undefined,
-      introText: activeTemplate?.intro_text || undefined,
-      closingText: activeTemplate?.closing_text || undefined,
-      validityText: activeTemplate?.validity_text || undefined,
-      acceptanceText: activeTemplate?.acceptance_text || undefined,
-      signatoryName: activeTemplate?.signatory_name || undefined,
-      signatoryTitle: activeTemplate?.signatory_title || undefined,
-      signatoryLabel: activeTemplate?.signatory_label || undefined,
-      candidateSigLabel: activeTemplate?.candidate_sig_label || undefined,
-      showSalaryBreakdown: activeTemplate?.show_salary_breakdown ?? true,
-      showBonusSection: activeTemplate?.show_bonus_section ?? true,
-      showTermsSection: activeTemplate?.show_terms_section ?? true,
-      showAcceptanceSection: activeTemplate?.show_acceptance_section ?? true,
-      showSignatureBlock: activeTemplate?.show_signature_block ?? true,
-      footerText: activeTemplate?.footer_text || undefined,
+      primaryColor: (tpl?.primaryColor || tpl?.primary_color) as string | undefined,
+      accentColor: (tpl?.accentColor || tpl?.accent_color) as string | undefined,
+      headerSubtitle: (tpl?.headerSubtitle || tpl?.header_subtitle) as string | undefined,
+      greetingText: (tpl?.greetingText || tpl?.greeting_text) as string | undefined,
+      introText: (tpl?.introText || tpl?.intro_text) as string | undefined,
+      closingText: (tpl?.closingText || tpl?.closing_text) as string | undefined,
+      validityText: (tpl?.validityText || tpl?.validity_text) as string | undefined,
+      acceptanceText: (tpl?.acceptanceText || tpl?.acceptance_text) as string | undefined,
+      signatoryName: (tpl?.signatoryName || tpl?.signatory_name) as string | undefined,
+      signatoryTitle: (tpl?.signatoryTitle || tpl?.signatory_title) as string | undefined,
+      signatoryLabel: (tpl?.signatoryLabel || tpl?.signatory_label) as string | undefined,
+      candidateSigLabel: (tpl?.candidateSigLabel || tpl?.candidate_sig_label) as string | undefined,
+      showSalaryBreakdown: ((tpl?.showSalaryBreakdown ?? tpl?.show_salary_breakdown) as boolean | undefined) ?? true,
+      showBonusSection: ((tpl?.showBonusSection ?? tpl?.show_bonus_section) as boolean | undefined) ?? true,
+      showTermsSection: ((tpl?.showTermsSection ?? tpl?.show_terms_section) as boolean | undefined) ?? true,
+      showAcceptanceSection: ((tpl?.showAcceptanceSection ?? tpl?.show_acceptance_section) as boolean | undefined) ?? true,
+      showSignatureBlock: ((tpl?.showSignatureBlock ?? tpl?.show_signature_block) as boolean | undefined) ?? true,
+      footerText: (tpl?.footerText || tpl?.footer_text) as string | undefined,
     }) as any
 
     const buffer = await renderToBuffer(pdfElement)

@@ -286,6 +286,7 @@ export interface OfferLetter {
   pf_applicable: boolean
   work_type: string | null
   business_unit: string | null
+  offer_template_id: string | null
   response_token: string | null
   created_by: string
   created_at: string
