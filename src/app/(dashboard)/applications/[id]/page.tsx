@@ -103,7 +103,7 @@ export default function ApplicationDetailPage() {
   const [userNames, setUserNames] = useState<Record<string, string>>({})
 
   // Assessment state
-  const [assessmentInvitation, setAssessmentInvitation] = useState<AnyData | null>(null)
+  const [assessmentInvitations, setAssessmentInvitations] = useState<AnyData[]>([])
   const [sendingAssessment, setSendingAssessment] = useState(false)
 
   // Notes state
@@ -141,13 +141,12 @@ export default function ApplicationDetailPage() {
         resolveUserNames(allUserIds).then(setUserNames)
       }
 
-      // Fetch assessment invitation
+      // Fetch assessment invitations for this application
       try {
-        const res = await fetch(`/api/assessments?job_id=${data.job_id}`)
+        const res = await fetch(`/api/assessments?application_id=${data.id}`)
         if (res.ok) {
           const { invitations } = await res.json()
-          const inv = (invitations || []).find((i: AnyData) => i.application_id === data.id) || null
-          setAssessmentInvitation(inv)
+          setAssessmentInvitations(invitations || [])
         }
       } catch {
         // Silently fail
@@ -257,7 +256,7 @@ export default function ApplicationDetailPage() {
     }
   }
 
-  async function handleSendAssessment(assessmentLink: string, instructions: string, expiryDate: string) {
+  async function handleSendAssessment(assessmentName: string, assessmentLink: string, instructions: string, expiryDate: string) {
     if (!application) return
     setSendingAssessment(true)
     setError(null)
@@ -267,6 +266,7 @@ export default function ApplicationDetailPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           application_id: application.id,
+          assessment_name: assessmentName || null,
           assessment_link: assessmentLink,
           instructions: instructions || null,
           expiry_date: expiryDate || null,
@@ -453,11 +453,9 @@ export default function ApplicationDetailPage() {
           <TabsTrigger value="resume">Resume</TabsTrigger>
           <TabsTrigger value="assessment">
             Assessment
-            {assessmentInvitation && (
+            {assessmentInvitations.length > 0 && (
               <Badge variant="secondary" className="ml-1.5 text-[10px] h-4 px-1.5">
-                {assessmentInvitation.status === 'completed' && assessmentInvitation.score != null
-                  ? `${Math.round(assessmentInvitation.score)}%`
-                  : assessmentInvitation.status === 'invited' ? 'Sent' : assessmentInvitation.status}
+                {assessmentInvitations.length}
               </Badge>
             )}
           </TabsTrigger>
@@ -737,7 +735,7 @@ export default function ApplicationDetailPage() {
         {/* ============ TAB 2.5: Assessment ============ */}
         <TabsContent value="assessment" className="mt-6 space-y-6">
           <AssessmentTab
-            assessmentInvitation={assessmentInvitation}
+            assessmentInvitations={assessmentInvitations}
             isActive={isActive}
             canManage={canManageCandidates}
             sending={sendingAssessment}
@@ -1279,171 +1277,210 @@ function LinkField({ label, url, text }: { label: string; url: string | null | u
 
 /* ====== Assessment Tab Component ====== */
 
-function AssessmentTab({ assessmentInvitation, isActive, canManage, sending, onSend, onSaveScore }: {
+const ASSESSMENT_STATUS_COLORS: Record<string, string> = {
+  invited: 'bg-amber-100 text-amber-700',
+  started: 'bg-blue-100 text-blue-700',
+  completed: 'bg-green-100 text-green-700',
+  expired: 'bg-gray-100 text-gray-500',
+}
+const ASSESSMENT_STATUS_LABELS: Record<string, string> = {
+  invited: 'Sent',
+  started: 'In Progress',
+  completed: 'Completed',
+  expired: 'Expired',
+}
+
+function AssessmentTab({ assessmentInvitations, isActive, canManage, sending, onSend, onSaveScore }: {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  assessmentInvitation: any
+  assessmentInvitations: any[]
   isActive: boolean
   canManage: boolean
   sending: boolean
-  onSend: (link: string, instructions: string, expiryDate: string) => void
+  onSend: (name: string, link: string, instructions: string, expiryDate: string) => void
   onSaveScore: (invitationId: string, score: number) => void
 }) {
+  const [name, setName] = useState('')
   const [link, setLink] = useState('')
   const [instructions, setInstructions] = useState('')
   const [expiryDate, setExpiryDate] = useState('')
-  const [scoreInput, setScoreInput] = useState('')
-  const [savingScore, setSavingScore] = useState(false)
+  const [scoreInputs, setScoreInputs] = useState<Record<string, string>>({})
+  const [savingScore, setSavingScore] = useState<Record<string, boolean>>({})
 
-  async function handleScoreSave() {
-    if (!assessmentInvitation) return
-    const n = parseFloat(scoreInput)
+  async function handleScoreSave(invId: string) {
+    const n = parseFloat(scoreInputs[invId] || '')
     if (isNaN(n) || n < 0 || n > 100) return
-    setSavingScore(true)
-    await onSaveScore(assessmentInvitation.id, n)
-    setSavingScore(false)
+    setSavingScore((prev) => ({ ...prev, [invId]: true }))
+    await onSaveScore(invId, n)
+    setSavingScore((prev) => ({ ...prev, [invId]: false }))
   }
 
-  const STATUS_COLORS: Record<string, string> = {
-    invited: 'bg-amber-100 text-amber-700',
-    started: 'bg-blue-100 text-blue-700',
-    completed: 'bg-green-100 text-green-700',
-    expired: 'text-gray-500',
+  function handleSend() {
+    if (!link.trim()) return
+    onSend(name, link, instructions, expiryDate)
+    // Reset form after send
+    setName('')
+    setLink('')
+    setInstructions('')
+    setExpiryDate('')
   }
-  const STATUS_LABELS: Record<string, string> = {
-    invited: 'Sent',
-    started: 'In Progress',
-    completed: 'Completed',
-    expired: 'Expired',
-  }
-
-  if (!assessmentInvitation) {
-    return (
-      <Card className="shadow-sm">
-        <CardHeader>
-          <CardTitle className="text-base">Send Assessment</CardTitle>
-          <p className="text-sm text-gray-500">Send an online assessment link to this candidate via email.</p>
-        </CardHeader>
-        <CardContent className="space-y-4 max-w-lg">
-          <div className="space-y-2">
-            <Label>Assessment Link <span className="text-red-500">*</span></Label>
-            <input
-              type="url"
-              className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-              placeholder="https://your-assessment-platform.com/test/..."
-              value={link}
-              onChange={(e) => setLink(e.target.value)}
-            />
-          </div>
-          <div className="space-y-2">
-            <Label>Expiry Date</Label>
-            <input
-              type="date"
-              className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-              value={expiryDate}
-              onChange={(e) => setExpiryDate(e.target.value)}
-            />
-          </div>
-          <div className="space-y-2">
-            <Label>Instructions for Candidate</Label>
-            <Textarea
-              rows={3}
-              placeholder="Optional instructions or notes for the candidate..."
-              value={instructions}
-              onChange={(e) => setInstructions(e.target.value)}
-            />
-          </div>
-          {isActive && canManage && (
-            <Button
-              onClick={() => onSend(link, instructions, expiryDate)}
-              disabled={sending || !link.trim()}
-            >
-              {sending ? 'Sending...' : 'Send Assessment Email'}
-            </Button>
-          )}
-        </CardContent>
-      </Card>
-    )
-  }
-
-  const statusColor = STATUS_COLORS[assessmentInvitation.status] || 'bg-gray-100 text-gray-700'
-  const statusLabel = STATUS_LABELS[assessmentInvitation.status] || assessmentInvitation.status
 
   return (
-    <Card className="shadow-sm">
-      <CardHeader>
-        <div className="flex items-center justify-between">
-          <CardTitle className="text-base">Assessment</CardTitle>
-          <Badge className={`text-xs ${statusColor}`}>{statusLabel}</Badge>
-        </div>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        <div className="grid grid-cols-2 gap-4 text-sm">
-          <div>
-            <span className="text-gray-500 text-xs uppercase tracking-wide">Sent On</span>
-            <p className="font-medium mt-0.5">{new Date(assessmentInvitation.sent_at || assessmentInvitation.invited_at).toLocaleDateString()}</p>
-          </div>
-          {assessmentInvitation.expiry_date && (
-            <div>
-              <span className="text-gray-500 text-xs uppercase tracking-wide">Expires</span>
-              <p className="font-medium mt-0.5">{new Date(assessmentInvitation.expiry_date).toLocaleDateString()}</p>
-            </div>
-          )}
-          {assessmentInvitation.score != null && (
-            <div>
-              <span className="text-gray-500 text-xs uppercase tracking-wide">Score</span>
-              <p className="font-medium mt-0.5 text-lg">{Math.round(assessmentInvitation.score)}%</p>
-            </div>
-          )}
-          {assessmentInvitation.completed_at && (
-            <div>
-              <span className="text-gray-500 text-xs uppercase tracking-wide">Scored On</span>
-              <p className="font-medium mt-0.5">{new Date(assessmentInvitation.completed_at).toLocaleDateString()}</p>
-            </div>
-          )}
-        </div>
-
-        {assessmentInvitation.assessment_link && (
-          <div>
-            <span className="text-gray-500 text-xs uppercase tracking-wide">Assessment Link</span>
-            <a
-              href={assessmentInvitation.assessment_link}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="block text-sm text-blue-600 hover:underline mt-0.5 truncate"
-            >
-              {assessmentInvitation.assessment_link}
-            </a>
-          </div>
-        )}
-
-        {assessmentInvitation.instructions && (
-          <div>
-            <span className="text-gray-500 text-xs uppercase tracking-wide">Instructions</span>
-            <p className="text-sm text-gray-700 mt-0.5 whitespace-pre-wrap">{assessmentInvitation.instructions}</p>
-          </div>
-        )}
-
-        {canManage && assessmentInvitation.status !== 'completed' && (
-          <div className="border-t pt-4 space-y-2">
-            <Label className="text-sm font-medium">Enter Score (0-100)</Label>
-            <p className="text-xs text-gray-500">Once the candidate completes the assessment, enter their score manually.</p>
-            <div className="flex items-center gap-2">
+    <div className="space-y-6">
+      {/* Create New Assessment — always visible when active */}
+      {isActive && canManage && (
+        <Card className="shadow-sm">
+          <CardHeader>
+            <CardTitle className="text-base">
+              {assessmentInvitations.length === 0 ? 'Send Assessment' : 'Send Another Assessment'}
+            </CardTitle>
+            <p className="text-sm text-gray-500">
+              Send an online assessment link to this candidate via email.
+            </p>
+          </CardHeader>
+          <CardContent className="space-y-4 max-w-lg">
+            <div className="space-y-2">
+              <Label>Assessment Name</Label>
               <input
-                type="number"
-                min={0}
-                max={100}
-                className="flex h-9 w-24 rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                placeholder="e.g. 78"
-                value={scoreInput}
-                onChange={(e) => setScoreInput(e.target.value)}
+                type="text"
+                className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                placeholder="e.g. Technical Round 1, Aptitude Test..."
+                value={name}
+                onChange={(e) => setName(e.target.value)}
               />
-              <Button size="sm" onClick={handleScoreSave} disabled={savingScore || !scoreInput}>
-                {savingScore ? 'Saving...' : 'Save Score'}
-              </Button>
             </div>
-          </div>
-        )}
-      </CardContent>
-    </Card>
+            <div className="space-y-2">
+              <Label>Assessment Link <span className="text-red-500">*</span></Label>
+              <input
+                type="url"
+                className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                placeholder="https://your-assessment-platform.com/test/..."
+                value={link}
+                onChange={(e) => setLink(e.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Expiry Date</Label>
+              <input
+                type="date"
+                className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                value={expiryDate}
+                onChange={(e) => setExpiryDate(e.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Instructions for Candidate</Label>
+              <Textarea
+                rows={3}
+                placeholder="Optional instructions or notes for the candidate..."
+                value={instructions}
+                onChange={(e) => setInstructions(e.target.value)}
+              />
+            </div>
+            <Button onClick={handleSend} disabled={sending || !link.trim()}>
+              {sending ? 'Sending...' : 'Send Assessment Email'}
+            </Button>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* List of sent assessments */}
+      {assessmentInvitations.length > 0 && (
+        <div className="space-y-4">
+          <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wide">
+            Sent Assessments ({assessmentInvitations.length})
+          </h3>
+          {assessmentInvitations.map((inv) => {
+            const statusColor = ASSESSMENT_STATUS_COLORS[inv.status] || 'bg-gray-100 text-gray-700'
+            const statusLabel = ASSESSMENT_STATUS_LABELS[inv.status] || inv.status
+
+            return (
+              <Card key={inv.id} className="shadow-sm">
+                <CardContent className="pt-6 space-y-4">
+                  <div className="flex items-start justify-between">
+                    <div className="space-y-0.5">
+                      <div className="flex items-center gap-2">
+                        <h4 className="font-semibold text-sm">
+                          {inv.assessment_name || 'Assessment'}
+                        </h4>
+                        <Badge className={`text-xs ${statusColor}`}>{statusLabel}</Badge>
+                      </div>
+                      <p className="text-xs text-gray-500">
+                        Sent on {new Date(inv.sent_at || inv.invited_at).toLocaleDateString()}
+                        {inv.expiry_date && ` · Expires ${new Date(inv.expiry_date).toLocaleDateString()}`}
+                      </p>
+                    </div>
+                    {inv.score != null && (
+                      <span className="text-2xl font-bold text-green-700">{Math.round(inv.score)}%</span>
+                    )}
+                  </div>
+
+                  {inv.assessment_link && (
+                    <a
+                      href={inv.assessment_link}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="block text-sm text-blue-600 hover:underline truncate"
+                    >
+                      {inv.assessment_link}
+                    </a>
+                  )}
+
+                  {inv.instructions && (
+                    <p className="text-xs text-gray-600 whitespace-pre-wrap bg-gray-50 rounded p-2">
+                      {inv.instructions}
+                    </p>
+                  )}
+
+                  {inv.completed_at && (
+                    <p className="text-xs text-gray-500">
+                      Scored on {new Date(inv.completed_at).toLocaleDateString()}
+                    </p>
+                  )}
+
+                  {canManage && inv.status !== 'completed' && (
+                    <div className="border-t pt-3 space-y-1.5">
+                      <Label className="text-xs font-medium text-gray-600">Enter Score (0–100)</Label>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="number"
+                          min={0}
+                          max={100}
+                          className="flex h-8 w-24 rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                          placeholder="e.g. 78"
+                          value={scoreInputs[inv.id] || ''}
+                          onChange={(e) =>
+                            setScoreInputs((prev) => ({ ...prev, [inv.id]: e.target.value }))
+                          }
+                        />
+                        <Button
+                          size="sm"
+                          className="h-8"
+                          onClick={() => handleScoreSave(inv.id)}
+                          disabled={savingScore[inv.id] || !scoreInputs[inv.id]}
+                        >
+                          {savingScore[inv.id] ? 'Saving...' : 'Save Score'}
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            )
+          })}
+        </div>
+      )}
+
+      {/* Empty state when no assessments and not active/manager */}
+      {assessmentInvitations.length === 0 && (!isActive || !canManage) && (
+        <Card className="shadow-sm">
+          <CardContent className="py-12 text-center">
+            <svg className="w-12 h-12 mx-auto text-gray-300 mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h3.75M9 15h3.75M9 18h3.75m3 .75H18a2.25 2.25 0 002.25-2.25V6.108c0-1.135-.845-2.098-1.976-2.192a48.424 48.424 0 00-1.123-.08m-5.801 0c-.065.21-.1.433-.1.664 0 .414.336.75.75.75h4.5a.75.75 0 00.75-.75 2.25 2.25 0 00-.1-.664m-5.8 0A2.251 2.251 0 0113.5 2.25H15c1.012 0 1.867.668 2.15 1.586m-5.8 0c-.376.023-.75.05-1.124.08C9.095 4.01 8.25 4.973 8.25 6.108V8.25m0 0H4.875c-.621 0-1.125.504-1.125 1.125v11.25c0 .621.504 1.125 1.125 1.125h9.75c.621 0 1.125-.504 1.125-1.125V9.375c0-.621-.504-1.125-1.125-1.125H8.25zM6.75 12h.008v.008H6.75V12zm0 3h.008v.008H6.75V15zm0 3h.008v.008H6.75V18z" />
+            </svg>
+            <p className="text-gray-500 text-sm">No assessments sent yet</p>
+          </CardContent>
+        </Card>
+      )}
+    </div>
   )
 }

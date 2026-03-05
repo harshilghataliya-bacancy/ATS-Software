@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
-import { createAssessmentInvitation, getAssessmentInvitationsForJob } from '@/lib/services/assessments'
+import {
+  createAssessmentInvitation,
+  getAssessmentInvitationsForJob,
+  getAssessmentInvitationsForApplication,
+} from '@/lib/services/assessments'
 import { getValidAccessToken, sendGmailEmail } from '@/lib/services/gmail'
 
 export async function GET(request: NextRequest) {
@@ -17,8 +21,18 @@ export async function GET(request: NextRequest) {
   if (!membership) return NextResponse.json({ error: 'No organization' }, { status: 403 })
 
   const { searchParams } = new URL(request.url)
+  const applicationId = searchParams.get('application_id')
   const jobId = searchParams.get('job_id')
-  if (!jobId) return NextResponse.json({ error: 'job_id required' }, { status: 400 })
+
+  if (applicationId) {
+    const { data, error } = await getAssessmentInvitationsForApplication(
+      supabase, applicationId, membership.organization_id
+    )
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    return NextResponse.json({ invitations: data })
+  }
+
+  if (!jobId) return NextResponse.json({ error: 'application_id or job_id required' }, { status: 400 })
 
   const { data, error } = await getAssessmentInvitationsForJob(supabase, jobId, membership.organization_id)
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
@@ -40,7 +54,7 @@ export async function POST(request: NextRequest) {
   if (!membership) return NextResponse.json({ error: 'No organization' }, { status: 403 })
 
   const body = await request.json()
-  const { application_id, assessment_link, instructions, expiry_date } = body
+  const { application_id, assessment_name, assessment_link, instructions, expiry_date } = body
 
   if (!application_id || !assessment_link) {
     return NextResponse.json({ error: 'application_id and assessment_link are required' }, { status: 400 })
@@ -73,6 +87,7 @@ export async function POST(request: NextRequest) {
       application_id,
       candidate_id: application.candidate_id,
       job_id: application.job_id,
+      assessment_name: assessment_name || null,
       assessment_link,
       instructions: instructions || null,
       expiry_date: expiry_date || null,
@@ -95,14 +110,15 @@ export async function POST(request: NextRequest) {
     const candidateName = `${candidate.first_name} ${candidate.last_name}`
     const orgName = org?.name || 'Our Company'
     const jobTitle = job?.title || 'the position'
+    const assessmentLabel = assessment_name || 'Online Assessment'
 
-    let emailHtml = `
+    const emailHtml = `
 <div style="font-family:sans-serif;max-width:600px;margin:0 auto;padding:20px;">
-  <h2 style="color:#1f2937;">Assessment Invitation</h2>
+  <h2 style="color:#1f2937;">Assessment Invitation – ${assessmentLabel}</h2>
   <p style="color:#374151;">Dear ${candidateName},</p>
   <p style="color:#374151;">
     Thank you for applying for the <strong>${jobTitle}</strong> position at <strong>${orgName}</strong>.
-    As part of our hiring process, we'd like you to complete an online assessment.
+    As part of our hiring process, we'd like you to complete an online assessment: <strong>${assessmentLabel}</strong>.
   </p>
   ${instructions ? `<div style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:6px;padding:16px;margin:16px 0;"><p style="color:#374151;margin:0;white-space:pre-wrap;">${instructions}</p></div>` : ''}
   ${expiry_date ? `<p style="color:#6b7280;font-size:14px;">Please complete the assessment by <strong>${new Date(expiry_date).toLocaleDateString('en-US', { dateStyle: 'long' })}</strong>.</p>` : ''}
@@ -117,7 +133,7 @@ export async function POST(request: NextRequest) {
       await sendGmailEmail(tokenResult.accessToken, {
         from: tokenResult.fromEmail || user.email!,
         to: candidate.email,
-        subject: `Assessment Invitation – ${jobTitle} at ${orgName}`,
+        subject: `Assessment Invitation – ${assessmentLabel} | ${jobTitle} at ${orgName}`,
         html: emailHtml,
       })
     } catch {
