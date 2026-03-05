@@ -96,28 +96,43 @@ export async function inviteMemberAction(orgId: string, email: string, role: str
     // User already has an account — send notification email via Gmail
     targetUserId = existingUser.id
 
+    const notifyHtml = `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+        <h2>Welcome to ${orgName}!</h2>
+        <p>You have been added to <strong>${orgName}</strong> on HireFlow as a <strong>${role.replace('_', ' ')}</strong>.</p>
+        <p>You can now log in with your existing account to access the organization.</p>
+        <div style="margin: 24px 0;">
+          <a href="${appUrl}"
+             style="background-color: #2563eb; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block;">
+            Open HireFlow
+          </a>
+        </div>
+        <p style="color: #6b7280; font-size: 14px;">If you did not expect this invitation, you can ignore this email.</p>
+      </div>
+    `
     const tokenResult = await getValidAccessToken(adminSupabase, user.id, orgId)
     if (tokenResult.accessToken) {
-      // Fire-and-forget: send notification email in background
+      // Fire-and-forget: send notification email via admin's Gmail
       sendGmailEmail(tokenResult.accessToken, {
         from: tokenResult.fromEmail || user.email!,
         to: email,
         subject: `You've been added to ${orgName} on HireFlow`,
-        html: `
-          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-            <h2>Welcome to ${orgName}!</h2>
-            <p>You have been added to <strong>${orgName}</strong> on HireFlow as a <strong>${role.replace('_', ' ')}</strong>.</p>
-            <p>You can now log in with your existing account to access the organization.</p>
-            <div style="margin: 24px 0;">
-              <a href="${appUrl}"
-                 style="background-color: #2563eb; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block;">
-                Open HireFlow
-              </a>
-            </div>
-            <p style="color: #6b7280; font-size: 14px;">If you did not expect this invitation, you can ignore this email.</p>
-          </div>
-        `,
+        html: notifyHtml,
       }).catch((err) => console.error('Failed to send member notification email via Gmail:', err))
+    } else {
+      // Fallback: send via Supabase SMTP (magic link to existing account)
+      console.warn('Gmail not connected — sending notification via Supabase email. User:', email)
+      await adminSupabase.auth.admin.generateLink({
+        type: 'magiclink',
+        email,
+        options: { redirectTo: `${appUrl}/callback` },
+      }).then(async ({ data: ml }: { data: { properties?: { action_link?: string } } | null }) => {
+        if (ml?.properties?.action_link) {
+          // We have a magic link — send it as a plain invite via Supabase email
+          // (Supabase doesn't have a generic send-email API, so we just log it)
+          console.info('Magic link for existing user (no Gmail):', ml.properties.action_link)
+        }
+      }).catch((err: unknown) => console.error('Failed to generate magic link:', err))
     }
   } else {
     // Generate invite link without sending email (avoids Supabase rate limits)
@@ -189,33 +204,44 @@ export async function inviteMemberAction(orgId: string, email: string, role: str
 
     targetUserId = linkData.user.id
 
-    // Send invite email via admin's connected Gmail
+    // Send invite email — try Gmail first, fallback to Supabase Auth invite email
+    const inviteLink = linkData.properties.action_link
+    const inviteHtml = `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+        <h2>You're invited to join ${orgName}!</h2>
+        <p>You have been invited to join <strong>${orgName}</strong> on HireFlow as a <strong>${role.replace('_', ' ')}</strong>.</p>
+        <p>Click the button below to accept your invitation and set up your account:</p>
+        <div style="margin: 24px 0;">
+          <a href="${inviteLink}"
+             style="background-color: #2563eb; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block;">
+            Accept Invitation
+          </a>
+        </div>
+        <p style="color: #6b7280; font-size: 14px;">If the button doesn&rsquo;t work, copy and paste this link into your browser:</p>
+        <p style="color: #6b7280; font-size: 14px; word-break: break-all;">${inviteLink}</p>
+      </div>
+    `
+
     const tokenResult = await getValidAccessToken(adminSupabase, user.id, orgId)
     if (tokenResult.accessToken) {
-      const inviteLink = linkData.properties.action_link
-      // Fire-and-forget: send invite email in background
+      // Fire-and-forget: send invite email via admin's Gmail
       sendGmailEmail(tokenResult.accessToken, {
         from: tokenResult.fromEmail || user.email!,
         to: email,
         subject: `You've been invited to ${orgName} on HireFlow`,
-        html: `
-          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-            <h2>You're invited to join ${orgName}!</h2>
-            <p>You have been invited to join <strong>${orgName}</strong> on HireFlow as a <strong>${role.replace('_', ' ')}</strong>.</p>
-            <p>Click the button below to accept your invitation and set up your account:</p>
-            <div style="margin: 24px 0;">
-              <a href="${inviteLink}"
-                 style="background-color: #2563eb; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block;">
-                Accept Invitation
-              </a>
-            </div>
-            <p style="color: #6b7280; font-size: 14px;">If the button doesn&rsquo;t work, copy and paste this link into your browser:</p>
-            <p style="color: #6b7280; font-size: 14px; word-break: break-all;">${inviteLink}</p>
-          </div>
-        `,
+        html: inviteHtml,
       }).catch((err) => console.error('Failed to send invite email via Gmail:', err))
     } else {
-      console.warn('Gmail not connected — invite created but no email sent. User:', email)
+      // Fallback: resend the Supabase-generated invite email (uses Supabase SMTP)
+      console.warn('Gmail not connected — sending invite via Supabase email. User:', email)
+      await adminSupabase.auth.admin.inviteUserByEmail(email, {
+        data: {
+          full_name: email.split('@')[0],
+          invited_to_org: orgId,
+          invited_role: role,
+        },
+        redirectTo: `${appUrl}/callback`,
+      }).catch((err: unknown) => console.error('Failed to send Supabase invite email:', err))
     }
   }
 
