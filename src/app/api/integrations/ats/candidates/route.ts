@@ -1,10 +1,11 @@
 import { z } from 'zod'
-import { NextResponse } from 'next/server'
-import { requireIntegrationKey } from '@/app/api/integrations/ats/_auth'
+import { noStoreJson, requireIntegrationKey } from '@/app/api/integrations/ats/_auth'
 import { getAdminClient } from '@/lib/supabase/admin'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
+export const revalidate = 0
+export const fetchCache = 'force-no-store'
 
 const querySchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
@@ -22,7 +23,7 @@ export async function GET(request: Request) {
   const url = new URL(request.url)
   const parsed = querySchema.safeParse(Object.fromEntries(url.searchParams.entries()))
   if (!parsed.success) {
-    return NextResponse.json({ error: 'Validation failed', details: parsed.error.issues }, { status: 400 })
+    return noStoreJson({ error: 'Validation failed', details: parsed.error.issues }, { status: 400 })
   }
 
   const supabase = getAdminClient()
@@ -32,7 +33,9 @@ export async function GET(request: Request) {
     .from('candidates')
     .select('id, email, first_name, last_name, phone, resume_url, created_at', { count: 'exact' })
     .is('deleted_at', null)
-    .order('created_at', { ascending: true })
+    // Latest first, since most sync clients start from `page=1`.
+    .order('created_at', { ascending: false })
+    .order('id', { ascending: false })
     .range(offset, offset + parsed.data.limit - 1)
 
   if (parsed.data.organization_id) {
@@ -57,7 +60,7 @@ export async function GET(request: Request) {
   }
 
   const { data, error, count } = await query
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) return noStoreJson({ error: error.message }, { status: 500 })
 
   const items = (data ?? []).map((c) => ({
     external_candidate_id: c.id,
@@ -76,7 +79,7 @@ export async function GET(request: Request) {
   const total = count ?? items.length
   const hasNext = offset + items.length < total
 
-  return NextResponse.json({
+  return noStoreJson({
     items,
     next_page: hasNext ? parsed.data.page + 1 : null,
   })
