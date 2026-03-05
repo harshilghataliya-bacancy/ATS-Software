@@ -1,6 +1,17 @@
 import crypto from 'crypto'
 import { NextResponse } from 'next/server'
 
+export const noStoreHeaders = {
+  'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+  Pragma: 'no-cache',
+  Expires: '0',
+  'Surrogate-Control': 'no-store',
+} as const
+
+export function noStoreJson(body: unknown, init?: ResponseInit) {
+  return NextResponse.json(body, { ...init, headers: { ...noStoreHeaders, ...(init?.headers ?? {}) } })
+}
+
 function timingSafeEqualString(a: string, b: string): boolean {
   const aBuf = Buffer.from(a)
   const bBuf = Buffer.from(b)
@@ -12,12 +23,12 @@ export async function requireIntegrationKey(request: Request) {
   // Backward-compatible: allow previous env/header names during rollout.
   const expected = process.env.ATS_INTEGRATION_API_KEY || process.env.SYNC_SERVICE_API_KEY
   if (!expected || expected.trim().length === 0) {
-    return NextResponse.json({ error: 'Integration auth is not configured' }, { status: 500 })
+    return noStoreJson({ error: 'Integration auth is not configured' }, { status: 500 })
   }
 
   const provided = request.headers.get('x-integration-key') ?? request.headers.get('x-sync-service-key') ?? ''
   if (!provided || !timingSafeEqualString(provided, expected)) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    return noStoreJson({ error: 'Unauthorized' }, { status: 401 })
   }
 
   return { ok: true as const }
