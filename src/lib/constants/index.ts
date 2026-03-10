@@ -187,16 +187,47 @@ export const OFFER_TEMPLATE_VARIABLES = [
 
 export const OFFER_PDF_DEFAULTS = {
   primary_color: '#1e3a5f',
-  accent_color: '#2563eb',
-  header_subtitle: 'Confidential',
+  accent_color: '#E07848',
   greeting_text: 'Dear {{candidate_name}},',
-  intro_text: 'We are pleased to inform you that you have been selected for the position of {{job_title}} at {{company_name}}. Based on your qualifications, experience, and performance during the interview process, we believe you will be a valuable addition to our team.\n\nWe are delighted to present you with the following terms and conditions of your employment:',
-  closing_text: 'Please sign below and return a copy of this letter to indicate your acceptance of the above terms and conditions. We look forward to welcoming you to the {{company_name}} team.',
-  validity_text: 'This offer is valid until {{expiry_date}}. If we do not receive your signed acceptance by this date, this offer shall stand withdrawn automatically.',
-  acceptance_text: 'Please sign below and return a copy of this letter to indicate your acceptance of the above terms and conditions.',
-  signatory_label: 'Authorized Signatory',
+  intro_text: `Congratulations! We are pleased to confirm that you have been selected to work for **{{company_name}}**.
+
+The position we are offering is that of **{{job_title}}** at a salary of **{{salary}}** CTC per annum. Your salary, incentives, allowances and/or any kind of payment will be subject to prevailing applicable laws and deductions there under if any. If in future as per the law of government, PF deduction will be compulsory then you will be entitled to PF contribution from the offered remuneration.
+
+You will report to **{{reporting_manager}}**
+
+We are pleased to confirm your employment with our organization. This role follows a five-day workweek with flexible timing. Given the global nature of our operations, you are expected to demonstrate a high degree of flexibility and adaptability, including the willingness to work in any shift as required by client needs. A minimum of 8.5 working hours per day is mandatory, regardless of the shift assigned. Detailed terms and conditions of your employment will be provided in the forthcoming Appointment Letter, serving as the guiding document for your tenure with us. We appreciate your understanding and cooperation in adhering to these requirements.
+
+You are requested to report on or before **{{start_date}}**. In case you fail to report on this date unless otherwise agreed in writing the offer shall stand automatically withdrawn.
+
+If on verification, at the time of appointment or at a later date it is found that you have furnished wrong information, in such cases your services to the company will be liable to terminate. Please report to HR personnel on your start date for documentation and orientation. Please sign the copy of this letter and return it to indicate your acceptance of this offer.`,
+  closing_text: 'We are confident that you will be able to make a significant contribution to the success of **{{company_name}}** and we look forward to working with you.',
+  validity_text: '',
+  acceptance_text: `I, **{{candidate_name}}** have read all the documents and understood all the Rules & Regulations of the company and hereby accept this employment offer.
+
+Probation Period Offer:
+
+I accept that for the first 6 months I shall be employed on a probation Employment and my yearly salary will be **{{salary}}**
+
+Joining Date: **{{start_date}}**`,
+  signatory_label: 'HR Team',
   candidate_sig_label: 'Acceptance by Candidate',
-  footer_text: 'This is a system-generated offer letter by {{company_name}}. Strictly Confidential.',
+  footer_text: '',
+  terms_and_conditions: `Flexi Pay:
+
+"At the company, the 'Flexi Pay' component is structured to support the organization's financial stability. While it appears in the earnings section, it will be fully paid out as a regular monthly earning component. However, in the event of a financial crisis within the organization, this component may be temporarily withheld for a few months to help maintain sustainability. Once the situation normalizes, regular payments will resume. These adjustments are applied uniformly across the company to ensure fairness and consistency. This policy is designed to protect both the company's financial health and the long-term interests of its employees."
+
+In line with our company's strategies and commitment to growth and safety, we do not anticipate any such scenarios arising in the future.
+
+Gratuity:
+
+When you reach the completion of five years from your date of joining {{company_name}}, you become eligible to receive a gratuity payment upon departure.
+
+Note:
+
+1. Retention Bonus is Payable Yearly
+2. TDS will be deducted as per the Income Tax Act 1961.
+3. Professional Tax deducted will be as per the current job location.
+4. As per payment of Gratuity Act, 1972 and as per company policy on gratuity, the maximum gratuity payable is Rs. 20 Lacs.`,
 } as const
 
 export const OFFER_TEMPLATE_VARIABLE_CATEGORIES = [

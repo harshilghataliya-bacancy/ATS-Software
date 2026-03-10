@@ -23,12 +23,12 @@ const mainNav = [
 
 const secondaryNav = [
   { href: '/email-templates', label: 'Email Templates', icon: '▤' },
+  { href: '/settings/offer-templates', label: 'Offer Templates', icon: '▤' },
 ]
 
 const settingsNav = [
   { href: '/settings/organization', label: 'Organization', icon: '⚙' },
   { href: '/settings/members', label: 'Members', icon: '⊕' },
-  { href: '/settings/offer-templates', label: 'Offer Templates', icon: '▤' },
 ]
 
 function NavItem({ href, label, icon, active, collapsed }: { href: string; label: string; icon: string; active: boolean; collapsed: boolean }) {

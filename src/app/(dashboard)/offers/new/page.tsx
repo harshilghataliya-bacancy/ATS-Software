@@ -375,8 +375,12 @@ export default function NewOfferWizardPage() {
       }
 
       const offerId = data.data?.id
+      const redirectTo = applicationId
+        ? `/applications/${applicationId}?tab=offer`
+        : '/offers'
+
       if (!offerId) {
-        router.push('/offers')
+        router.push(redirectTo)
         return
       }
 
@@ -384,12 +388,12 @@ export default function NewOfferWizardPage() {
       if (gmailConnected) {
         const sendRes = await fetch(`/api/offers/${offerId}/send`, { method: 'POST' })
         if (!sendRes.ok) {
-          router.push(`/offers/${offerId}`)
+          router.push(redirectTo)
           return
         }
       }
 
-      router.push(`/offers/${offerId}`)
+      router.push(redirectTo)
     } catch {
       setError('Failed to create offer')
     } finally {
@@ -428,7 +432,6 @@ export default function NewOfferWizardPage() {
         templateTerms: tpl.terms_and_conditions || undefined,
         primaryColor: tpl.primary_color || undefined,
         accentColor: tpl.accent_color || undefined,
-        headerSubtitle: tpl.header_subtitle || undefined,
         greetingText: tpl.greeting_text || undefined,
         introText: tpl.intro_text || undefined,
         closingText: tpl.closing_text || undefined,

@@ -268,7 +268,7 @@ export async function respondToOffer(
     .update(updatePayload)
     .eq('id', offerId)
     .eq('organization_id', orgId)
-    .eq('status', 'sent') // Can only respond to sent offers
+    .in('status', ['sent', 'draft']) // Allow admin to respond to sent or draft offers
     .select(
       `
       *,
@@ -282,7 +282,7 @@ export async function respondToOffer(
     .maybeSingle()
 
   if (!error && !data) {
-    return { data: null, error: new Error('Offer not found or is not in sent status') }
+    return { data: null, error: new Error('Offer not found or already has a final status') }
   }
 
   return { data, error }

@@ -6,6 +6,7 @@ import {
   getAssessmentInvitationsForApplication,
 } from '@/lib/services/assessments'
 import { getValidAccessToken, sendGmailEmail } from '@/lib/services/gmail'
+import { moveApplication } from '@/lib/services/applications'
 
 export async function GET(request: NextRequest) {
   const supabase = await createClient()
@@ -129,17 +130,37 @@ export async function POST(request: NextRequest) {
   <p style="color:#374151;margin-top:24px;">Best regards,<br/>${orgName} Talent Team</p>
 </div>`
 
-    try {
-      await sendGmailEmail(tokenResult.accessToken, {
-        from: tokenResult.fromEmail || user.email!,
-        to: candidate.email,
-        subject: `Assessment Invitation – ${assessmentLabel} | ${jobTitle} at ${orgName}`,
-        html: emailHtml,
-      })
-    } catch {
-      // Email failed but invitation is created — non-fatal
-    }
+    sendGmailEmail(tokenResult.accessToken, {
+      from: tokenResult.fromEmail || user.email!,
+      to: candidate.email,
+      subject: `Assessment Invitation – ${assessmentLabel} | ${jobTitle} at ${orgName}`,
+      html: emailHtml,
+    }).catch(() => { /* Email failed — non-fatal */ })
   }
+
+  // Auto-advance to 'assessment' stage if not already past it
+  try {
+    const { data: appWithStage } = await supabase
+      .from('applications')
+      .select('current_stage_id, pipeline_stages:current_stage_id(display_order)')
+      .eq('id', application_id)
+      .single()
+
+    const { data: assessmentStage } = await supabase
+      .from('pipeline_stages')
+      .select('id, display_order')
+      .eq('job_id', application.job_id)
+      .eq('stage_type', 'assessment')
+      .maybeSingle()
+
+    if (assessmentStage && appWithStage) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const currentOrder = (appWithStage.pipeline_stages as any)?.display_order ?? -1
+      if (currentOrder < assessmentStage.display_order) {
+        await moveApplication(supabase, application_id, membership.organization_id, assessmentStage.id, user.id)
+      }
+    }
+  } catch { /* silently skip */ }
 
   return NextResponse.json({ success: true, data: invitation })
 }

@@ -129,6 +129,13 @@ export function formatSalaryStructureHtml(
 
 function formatNumber(amount: number, currency: string): string {
   try {
+    // ₹ symbol is not in react-pdf's built-in Helvetica font — use "Rs." instead
+    if (currency === 'INR') {
+      return `Rs. ${new Intl.NumberFormat('en-IN', {
+        minimumFractionDigits: 0,
+        maximumFractionDigits: 0,
+      }).format(amount)}`
+    }
     return new Intl.NumberFormat('en-US', {
       style: 'currency',
       currency,

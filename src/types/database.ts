@@ -304,7 +304,6 @@ export interface OfferTemplate {
   // Branding
   primary_color: string | null
   accent_color: string | null
-  header_subtitle: string | null
   // PDF Content Sections
   greeting_text: string | null
   intro_text: string | null

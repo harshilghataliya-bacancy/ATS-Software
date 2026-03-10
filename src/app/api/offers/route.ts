@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { getOffers, createOffer } from '@/lib/services/offers'
+import { moveApplication } from '@/lib/services/applications'
 import { createOfferSchema } from '@/lib/validators/offer'
 
 export async function GET(request: NextRequest) {
@@ -108,6 +109,30 @@ export async function POST(request: NextRequest) {
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
+
+  // Auto-advance application to the 'offer' stage if not already past it
+  try {
+    const { data: appWithStage } = await supabase
+      .from('applications')
+      .select('current_stage_id, pipeline_stages:current_stage_id(display_order, stage_type)')
+      .eq('id', parsed.data.application_id)
+      .single()
+
+    const { data: offerStage } = await supabase
+      .from('pipeline_stages')
+      .select('id, display_order')
+      .eq('job_id', application.job_id)
+      .eq('stage_type', 'offer')
+      .maybeSingle()
+
+    if (offerStage && appWithStage) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const currentOrder = (appWithStage.pipeline_stages as any)?.display_order ?? -1
+      if (currentOrder < offerStage.display_order) {
+        await moveApplication(supabase, parsed.data.application_id, membership.organization_id, offerStage.id, user.id)
+      }
+    }
+  } catch { /* silently skip stage advance if it fails */ }
 
   return NextResponse.json({ success: true, data })
 }

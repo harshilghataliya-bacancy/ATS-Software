@@ -9,7 +9,6 @@ interface OfferTemplateData {
   // Branding
   primary_color?: string | null
   accent_color?: string | null
-  header_subtitle?: string | null
   // PDF Content Sections
   greeting_text?: string | null
   intro_text?: string | null
@@ -32,6 +31,11 @@ interface OfferTemplateData {
   // Email customization
   email_subject?: string | null
   email_body?: string | null
+  // Contact info for PDF header/footer
+  company_phone?: string | null
+  company_email?: string | null
+  company_website?: string | null
+  company_address?: string | null
 }
 
 export async function getOfferTemplates(

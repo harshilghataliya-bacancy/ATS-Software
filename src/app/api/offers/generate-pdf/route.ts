@@ -54,6 +54,36 @@ export async function GET(request: NextRequest) {
     .single()
 
   const companyName = org?.name || 'Company'
+
+  // ── Resolve offer template ──────────────────────────────────────────────
+  // Use the offer's selected template first, then fall back to the org's active template
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let template: Record<string, any> | null = null
+
+  const templateId = (offer as any).offer_template_id
+  if (templateId) {
+    const { data: t } = await supabase
+      .from('offer_templates')
+      .select('*')
+      .eq('id', templateId)
+      .eq('organization_id', orgId)
+      .is('deleted_at', null)
+      .single()
+    if (t) template = t
+  }
+
+  if (!template) {
+    const { data: t } = await supabase
+      .from('offer_templates')
+      .select('*')
+      .eq('organization_id', orgId)
+      .eq('is_active', true)
+      .is('deleted_at', null)
+      .maybeSingle()
+    if (t) template = t
+  }
+  // ────────────────────────────────────────────────────────────────────────
+
   const candidateName = `${candidate.first_name} ${candidate.last_name}`
   const salaryFormatted = formatSalary(offer.salary || 0, offer.salary_currency || 'INR')
   const startDate = offer.start_date
@@ -71,7 +101,7 @@ export async function GET(request: NextRequest) {
   try {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const pdfElement = React.createElement(OfferPDFDocument, {
-      companyName,
+      companyName: template?.company_name || companyName,
       candidateName,
       candidateEmail: candidate.email,
       jobTitle: job?.title || '',
@@ -89,6 +119,36 @@ export async function GET(request: NextRequest) {
       salaryComponents: salaryComponents.length > 0 ? salaryComponents : undefined,
       bonusComponents: bonusComponents.length > 0 ? bonusComponents : undefined,
       pfApplicable: offer.pf_applicable ?? false,
+      // Template overrides
+      templateLogoUrl: template?.logo_url || undefined,
+      templateCompanyName: template?.company_name || undefined,
+      templateTerms: template?.terms_and_conditions || undefined,
+      primaryColor: template?.primary_color || undefined,
+      accentColor: template?.accent_color || undefined,
+      greetingText: template?.greeting_text || undefined,
+      introText: template?.intro_text || undefined,
+      closingText: template?.closing_text || undefined,
+      validityText: template?.validity_text || undefined,
+      acceptanceText: template?.acceptance_text || undefined,
+      signatoryName: template?.signatory_name || undefined,
+      signatoryTitle: template?.signatory_title || undefined,
+      signatoryLabel: template?.signatory_label || undefined,
+      candidateSigLabel: template?.candidate_sig_label || undefined,
+      showSalaryBreakdown: template?.show_salary_breakdown ?? true,
+      showBonusSection: template?.show_bonus_section ?? true,
+      showTermsSection: template?.show_terms_section ?? true,
+      showAcceptanceSection: template?.show_acceptance_section ?? true,
+      showSignatureBlock: template?.show_signature_block ?? true,
+      footerText: template?.footer_text || undefined,
+      // Contact info for header (stored in template if available)
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      companyPhone:   (template as any)?.company_phone   || undefined,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      companyEmail:   (template as any)?.company_email   || undefined,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      companyWebsite: (template as any)?.company_website || undefined,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      companyAddress: (template as any)?.company_address || undefined,
     }) as any
     const buffer = await renderToBuffer(pdfElement)
 

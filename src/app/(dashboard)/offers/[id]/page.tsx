@@ -8,9 +8,7 @@ import { createClient } from '@/lib/supabase/client'
 import { getOfferById } from '@/lib/services/offers'
 import { OFFER_STATUS_CONFIG, EMPLOYMENT_TYPE_OPTIONS, WORK_TYPE_OPTIONS } from '@/lib/constants'
 import { formatSalary } from '@/lib/offer-template'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { Badge } from '@/components/ui/badge'
 import { Textarea } from '@/components/ui/textarea'
 import { Input } from '@/components/ui/input'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -263,7 +261,7 @@ export default function OfferDetailPage() {
   const statusConfig = OFFER_STATUS_CONFIG[offer.status as keyof typeof OFFER_STATUS_CONFIG]
   const statusBorder = offer.status === 'accepted' ? 'border-l-emerald-500'
     : offer.status === 'declined' ? 'border-l-red-400'
-    : offer.status === 'sent' ? 'border-l-blue-500'
+    : offer.status === 'sent' ? 'border-l-slate-500'
     : offer.status === 'revoked' ? 'border-l-orange-400'
     : offer.status === 'expired' ? 'border-l-gray-300'
     : 'border-l-amber-400'
@@ -291,19 +289,19 @@ export default function OfferDetailPage() {
       </button>
 
       {/* Header Card */}
-      <Card className={`border-l-4 ${statusBorder}`}>
-        <CardContent className="py-5">
+      <div className={`bg-white rounded-xl border border-gray-200 shadow-sm border-l-4 ${statusBorder}`}>
+        <div className="p-5">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
-              <div className="w-12 h-12 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center text-lg font-semibold">
+              <div className="w-12 h-12 rounded-full bg-gray-100 text-gray-700 flex items-center justify-center text-lg font-semibold">
                 {initials}
               </div>
               <div>
                 <div className="flex items-center gap-3">
                   <h1 className="text-xl font-bold text-gray-900">{candidateName}</h1>
-                  <Badge variant={statusConfig?.variant ?? 'secondary'}>
+                  <span className="text-[11px] font-medium px-2 py-0.5 rounded-full bg-gray-100 text-gray-700">
                     {statusConfig?.label ?? offer.status}
-                  </Badge>
+                  </span>
                 </div>
                 <p className="text-gray-500 text-sm mt-0.5">
                   {job?.title ?? 'Unknown Position'} {job?.department ? `\u00B7 ${job.department}` : ''} {offer.location ? `\u00B7 ${offer.location}` : ''}
@@ -342,33 +340,10 @@ export default function OfferDetailPage() {
                   </Button>
                 </>
               )}
-              {canManageOffers && canResend && (
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => {
-                    if (!gmailConnected && !gmailLoading) {
-                      setError('Please connect Gmail in Settings before sending offers.')
-                      return
-                    }
-                    setSendDialogOpen(true)
-                  }}
-                >
-                  <svg className="w-4 h-4 mr-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" />
-                  </svg>
-                  Resend Offer
-                </Button>
-              )}
-              {canManageOffers && isDraft && (
-                <Button size="sm" variant="destructive" onClick={() => setDeleteDialogOpen(true)}>
-                  Delete
-                </Button>
-              )}
             </div>
           </div>
-        </CardContent>
-      </Card>
+        </div>
+      </div>
 
       {error && (
         <div className="bg-red-50 text-red-700 text-sm p-3 rounded-md">{error}</div>
@@ -381,11 +356,11 @@ export default function OfferDetailPage() {
         {/* ===== LEFT COLUMN (2/3) ===== */}
         <div className="lg:col-span-2 space-y-6">
           {/* Position Details */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-lg">Position Details</CardTitle>
-            </CardHeader>
-            <CardContent>
+          <div className="bg-white rounded-xl border border-gray-200 shadow-sm">
+            <div className="px-6 py-4 border-b border-gray-100">
+              <h3 className="text-base font-semibold text-gray-900">Position Details</h3>
+            </div>
+            <div className="p-6">
               <div className="grid grid-cols-2 gap-x-8 gap-y-4 text-sm">
                 <div>
                   <span className="text-gray-500">Designation</span>
@@ -425,23 +400,23 @@ export default function OfferDetailPage() {
                 </div>
                 <div>
                   <span className="text-gray-500">Annual CTC</span>
-                  <p className="font-semibold mt-0.5 text-indigo-700">{formatSalary(offer.salary, offer.salary_currency)}</p>
+                  <p className="font-semibold mt-0.5 text-gray-900">{formatSalary(offer.salary, offer.salary_currency)}</p>
                 </div>
                 <div>
                   <span className="text-gray-500">PF Applicable</span>
                   <p className="font-medium mt-0.5">{offer.pf_applicable ? 'Yes' : 'No'}</p>
                 </div>
               </div>
-            </CardContent>
-          </Card>
+            </div>
+          </div>
 
           {/* Salary Structure */}
           {salaryComponents.length > 0 && (
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-lg">Salary Structure ({offer.salary_currency})</CardTitle>
-              </CardHeader>
-              <CardContent>
+            <div className="bg-white rounded-xl border border-gray-200 shadow-sm">
+              <div className="px-6 py-4 border-b border-gray-100">
+                <h3 className="text-base font-semibold text-gray-900">Salary Structure ({offer.salary_currency})</h3>
+              </div>
+              <div className="p-6">
                 <div className="border rounded-lg overflow-hidden">
                   <table className="w-full text-sm">
                     <thead>
@@ -455,7 +430,7 @@ export default function OfferDetailPage() {
                       {/* Earnings */}
                       {earnings.length > 0 && (
                         <>
-                          <tr><td colSpan={3} className="py-2 px-3 font-semibold text-indigo-700 bg-indigo-50 text-xs uppercase tracking-wide">A. Earnings</td></tr>
+                          <tr><td colSpan={3} className="py-2 px-3 font-semibold text-gray-700 bg-gray-50 text-xs uppercase tracking-wide">A. Earnings</td></tr>
                           {earnings.map((comp, idx) => (
                             <tr key={`e-${idx}`} className="border-b border-gray-100">
                               <td className="py-2 px-3 pl-5">{comp.name}</td>
@@ -493,7 +468,7 @@ export default function OfferDetailPage() {
                       {/* Employer Contributions */}
                       {employer.length > 0 && (
                         <>
-                          <tr><td colSpan={3} className="py-2 px-3 font-semibold text-blue-700 bg-blue-50 text-xs uppercase tracking-wide">C. Employer Contributions</td></tr>
+                          <tr><td colSpan={3} className="py-2 px-3 font-semibold text-gray-600 bg-gray-50 text-xs uppercase tracking-wide">C. Employer Contributions</td></tr>
                           {employer.map((comp, idx) => (
                             <tr key={`em-${idx}`} className="border-b border-gray-100">
                               <td className="py-2 px-3 pl-5">{comp.name}</td>
@@ -505,7 +480,7 @@ export default function OfferDetailPage() {
                       )}
 
                       {/* Total CTC */}
-                      <tr className="bg-indigo-900 text-white font-bold">
+                      <tr className="bg-gray-900 text-white font-bold">
                         <td className="py-2.5 px-3">Total CTC (A + C)</td>
                         <td className="text-right py-2.5 px-3 tabular-nums">{fmtNum(Math.round(totalCtc / 12))}</td>
                         <td className="text-right py-2.5 px-3 tabular-nums">{fmtNum(totalCtc)}</td>
@@ -513,21 +488,16 @@ export default function OfferDetailPage() {
                     </tbody>
                   </table>
                 </div>
-              </CardContent>
-            </Card>
+              </div>
+            </div>
           )}
 
           {/* Offer Letter PDF Preview */}
-          <Card>
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <CardTitle className="text-lg">Offer Letter PDF</CardTitle>
-                <Button variant="outline" size="sm" onClick={loadPdfPreview} disabled={pdfLoading}>
-                  {pdfLoading ? 'Loading...' : 'Refresh'}
-                </Button>
-              </div>
-            </CardHeader>
-            <CardContent>
+          <div className="bg-white rounded-xl border border-gray-200 shadow-sm">
+            <div className="px-6 py-4 border-b border-gray-100">
+              <h3 className="text-base font-semibold text-gray-900">Offer Letter PDF</h3>
+            </div>
+            <div className="p-6">
               {pdfLoading && (
                 <div className="flex items-center justify-center py-12">
                   <svg className="w-6 h-6 animate-spin text-gray-400" viewBox="0 0 24 24" fill="none">
@@ -553,20 +523,20 @@ export default function OfferDetailPage() {
                   </Button>
                 </div>
               )}
-            </CardContent>
-          </Card>
+            </div>
+          </div>
         </div>
 
         {/* ===== RIGHT COLUMN (1/3) ===== */}
         <div className="space-y-6">
           {/* Candidate Card */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-lg">Candidate</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3 text-sm">
+          <div className="bg-white rounded-xl border border-gray-200 shadow-sm">
+            <div className="px-6 py-4 border-b border-gray-100">
+              <h3 className="text-base font-semibold text-gray-900">Candidate</h3>
+            </div>
+            <div className="p-6 space-y-3 text-sm">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center text-sm font-semibold">
+                <div className="w-10 h-10 rounded-full bg-gray-100 text-gray-700 flex items-center justify-center text-sm font-semibold">
                   {initials}
                 </div>
                 <div>
@@ -580,18 +550,18 @@ export default function OfferDetailPage() {
                   <p className="font-medium">{candidate.phone}</p>
                 </div>
               )}
-            </CardContent>
-          </Card>
+            </div>
+          </div>
 
           {/* Offer Details */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-lg">Offer Details</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3 text-sm">
+          <div className="bg-white rounded-xl border border-gray-200 shadow-sm">
+            <div className="px-6 py-4 border-b border-gray-100">
+              <h3 className="text-base font-semibold text-gray-900">Offer Details</h3>
+            </div>
+            <div className="p-6 space-y-3 text-sm">
               <div className="flex justify-between">
                 <span className="text-gray-500">Salary</span>
-                <span className="font-semibold text-indigo-700">{formatSalary(offer.salary, offer.salary_currency)}</span>
+                <span className="font-semibold text-gray-900">{formatSalary(offer.salary, offer.salary_currency)}</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-gray-500">Start Date</span>
@@ -609,15 +579,15 @@ export default function OfferDetailPage() {
                 <span className="text-gray-500">Remuneration</span>
                 <span className="font-medium capitalize">{offer.remuneration_type || 'Annual'}</span>
               </div>
-            </CardContent>
-          </Card>
+            </div>
+          </div>
 
           {/* Timeline */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-lg">Timeline</CardTitle>
-            </CardHeader>
-            <CardContent>
+          <div className="bg-white rounded-xl border border-gray-200 shadow-sm">
+            <div className="px-6 py-4 border-b border-gray-100">
+              <h3 className="text-base font-semibold text-gray-900">Timeline</h3>
+            </div>
+            <div className="p-6">
               <div className="relative pl-6 space-y-4 text-sm">
                 {/* Created */}
                 <div className="relative">
@@ -628,7 +598,7 @@ export default function OfferDetailPage() {
 
                 {offer.sent_at && (
                   <div className="relative">
-                    <div className="absolute -left-6 top-0.5 w-3 h-3 rounded-full bg-blue-500 border-2 border-white" />
+                    <div className="absolute -left-6 top-0.5 w-3 h-3 rounded-full bg-slate-500 border-2 border-white" />
                     <p className="font-medium">Sent to Candidate</p>
                     <p className="text-gray-500 text-xs">{new Date(offer.sent_at).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</p>
                   </div>
@@ -648,8 +618,8 @@ export default function OfferDetailPage() {
                 {/* Vertical line connector */}
                 <div className="absolute left-[-18px] top-3 bottom-3 w-0.5 bg-gray-200" />
               </div>
-            </CardContent>
-          </Card>
+            </div>
+          </div>
 
           <Button variant="outline" className="w-full" onClick={() => router.push(`/candidates/${candidate?.id}`)}>
             View Candidate Profile

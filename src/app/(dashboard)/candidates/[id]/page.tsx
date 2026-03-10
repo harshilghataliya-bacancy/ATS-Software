@@ -10,13 +10,11 @@ import { createApplication } from '@/lib/services/applications'
 import { getJobs } from '@/lib/services/jobs'
 import { CANDIDATE_SOURCES } from '@/lib/constants'
 import { EDUCATION_LABELS, GENDER_OPTIONS, NOTICE_PERIOD_OPTIONS } from '@/lib/validators/candidate'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Skeleton } from '@/components/ui/skeleton'
-import { Badge } from '@/components/ui/badge'
 import { Separator } from '@/components/ui/separator'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import {
@@ -69,6 +67,9 @@ export default function CandidateDetailPage() {
   const [applying, setApplying] = useState(false)
   const [applyDialogOpen, setApplyDialogOpen] = useState(false)
 
+  // AI scores (keyed by application_id)
+  const [aiScores, setAiScores] = useState<Record<string, AnyData>>({})
+
   // Email dialog
   const [emailOpen, setEmailOpen] = useState(false)
 
@@ -96,6 +97,19 @@ export default function CandidateDetailPage() {
     } else if (data) {
       setCandidate(data)
       setFormData(data)
+      // Fetch AI scores for all applications
+      if (data.applications?.length > 0) {
+        const appIds = data.applications.map((a: AnyData) => a.id)
+        const { data: scores } = await supabase
+          .from('candidate_match_scores')
+          .select('application_id, overall_score, skill_score, experience_score, semantic_score, recommendation')
+          .in('application_id', appIds)
+        if (scores) {
+          const map: Record<string, AnyData> = {}
+          scores.forEach((s: AnyData) => { map[s.application_id] = s })
+          setAiScores(map)
+        }
+      }
     }
     setLoading(false)
   }, [organization, params.id])
@@ -293,46 +307,70 @@ export default function CandidateDetailPage() {
                   {candidate.location}
                 </span>
               )}
-              <Badge variant="secondary" className="text-xs">{sourceLabel}</Badge>
+              <span className="text-[11px] font-medium px-2 py-0.5 rounded-full bg-gray-100 text-gray-700">{sourceLabel}</span>
             </div>
           </div>
         </div>
 
-        {/* Action Buttons — Email + Apply + Edit */}
+        {/* Action Buttons */}
         {canManageCandidates && (
           <div className="flex flex-wrap gap-2">
+            {candidate.applications?.length > 0 && (
+              <Link href={`/applications/${candidate.applications[0].id}`}>
+                <Button size="sm" variant="outline">
+                  View Application
+                </Button>
+              </Link>
+            )}
             <Button size="sm" variant="outline" onClick={() => setEmailOpen(true)}>
               <svg className="w-4 h-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M21.75 6.75v10.5a2.25 2.25 0 01-2.25 2.25h-15a2.25 2.25 0 01-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25m19.5 0v.243a2.25 2.25 0 01-1.07 1.916l-7.5 4.615a2.25 2.25 0 01-2.36 0L3.32 8.91a2.25 2.25 0 01-1.07-1.916V6.75" /></svg>
               Email
             </Button>
-            <Dialog open={applyDialogOpen} onOpenChange={(open) => { setApplyDialogOpen(open); if (open) loadJobs() }}>
-              <DialogTrigger asChild>
-                <Button size="sm">Apply to Job</Button>
-              </DialogTrigger>
-              <DialogContent>
-                <DialogHeader>
-                  <DialogTitle>Apply to Job</DialogTitle>
-                  <DialogDescription>Select a published job to apply {candidate.first_name} to.</DialogDescription>
-                </DialogHeader>
-                <div className="py-4">
-                  <Select value={selectedJob} onValueChange={setSelectedJob}>
-                    <SelectTrigger><SelectValue placeholder="Select a job..." /></SelectTrigger>
-                    <SelectContent>
-                      {jobs.map((job) => (
-                        <SelectItem key={job.id} value={job.id}>{job.title} - {job.department}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  {jobs.length === 0 && <p className="text-sm text-gray-500 mt-2">No published jobs available.</p>}
-                </div>
-                <DialogFooter>
-                  <Button variant="outline" onClick={() => setApplyDialogOpen(false)}>Cancel</Button>
-                  <Button onClick={handleApplyToJob} disabled={!selectedJob || applying}>
-                    {applying ? 'Applying...' : 'Apply'}
-                  </Button>
-                </DialogFooter>
-              </DialogContent>
-            </Dialog>
+
+            {candidate.applications?.length > 0 && candidate.applications[0].status === 'active' ? (
+              /* Active application — show Move to Job */
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  const app = candidate.applications[0]
+                  openMoveDialog(app.id, app.job_id || app.job?.id)
+                }}
+              >
+                Move to Job
+              </Button>
+            ) : candidate.applications?.length === 0 ? (
+              /* No application yet — show Apply to Job */
+              <Dialog open={applyDialogOpen} onOpenChange={(open) => { setApplyDialogOpen(open); if (open) loadJobs() }}>
+                <DialogTrigger asChild>
+                  <Button size="sm">Apply to Job</Button>
+                </DialogTrigger>
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle>Apply to Job</DialogTitle>
+                    <DialogDescription>Select a published job to apply {candidate.first_name} to.</DialogDescription>
+                  </DialogHeader>
+                  <div className="py-4">
+                    <Select value={selectedJob} onValueChange={setSelectedJob}>
+                      <SelectTrigger><SelectValue placeholder="Select a job..." /></SelectTrigger>
+                      <SelectContent>
+                        {jobs.map((job) => (
+                          <SelectItem key={job.id} value={job.id}>{job.title} - {job.department}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    {jobs.length === 0 && <p className="text-sm text-gray-500 mt-2">No published jobs available.</p>}
+                  </div>
+                  <DialogFooter>
+                    <Button variant="outline" onClick={() => setApplyDialogOpen(false)}>Cancel</Button>
+                    <Button onClick={handleApplyToJob} disabled={!selectedJob || applying}>
+                      {applying ? 'Applying...' : 'Apply'}
+                    </Button>
+                  </DialogFooter>
+                </DialogContent>
+              </Dialog>
+            ) : null}
+
             {!editing ? (
               <Button size="sm" variant="outline" onClick={() => setEditing(true)}>Edit</Button>
             ) : (
@@ -353,9 +391,9 @@ export default function CandidateDetailPage() {
         {/* ====== LEFT COLUMN — Profile Cards ====== */}
         <div className="lg:col-span-3 space-y-6">
           {/* Personal Info */}
-          <Card className="shadow-sm">
-            <CardHeader><CardTitle className="text-lg">Personal Information</CardTitle></CardHeader>
-            <CardContent className="space-y-4">
+          <div className="bg-white rounded-xl border border-gray-200 shadow-sm">
+            <div className="px-6 py-4 border-b border-gray-100"><h3 className="text-base font-semibold text-gray-900">Personal Information</h3></div>
+            <div className="p-6 space-y-4">
               {editing ? (
                 <>
                   <div className="grid grid-cols-2 gap-4">
@@ -390,13 +428,13 @@ export default function CandidateDetailPage() {
                   <InfoField label="Source" value={sourceLabel} />
                 </div>
               )}
-            </CardContent>
-          </Card>
+            </div>
+          </div>
 
           {/* Professional Details */}
-          <Card className="shadow-sm">
-            <CardHeader><CardTitle className="text-lg">Professional Details</CardTitle></CardHeader>
-            <CardContent className="space-y-4">
+          <div className="bg-white rounded-xl border border-gray-200 shadow-sm">
+            <div className="px-6 py-4 border-b border-gray-100"><h3 className="text-base font-semibold text-gray-900">Professional Details</h3></div>
+            <div className="p-6 space-y-4">
               {editing ? (
                 <>
                   <div className="grid grid-cols-2 gap-4">
@@ -440,13 +478,13 @@ export default function CandidateDetailPage() {
                   <LinkField label="Portfolio" url={candidate.portfolio_url} text="Website" />
                 </div>
               )}
-            </CardContent>
-          </Card>
+            </div>
+          </div>
 
           {/* Compensation */}
-          <Card className="shadow-sm">
-            <CardHeader><CardTitle className="text-lg">Compensation</CardTitle></CardHeader>
-            <CardContent className="space-y-4">
+          <div className="bg-white rounded-xl border border-gray-200 shadow-sm">
+            <div className="px-6 py-4 border-b border-gray-100"><h3 className="text-base font-semibold text-gray-900">Compensation</h3></div>
+            <div className="p-6 space-y-4">
               {editing ? (
                 <div className="grid grid-cols-2 gap-4">
                   <FormField label="Current Salary (Annual)" type="number" value={formData.current_salary} onChange={(v) => setFormData(p => ({ ...p, current_salary: v }))} />
@@ -458,40 +496,40 @@ export default function CandidateDetailPage() {
                   <InfoField label="Expected Salary" value={candidate.expected_salary != null ? `$${Number(candidate.expected_salary).toLocaleString()}` : null} />
                 </div>
               )}
-            </CardContent>
-          </Card>
+            </div>
+          </div>
 
           {/* Cover Letter */}
           {(editing || candidate.cover_letter) && (
-            <Card className="shadow-sm">
-              <CardHeader><CardTitle className="text-lg">Cover Letter</CardTitle></CardHeader>
-              <CardContent>
+            <div className="bg-white rounded-xl border border-gray-200 shadow-sm">
+              <div className="px-6 py-4 border-b border-gray-100"><h3 className="text-base font-semibold text-gray-900">Cover Letter</h3></div>
+              <div className="p-6">
                 {editing ? (
                   <Textarea rows={6} value={formData.cover_letter ?? ''} onChange={(e) => setFormData(p => ({ ...p, cover_letter: e.target.value }))} />
                 ) : (
                   <p className="text-sm text-gray-700 whitespace-pre-wrap">{candidate.cover_letter}</p>
                 )}
-              </CardContent>
-            </Card>
+              </div>
+            </div>
           )}
 
           {/* Notes */}
-          <Card className="shadow-sm">
-            <CardHeader><CardTitle className="text-lg">Notes</CardTitle></CardHeader>
-            <CardContent>
+          <div className="bg-white rounded-xl border border-gray-200 shadow-sm">
+            <div className="px-6 py-4 border-b border-gray-100"><h3 className="text-base font-semibold text-gray-900">Notes</h3></div>
+            <div className="p-6">
               {editing ? (
                 <Textarea rows={4} value={formData.notes ?? ''} onChange={(e) => setFormData(p => ({ ...p, notes: e.target.value }))} />
               ) : (
                 <p className="text-sm text-gray-700 whitespace-pre-wrap">{candidate.notes || 'No notes added.'}</p>
               )}
-            </CardContent>
-          </Card>
+            </div>
+          </div>
 
           {/* AI Parsed Resume Data */}
           {parsedResume && (
-            <Card className="shadow-sm">
-              <CardHeader><CardTitle className="text-lg">AI-Parsed Resume Data</CardTitle></CardHeader>
-              <CardContent className="space-y-4">
+            <div className="bg-white rounded-xl border border-gray-200 shadow-sm">
+              <div className="px-6 py-4 border-b border-gray-100"><h3 className="text-base font-semibold text-gray-900">AI-Parsed Resume Data</h3></div>
+              <div className="p-6 space-y-4">
                 {parsedResume.summary && (
                   <div>
                     <h4 className="text-sm font-medium text-gray-700 mb-1">Summary</h4>
@@ -513,7 +551,7 @@ export default function CandidateDetailPage() {
                     <h4 className="text-sm font-medium text-gray-700 mb-2">Experience</h4>
                     <div className="space-y-3">
                       {parsedResume.experience.map((exp: AnyData, i: number) => (
-                        <div key={i} className="border-l-2 border-indigo-200 pl-3">
+                        <div key={i} className="border-l-2 border-blue-200 pl-3">
                           <p className="text-sm font-medium">{exp.title}</p>
                           <p className="text-xs text-gray-500">{exp.company}{exp.duration ? ` | ${exp.duration}` : ''}</p>
                           {exp.description && <p className="text-xs text-gray-600 mt-1">{exp.description}</p>}
@@ -535,8 +573,8 @@ export default function CandidateDetailPage() {
                     </div>
                   </div>
                 )}
-              </CardContent>
-            </Card>
+              </div>
+            </div>
           )}
 
           {/* Resume Viewer + Upload */}
@@ -553,72 +591,19 @@ export default function CandidateDetailPage() {
         {/* ====== RIGHT COLUMN — Overview + Hiring Pipeline ====== */}
         <div className="lg:col-span-2">
           <div className="lg:sticky lg:top-6 space-y-6 max-h-[calc(100vh-3rem)] overflow-y-auto">
-            {/* Overview Card */}
-            <Card className="shadow-sm">
-              <CardHeader className="pb-3">
-                <CardTitle className="text-base font-semibold">Overview</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="text-sm space-y-2">
-                  <InfoRow label="Added" value={new Date(candidate.created_at).toLocaleDateString()} />
-                  <InfoRow label="Source" value={sourceLabel} />
-                  <InfoRow label="Applications" value={String(candidate.applications?.length || 0)} />
-                  {candidate.experience_years != null && <InfoRow label="Experience" value={`${candidate.experience_years} yrs`} />}
-                  {noticeLabel && <InfoRow label="Notice" value={noticeLabel} />}
-                  {educationLabel && <InfoRow label="Education" value={educationLabel} />}
-                  {candidate.current_salary != null && <InfoRow label="Current CTC" value={`$${Number(candidate.current_salary).toLocaleString()}`} />}
-                  {candidate.expected_salary != null && <InfoRow label="Expected CTC" value={`$${Number(candidate.expected_salary).toLocaleString()}`} />}
-                </div>
-
-                <Separator />
-
-                {/* Tags */}
-                <div>
-                  <h4 className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-2">Tags</h4>
-                  {candidate.tags?.length > 0 ? (
-                    <div className="flex flex-wrap gap-1.5">
-                      {candidate.tags.map((tag: string) => (
-                        <span key={tag} className="text-xs bg-blue-50 text-blue-700 px-2 py-1 rounded">{tag}</span>
-                      ))}
-                    </div>
-                  ) : <p className="text-sm text-gray-400">No tags</p>}
-                </div>
-
-                <Separator />
-
-                {/* Resume download link */}
-                <div>
-                  <h4 className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-2">Resume</h4>
-                  {candidate.resume_url ? (
-                    <a
-                      href={candidate.resume_url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1.5 text-sm text-blue-600 hover:underline"
-                    >
-                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" /></svg>
-                      Download Resume (PDF)
-                    </a>
-                  ) : (
-                    <p className="text-sm text-gray-400">No resume uploaded</p>
-                  )}
-                </div>
-              </CardContent>
-            </Card>
-
             {/* Hiring Pipeline Card — Now shows clickable links to /applications/[id] */}
-            <Card className="shadow-sm">
-              <CardHeader className="pb-3">
+            <div className="bg-white rounded-xl border border-gray-200 shadow-sm">
+              <div className="px-6 py-4 border-b border-gray-100">
                 <div className="flex items-center justify-between">
-                  <CardTitle className="text-base font-semibold">
+                  <h3 className="text-base font-semibold text-gray-900">
                     Hiring Pipeline
-                    <Badge variant="secondary" className="ml-2 text-xs">
+                    <span className="ml-2 text-[11px] font-medium px-2 py-0.5 rounded-full bg-gray-100 text-gray-700">
                       {candidate.applications?.length || 0}
-                    </Badge>
-                  </CardTitle>
+                    </span>
+                  </h3>
                 </div>
-              </CardHeader>
-              <CardContent className="space-y-3">
+              </div>
+              <div className="p-5 space-y-3">
                 {candidate.applications?.length > 0 ? (
                   candidate.applications.map((app: AnyData) => (
                     <div key={app.id} className="border rounded-lg p-3 hover:border-blue-300 hover:bg-blue-50/50 transition-colors">
@@ -633,15 +618,15 @@ export default function CandidateDetailPage() {
                             </p>
                             <p className="text-xs text-gray-500">{app.job?.department}</p>
                           </div>
-                          <Badge className={`text-[10px] shrink-0 ${STATUS_COLORS[app.status] || 'bg-gray-100 text-gray-800'}`}>
+                          <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full shrink-0 ${STATUS_COLORS[app.status] || 'bg-gray-100 text-gray-800'}`}>
                             {app.status}
-                          </Badge>
+                          </span>
                         </div>
 
                         {app.current_stage && (
-                          <Badge className={`text-xs mt-2 ${STAGE_COLORS[app.current_stage.stage_type] || 'bg-gray-100 text-gray-800'}`}>
+                          <span className={`text-xs mt-2 inline-block px-2 py-0.5 rounded-full font-medium ${STAGE_COLORS[app.current_stage.stage_type] || 'bg-gray-100 text-gray-800'}`}>
                             {app.current_stage.name}
-                          </Badge>
+                          </span>
                         )}
 
                         <div className="flex items-center gap-3 mt-2 text-xs text-gray-400">
@@ -680,8 +665,95 @@ export default function CandidateDetailPage() {
                     No applications yet
                   </p>
                 )}
-              </CardContent>
-            </Card>
+              </div>
+            </div>
+
+            {/* Overview Card */}
+            <div className="bg-white rounded-xl border border-gray-200 shadow-sm">
+              <div className="px-6 py-4 border-b border-gray-100">
+                <h3 className="text-base font-semibold text-gray-900">Overview</h3>
+              </div>
+              <div className="p-5 space-y-4">
+                <div className="text-sm space-y-2">
+                  <InfoRow label="Added" value={new Date(candidate.created_at).toLocaleDateString()} />
+                  <InfoRow label="Source" value={sourceLabel} />
+                  <InfoRow label="Applications" value={String(candidate.applications?.length || 0)} />
+                  {candidate.experience_years != null && <InfoRow label="Experience" value={`${candidate.experience_years} yrs`} />}
+                  {noticeLabel && <InfoRow label="Notice" value={noticeLabel} />}
+                  {educationLabel && <InfoRow label="Education" value={educationLabel} />}
+                  {candidate.current_salary != null && <InfoRow label="Current CTC" value={`$${Number(candidate.current_salary).toLocaleString()}`} />}
+                  {candidate.expected_salary != null && <InfoRow label="Expected CTC" value={`$${Number(candidate.expected_salary).toLocaleString()}`} />}
+                </div>
+
+                <Separator />
+
+                {/* AI Scores */}
+                <div>
+                  <h4 className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-2">AI Score</h4>
+                  {candidate.applications?.length > 0 ? (
+                    candidate.applications.map((app: AnyData) => {
+                      const score = aiScores[app.id]
+                      if (!score) return (
+                        <p key={app.id} className="text-sm text-gray-400">Not scored yet</p>
+                      )
+                      const overall = score.overall_score
+                      const color = overall >= 70 ? 'text-green-600' : overall >= 40 ? 'text-yellow-600' : 'text-red-600'
+                      const barColor = overall >= 70 ? 'bg-green-500' : overall >= 40 ? 'bg-yellow-500' : 'bg-red-500'
+                      return (
+                        <div key={app.id} className="space-y-2">
+                          <div className="flex items-center justify-between">
+                            <span className={`text-2xl font-bold ${color}`}>{overall}</span>
+                            <span className="text-xs text-gray-400">/ 100</span>
+                          </div>
+                          <div className="w-full bg-gray-100 rounded-full h-1.5">
+                            <div className={`h-1.5 rounded-full ${barColor}`} style={{ width: `${overall}%` }} />
+                          </div>
+                          <div className="grid grid-cols-3 gap-1 text-center text-xs pt-1">
+                            <div>
+                              <p className="font-medium text-gray-700">{score.skill_score}</p>
+                              <p className="text-gray-400">Skills</p>
+                            </div>
+                            <div>
+                              <p className="font-medium text-gray-700">{score.experience_score}</p>
+                              <p className="text-gray-400">Exp.</p>
+                            </div>
+                            <div>
+                              <p className="font-medium text-gray-700">{score.semantic_score}</p>
+                              <p className="text-gray-400">Semantic</p>
+                            </div>
+                          </div>
+                          {score.recommendation && (
+                            <p className="text-xs text-gray-500 italic">{score.recommendation}</p>
+                          )}
+                        </div>
+                      )
+                    })
+                  ) : (
+                    <p className="text-sm text-gray-400">No applications yet</p>
+                  )}
+                </div>
+
+                <Separator />
+
+                {/* Resume download link */}
+                <div>
+                  <h4 className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-2">Resume</h4>
+                  {candidate.resume_url ? (
+                    <a
+                      href={candidate.resume_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1.5 text-sm text-blue-600 hover:underline"
+                    >
+                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" /></svg>
+                      Download Resume (PDF)
+                    </a>
+                  ) : (
+                    <p className="text-sm text-gray-400">No resume uploaded</p>
+                  )}
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </div>

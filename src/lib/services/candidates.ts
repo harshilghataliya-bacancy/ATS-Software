@@ -33,7 +33,12 @@ export async function getCandidates(
     .select(
       `
       *,
-      applications:applications(count)
+      applications:applications(
+        id,
+        status,
+        job:jobs(id, title, department),
+        current_stage:pipeline_stages!current_stage_id(name, stage_type)
+      )
     `,
       { count: 'exact' }
     )
@@ -72,8 +77,7 @@ export async function getCandidates(
 
   const candidates = data?.map((candidate) => ({
     ...candidate,
-    application_count: candidate.applications?.[0]?.count ?? 0,
-    applications: undefined,
+    application_count: candidate.applications?.length ?? 0,
   }))
 
   return { data: candidates, error: null, count }

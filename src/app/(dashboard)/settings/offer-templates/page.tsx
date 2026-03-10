@@ -26,10 +26,6 @@ interface TemplateForm {
   // Basic
   company_name: string
   logo_url: string
-  // Branding
-  primary_color: string
-  accent_color: string
-  header_subtitle: string
   // Content
   greeting_text: string
   intro_text: string
@@ -52,6 +48,11 @@ interface TemplateForm {
   // Email
   email_subject: string
   email_body: string
+  // Contact info for header/footer
+  company_phone: string
+  company_email: string
+  company_website: string
+  company_address: string
 }
 
 const emptyForm: TemplateForm = {
@@ -59,9 +60,6 @@ const emptyForm: TemplateForm = {
   is_active: false,
   company_name: '',
   logo_url: '',
-  primary_color: OFFER_PDF_DEFAULTS.primary_color,
-  accent_color: OFFER_PDF_DEFAULTS.accent_color,
-  header_subtitle: OFFER_PDF_DEFAULTS.header_subtitle,
   greeting_text: '',
   intro_text: '',
   terms_and_conditions: '',
@@ -80,6 +78,10 @@ const emptyForm: TemplateForm = {
   show_signature_block: true,
   email_subject: '',
   email_body: '',
+  company_phone: '',
+  company_email: '',
+  company_website: '',
+  company_address: '',
 }
 
 const defaultTemplateForm: TemplateForm = {
@@ -87,9 +89,6 @@ const defaultTemplateForm: TemplateForm = {
   is_active: true,
   company_name: 'HireFlow Technologies Pvt. Ltd.',
   logo_url: '',
-  primary_color: '#1e3a5f',
-  accent_color: '#2563eb',
-  header_subtitle: 'Private & Confidential',
   greeting_text: 'Dear {{candidate_name}},',
   intro_text: `We are pleased to inform you that you have been selected for the position of {{job_title}} in the {{department}} department at {{company_name}}. Based on your qualifications, experience, and performance during the interview process, we believe you will be a valuable addition to our team.
 
@@ -117,6 +116,10 @@ The company reserves the right to transfer you to any department, location, or s
   show_terms_section: true,
   show_acceptance_section: true,
   show_signature_block: true,
+  company_phone: '',
+  company_email: '',
+  company_website: '',
+  company_address: '',
   email_subject: 'Offer Letter - {{job_title}} at {{company_name}}',
   email_body: `<p>Dear {{candidate_name}},</p>
 
@@ -150,9 +153,6 @@ function formFromTemplate(t: AnyData): TemplateForm {
     is_active: t.is_active || false,
     company_name: t.company_name || '',
     logo_url: t.logo_url || '',
-    primary_color: t.primary_color || OFFER_PDF_DEFAULTS.primary_color,
-    accent_color: t.accent_color || OFFER_PDF_DEFAULTS.accent_color,
-    header_subtitle: t.header_subtitle ?? OFFER_PDF_DEFAULTS.header_subtitle,
     greeting_text: t.greeting_text || '',
     intro_text: t.intro_text || '',
     terms_and_conditions: t.terms_and_conditions || '',
@@ -171,6 +171,10 @@ function formFromTemplate(t: AnyData): TemplateForm {
     show_signature_block: t.show_signature_block ?? true,
     email_subject: t.email_subject || '',
     email_body: t.email_body || '',
+    company_phone: t.company_phone || '',
+    company_email: t.company_email || '',
+    company_website: t.company_website || '',
+    company_address: t.company_address || '',
   }
 }
 
@@ -180,9 +184,6 @@ function formToPayload(form: TemplateForm): AnyData {
     is_active: form.is_active,
     company_name: form.company_name.trim() || null,
     logo_url: form.logo_url.trim() || null,
-    primary_color: form.primary_color || null,
-    accent_color: form.accent_color || null,
-    header_subtitle: form.header_subtitle.trim() || null,
     greeting_text: form.greeting_text.trim() || null,
     intro_text: form.intro_text.trim() || null,
     terms_and_conditions: form.terms_and_conditions.trim() || null,
@@ -201,6 +202,10 @@ function formToPayload(form: TemplateForm): AnyData {
     show_signature_block: form.show_signature_block,
     email_subject: form.email_subject.trim() || null,
     email_body: form.email_body.trim() || null,
+    company_phone: form.company_phone.trim() || null,
+    company_email: form.company_email.trim() || null,
+    company_website: form.company_website.trim() || null,
+    company_address: form.company_address.trim() || null,
   }
 }
 
@@ -421,7 +426,7 @@ export default function OfferTemplatesPage() {
 
         <div className="flex gap-6">
           {/* Main editor area */}
-          <div className="flex-1 min-w-0">
+          <div className={previewUrl ? 'w-[52%] shrink-0 min-w-0' : 'flex-1 min-w-0'}>
             <Tabs defaultValue="branding">
               <TabsList className="w-full justify-start">
                 <TabsTrigger value="branding" className="gap-1.5">
@@ -485,73 +490,44 @@ export default function OfferTemplatesPage() {
                         </div>
                       )}
                     </div>
+                    {/* Contact info for header */}
                     <div className="grid grid-cols-2 gap-4">
                       <div className="space-y-2">
-                        <Label>Primary Color</Label>
-                        <div className="flex items-center gap-2">
-                          <input
-                            type="color"
-                            value={form.primary_color}
-                            onChange={(e) => updateForm('primary_color', e.target.value)}
-                            className="h-9 w-12 rounded border cursor-pointer"
-                          />
-                          <Input
-                            value={form.primary_color}
-                            onChange={(e) => updateForm('primary_color', e.target.value)}
-                            placeholder="#1e3a5f"
-                            className="font-mono text-sm"
-                          />
-                        </div>
-                        <p className="text-xs text-gray-500">Used for header bar, section headings, CTC total row</p>
+                        <Label>Company Phone</Label>
+                        <Input
+                          value={form.company_phone}
+                          onChange={(e) => updateForm('company_phone', e.target.value)}
+                          placeholder="+91 79 4000 0000"
+                        />
                       </div>
                       <div className="space-y-2">
-                        <Label>Accent Color</Label>
-                        <div className="flex items-center gap-2">
-                          <input
-                            type="color"
-                            value={form.accent_color}
-                            onChange={(e) => updateForm('accent_color', e.target.value)}
-                            className="h-9 w-12 rounded border cursor-pointer"
-                          />
-                          <Input
-                            value={form.accent_color}
-                            onChange={(e) => updateForm('accent_color', e.target.value)}
-                            placeholder="#2563eb"
-                            className="font-mono text-sm"
-                          />
-                        </div>
-                        <p className="text-xs text-gray-500">Used for section heading underlines</p>
+                        <Label>Company Email</Label>
+                        <Input
+                          value={form.company_email}
+                          onChange={(e) => updateForm('company_email', e.target.value)}
+                          placeholder="hr@company.com"
+                        />
                       </div>
                     </div>
-                    <div className="space-y-2">
-                      <Label>Header Subtitle</Label>
-                      <Input
-                        value={form.header_subtitle}
-                        onChange={(e) => updateForm('header_subtitle', e.target.value)}
-                        placeholder="Confidential"
-                      />
-                      <p className="text-xs text-gray-500">Text shown below company name in the PDF header (e.g. &quot;Confidential&quot;, &quot;Private & Confidential&quot;)</p>
-                    </div>
-
-                    {/* Color preview */}
-                    <div className="border rounded-lg overflow-hidden mt-4">
-                      <div className="p-4 flex items-center gap-3" style={{ backgroundColor: form.primary_color }}>
-                        {form.logo_url && (
-                          /* eslint-disable-next-line @next/next/no-img-element */
-                          <img src={form.logo_url} alt="" className="h-10 w-10 object-contain rounded" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }} />
-                        )}
-                        <div>
-                          <p className="text-white font-bold text-lg">{form.company_name || 'Company Name'}</p>
-                          <p className="text-white/60 text-xs">{form.header_subtitle || 'Confidential'}</p>
-                        </div>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label>Company Website</Label>
+                        <Input
+                          value={form.company_website}
+                          onChange={(e) => updateForm('company_website', e.target.value)}
+                          placeholder="www.company.com"
+                        />
                       </div>
-                      <div className="p-4 space-y-2">
-                        <p className="font-bold text-sm border-b-2 pb-1" style={{ color: form.primary_color, borderColor: form.accent_color }}>
-                          Section Heading Preview
-                        </p>
-                        <p className="text-sm text-gray-600">This is how your colors will look in the PDF.</p>
+                      <div className="space-y-2">
+                        <Label>Company Address (footer)</Label>
+                        <Input
+                          value={form.company_address}
+                          onChange={(e) => updateForm('company_address', e.target.value)}
+                          placeholder="123 Street, City, State - PIN"
+                        />
                       </div>
                     </div>
+                    <p className="text-xs text-gray-500">Phone, email, and website appear in the PDF header. Address appears in the footer.</p>
                   </CardContent>
                 </Card>
               </TabsContent>
@@ -769,51 +745,48 @@ export default function OfferTemplatesPage() {
             </Tabs>
           </div>
 
-          {/* Variable sidebar */}
-          <div className="w-64 shrink-0">
-            <Card className="sticky top-4">
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm">Template Variables</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                <p className="text-xs text-gray-500">Click to copy. Paste into any text field.</p>
-                {OFFER_TEMPLATE_VARIABLE_CATEGORIES.map((cat) => (
-                  <div key={cat.category}>
-                    <p className="text-xs font-semibold text-gray-700 mb-1">{cat.category}</p>
-                    <div className="space-y-0.5">
-                      {cat.variables.map((v) => (
-                        <button
-                          key={v.key}
-                          onClick={() => copyVariable(v.key)}
-                          className="flex items-center justify-between w-full text-left px-2 py-1 rounded text-xs hover:bg-gray-100 transition-colors group"
-                        >
-                          <span className="font-mono text-blue-600">{v.key}</span>
-                          <Copy className="h-3 w-3 text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity" />
-                          {copiedVar === v.key && (
-                            <span className="text-green-600 text-[10px]">Copied!</span>
-                          )}
-                        </button>
-                      ))}
+          {/* Variable sidebar — hidden when preview is open */}
+          {!previewUrl && (
+            <div className="w-64 shrink-0">
+              <Card className="sticky top-4">
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm">Template Variables</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <p className="text-xs text-gray-500">Click to copy. Paste into any text field.</p>
+                  {OFFER_TEMPLATE_VARIABLE_CATEGORIES.map((cat) => (
+                    <div key={cat.category}>
+                      <p className="text-xs font-semibold text-gray-700 mb-1">{cat.category}</p>
+                      <div className="space-y-0.5">
+                        {cat.variables.map((v) => (
+                          <button
+                            key={v.key}
+                            onClick={() => copyVariable(v.key)}
+                            className="flex items-center justify-between w-full text-left px-2 py-1 rounded text-xs hover:bg-gray-100 transition-colors group"
+                          >
+                            <span className="font-mono text-blue-600">{v.key}</span>
+                            <Copy className="h-3 w-3 text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity" />
+                            {copiedVar === v.key && (
+                              <span className="text-green-600 text-[10px]">Copied!</span>
+                            )}
+                          </button>
+                        ))}
+                      </div>
                     </div>
-                  </div>
-                ))}
-              </CardContent>
-            </Card>
-          </div>
-        </div>
+                  ))}
+                </CardContent>
+              </Card>
+            </div>
+          )}
 
-        {/* PDF Preview Overlay */}
-        {previewUrl && (
-          <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-6">
-            <div className="bg-white rounded-xl shadow-2xl flex flex-col w-full max-w-5xl" style={{ height: 'calc(100vh - 80px)' }}>
-              {/* Preview header */}
-              <div className="flex items-center justify-between px-5 py-3 border-b shrink-0">
-                <div className="flex items-center gap-3">
-                  <Eye className="h-5 w-5 text-blue-600" />
-                  <div>
-                    <h3 className="font-semibold text-gray-900">PDF Preview</h3>
-                    <p className="text-xs text-gray-500">Sample data: Rahul Mehta, Senior Software Engineer, INR 18,00,000 CTC</p>
-                  </div>
+          {/* Inline PDF Preview Panel */}
+          {previewUrl && (
+            <div className="flex-1 min-w-0 flex flex-col" style={{ minHeight: '85vh' }}>
+              <div className="flex items-center justify-between mb-2 shrink-0">
+                <div className="flex items-center gap-2">
+                  <Eye className="h-4 w-4 text-blue-600" />
+                  <span className="font-semibold text-gray-900 text-sm">PDF Preview</span>
+                  <span className="text-xs text-gray-400">Sample: Rahul Mehta · INR 18,00,000 CTC</span>
                 </div>
                 <div className="flex items-center gap-2">
                   <Button variant="outline" size="sm" onClick={handlePreview} disabled={previewLoading}>
@@ -825,17 +798,17 @@ export default function OfferTemplatesPage() {
                   </Button>
                 </div>
               </div>
-              {/* PDF iframe */}
-              <div className="flex-1 min-h-0">
+              <div className="flex-1 border border-gray-200 rounded-xl overflow-hidden shadow-sm">
                 <iframe
-                  src={previewUrl}
-                  className="w-full h-full rounded-b-xl"
+                  src={`${previewUrl}#navpanes=0`}
+                  className="w-full h-full"
+                  style={{ minHeight: '85vh' }}
                   title="Offer Letter PDF Preview"
                 />
               </div>
             </div>
-          </div>
-        )}
+          )}
+        </div>
       </div>
     )
   }
@@ -875,7 +848,11 @@ export default function OfferTemplatesPage() {
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {templates.map((t) => (
-            <Card key={t.id} className={`shadow-sm ${t.is_active ? 'ring-2 ring-blue-500' : ''}`}>
+            <Card
+              key={t.id}
+              className="shadow-sm cursor-pointer transition-shadow hover:shadow-md"
+              onClick={() => openEdit(t)}
+            >
               <CardHeader className="pb-3">
                 <div className="flex items-center justify-between">
                   <CardTitle className="text-base truncate">{t.name}</CardTitle>
@@ -886,22 +863,9 @@ export default function OfferTemplatesPage() {
                 {t.company_name && (
                   <p className="text-sm text-gray-600">Company: {t.company_name}</p>
                 )}
-                {/* Color swatches */}
-                <div className="flex items-center gap-2">
-                  <div
-                    className="h-5 w-5 rounded border"
-                    style={{ backgroundColor: t.primary_color || OFFER_PDF_DEFAULTS.primary_color }}
-                    title="Primary Color"
-                  />
-                  <div
-                    className="h-5 w-5 rounded border"
-                    style={{ backgroundColor: t.accent_color || OFFER_PDF_DEFAULTS.accent_color }}
-                    title="Accent Color"
-                  />
-                  {t.signatory_name && (
-                    <span className="text-xs text-gray-500 ml-1">Signatory: {t.signatory_name}</span>
-                  )}
-                </div>
+                {t.signatory_name && (
+                  <p className="text-xs text-gray-500">Signatory: {t.signatory_name}</p>
+                )}
                 {/* Toggle summary */}
                 <div className="flex flex-wrap gap-1">
                   {!t.show_salary_breakdown && <Badge variant="outline" className="text-[10px]">No Salary</Badge>}
@@ -911,10 +875,10 @@ export default function OfferTemplatesPage() {
                   {!t.show_signature_block && <Badge variant="outline" className="text-[10px]">No Signature</Badge>}
                 </div>
                 <div className="flex gap-2 pt-2">
-                  <Button variant="outline" size="sm" onClick={() => openEdit(t)}>
+                  <Button variant="outline" size="sm" onClick={(e) => { e.stopPropagation(); openEdit(t) }}>
                     Edit
                   </Button>
-                  <Button variant="ghost" size="sm" className="text-red-600 hover:text-red-700" onClick={() => setDeleteId(t.id)}>
+                  <Button variant="ghost" size="sm" className="text-red-600 hover:text-red-700" onClick={(e) => { e.stopPropagation(); setDeleteId(t.id) }}>
                     Delete
                   </Button>
                 </div>

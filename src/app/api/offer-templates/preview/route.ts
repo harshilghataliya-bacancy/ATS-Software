@@ -65,7 +65,7 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
 
-    const salary = `INR ${SAMPLE.ctc.toLocaleString('en-IN')}`
+    const salary = `Rs. ${new Intl.NumberFormat('en-IN').format(SAMPLE.ctc)}`
     const salaryComponents = buildSampleSalaryComponents(SAMPLE.ctc)
     const bonusComponents = [
       { name: 'Performance Bonus', amount: 150000, frequency: 'Annual' },
@@ -100,7 +100,6 @@ export async function POST(request: NextRequest) {
       templateTerms: body.terms_and_conditions || undefined,
       primaryColor: body.primary_color || undefined,
       accentColor: body.accent_color || undefined,
-      headerSubtitle: body.header_subtitle || undefined,
       greetingText: body.greeting_text || undefined,
       introText: body.intro_text || undefined,
       closingText: body.closing_text || undefined,
@@ -116,6 +115,10 @@ export async function POST(request: NextRequest) {
       showAcceptanceSection: body.show_acceptance_section ?? true,
       showSignatureBlock: body.show_signature_block ?? true,
       footerText: body.footer_text || undefined,
+      companyPhone:   body.company_phone   || undefined,
+      companyEmail:   body.company_email   || undefined,
+      companyWebsite: body.company_website || undefined,
+      companyAddress: body.company_address || undefined,
     }) as any
 
     const buffer = await renderToBuffer(pdfElement)

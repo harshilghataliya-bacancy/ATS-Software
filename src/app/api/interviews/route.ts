@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createInterview } from '@/lib/services/interviews'
+import { moveApplication } from '@/lib/services/applications'
 import { getValidAccessToken, sendGmailEmail } from '@/lib/services/gmail'
 import { createCalendarEvent } from '@/lib/services/google-calendar'
 import { logEmail } from '@/lib/services/email'
@@ -341,26 +342,48 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  // Log activity (best effort)
+  // Log activity (fire-and-forget)
+  logActivity(
+    supabase,
+    orgId,
+    user.id,
+    'interview',
+    interview.id,
+    'interview_scheduled',
+    {
+      candidate_name,
+      job_title,
+      interview_type,
+      scheduled_at,
+      meeting_link: meetLink,
+    }
+  ).catch((err: unknown) => console.error('[Activity Log Error]', err))
+
+  // Auto-advance to 'interview' stage if not already past it
   try {
-    await logActivity(
-      supabase,
-      orgId,
-      user.id,
-      'interview',
-      interview.id,
-      'interview_scheduled',
-      {
-        candidate_name,
-        job_title,
-        interview_type,
-        scheduled_at,
-        meeting_link: meetLink,
+    const { data: appWithStage } = await supabase
+      .from('applications')
+      .select('job_id, current_stage_id, pipeline_stages:current_stage_id(display_order)')
+      .eq('id', application_id)
+      .single()
+
+    if (appWithStage) {
+      const { data: interviewStage } = await supabase
+        .from('pipeline_stages')
+        .select('id, display_order')
+        .eq('job_id', appWithStage.job_id)
+        .eq('stage_type', 'interview')
+        .maybeSingle()
+
+      if (interviewStage) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const currentOrder = (appWithStage.pipeline_stages as any)?.display_order ?? -1
+        if (currentOrder < interviewStage.display_order) {
+          await moveApplication(supabase, application_id, orgId, interviewStage.id, user.id)
+        }
       }
-    )
-  } catch (err) {
-    console.error('[Activity Log Error]', err)
-  }
+    }
+  } catch { /* silently skip stage advance */ }
 
   return NextResponse.json({ success: true, data: interview })
 }

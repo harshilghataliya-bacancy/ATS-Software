@@ -239,9 +239,6 @@ export default function JobDetailPage() {
             <Link href={`/jobs/${params.id}/applications`}>
               <Button variant="outline">Applications</Button>
             </Link>
-            <Link href={`/jobs/${params.id}/pipeline`}>
-              <Button variant="outline">Pipeline</Button>
-            </Link>
           </div>
         </div>
       </div>

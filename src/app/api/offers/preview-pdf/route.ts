@@ -66,7 +66,6 @@ export async function POST(request: NextRequest) {
       // Full template customization
       primaryColor: (tpl?.primaryColor || tpl?.primary_color) as string | undefined,
       accentColor: (tpl?.accentColor || tpl?.accent_color) as string | undefined,
-      headerSubtitle: (tpl?.headerSubtitle || tpl?.header_subtitle) as string | undefined,
       greetingText: (tpl?.greetingText || tpl?.greeting_text) as string | undefined,
       introText: (tpl?.introText || tpl?.intro_text) as string | undefined,
       closingText: (tpl?.closingText || tpl?.closing_text) as string | undefined,
@@ -82,6 +81,10 @@ export async function POST(request: NextRequest) {
       showAcceptanceSection: ((tpl?.showAcceptanceSection ?? tpl?.show_acceptance_section) as boolean | undefined) ?? true,
       showSignatureBlock: ((tpl?.showSignatureBlock ?? tpl?.show_signature_block) as boolean | undefined) ?? true,
       footerText: (tpl?.footerText || tpl?.footer_text) as string | undefined,
+      companyPhone:   (tpl?.companyPhone   || tpl?.company_phone)   as string | undefined,
+      companyEmail:   (tpl?.companyEmail   || tpl?.company_email)   as string | undefined,
+      companyWebsite: (tpl?.companyWebsite || tpl?.company_website) as string | undefined,
+      companyAddress: (tpl?.companyAddress || tpl?.company_address) as string | undefined,
     }) as any
 
     const buffer = await renderToBuffer(pdfElement)

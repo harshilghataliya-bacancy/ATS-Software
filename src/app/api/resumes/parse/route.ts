@@ -28,19 +28,14 @@ export async function POST(request: NextRequest) {
 
     const orgId = member.organization_id
 
-    // Batch parse
+    // Batch parse — parallel
     if (candidate_ids && Array.isArray(candidate_ids)) {
-      const results: Array<{ candidate_id: string; success: boolean; error?: string }> = []
-
-      for (const id of candidate_ids) {
-        const { error } = await parseResume(supabase, id, orgId)
-        results.push({
-          candidate_id: id,
-          success: !error,
-          error: error?.message,
+      const results = await Promise.all(
+        candidate_ids.map(async (id: string) => {
+          const { error } = await parseResume(supabase, id, orgId)
+          return { candidate_id: id, success: !error, error: error?.message }
         })
-      }
-
+      )
       return NextResponse.json({ data: results })
     }
 

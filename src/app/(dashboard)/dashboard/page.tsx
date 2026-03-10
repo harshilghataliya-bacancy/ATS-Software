@@ -6,17 +6,15 @@ import Link from 'next/link'
 import { useUser, useRole } from '@/lib/hooks/use-user'
 import { createClient } from '@/lib/supabase/client'
 import { getDashboardStats } from '@/lib/services/reports'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
 
 const DashboardCharts = dynamic(() => import('./dashboard-charts'), {
   loading: () => (
     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
       {[1, 2, 3].map((i) => (
-        <Card key={i}>
+        <div key={i} className="bg-white rounded-xl border border-gray-200">
           <div className="p-6"><Skeleton className="h-[220px] w-full" /></div>
-        </Card>
+        </div>
       ))}
     </div>
   ),
@@ -387,9 +385,9 @@ export default function DashboardPage() {
           <path strokeLinecap="round" strokeLinejoin="round" d="M18 18.72a9.094 9.094 0 003.741-.479 3 3 0 00-4.682-2.72m.94 3.198l.001.031c0 .225-.012.447-.037.666A11.944 11.944 0 0112 21c-2.17 0-4.207-.576-5.963-1.584A6.062 6.062 0 016 18.719m12 0a5.971 5.971 0 00-.941-3.197m0 0A5.995 5.995 0 0012 12.75a5.995 5.995 0 00-5.058 2.772m0 0a3 3 0 00-4.681 2.72 8.986 8.986 0 003.74.477m.94-3.197a5.971 5.971 0 00-.94 3.197M15 6.75a3 3 0 11-6 0 3 3 0 016 0zm6 3a2.25 2.25 0 11-4.5 0 2.25 2.25 0 014.5 0zm-13.5 0a2.25 2.25 0 11-4.5 0 2.25 2.25 0 014.5 0z" />
         </svg>
       ),
-      bg: 'bg-indigo-50',
-      iconColor: 'text-indigo-600',
-      accent: 'border-l-indigo-500',
+      bg: 'bg-blue-50',
+      iconColor: 'text-blue-600',
+      accent: 'border-l-blue-500',
     },
   ]
 
@@ -466,22 +464,20 @@ export default function DashboardPage() {
       <div className={`grid grid-cols-1 md:grid-cols-2 ${isAdmin ? 'lg:grid-cols-5' : isInterviewer ? 'lg:grid-cols-4' : 'lg:grid-cols-4'} gap-4`}>
         {kpiList.map((kpi) => (
           <Link key={kpi.key} href={kpi.href}>
-            <Card className={`hover:shadow-lg transition-all duration-200 cursor-pointer border-l-4 ${kpi.accent} group`}>
-              <CardContent className="p-5">
-                <div className="flex items-start justify-between">
-                  <div>
-                    <p className="text-sm font-medium text-gray-500">{kpi.label}</p>
-                    <p className="text-3xl font-bold text-gray-900 mt-1">
-                      {stats?.[kpi.key as keyof typeof stats] ?? 0}
-                    </p>
-                    <p className="text-xs text-gray-400 mt-1">{kpi.sub}</p>
-                  </div>
-                  <div className={`p-2.5 rounded-lg ${kpi.bg} ${kpi.iconColor} group-hover:scale-110 transition-transform`}>
-                    {kpi.icon}
-                  </div>
+            <div className={`group bg-white rounded-xl border border-gray-200 border-l-4 ${kpi.accent} hover:shadow-lg transition-all duration-200 cursor-pointer p-5`}>
+              <div className="flex items-start justify-between">
+                <div>
+                  <p className="text-sm font-medium text-gray-500">{kpi.label}</p>
+                  <p className="text-3xl font-bold text-gray-900 mt-1">
+                    {stats?.[kpi.key as keyof typeof stats] ?? 0}
+                  </p>
+                  <p className="text-xs text-gray-400 mt-1">{kpi.sub}</p>
                 </div>
-              </CardContent>
-            </Card>
+                <div className={`p-2.5 rounded-lg ${kpi.bg} ${kpi.iconColor} group-hover:scale-110 transition-transform`}>
+                  {kpi.icon}
+                </div>
+              </div>
+            </div>
           </Link>
         ))}
       </div>
@@ -504,14 +500,12 @@ export default function DashboardPage() {
       <div className={`grid grid-cols-1 ${isInterviewer ? '' : 'lg:grid-cols-2'} gap-6`}>
         {/* Recent Activity — only for non-interviewers */}
         {!isInterviewer && (
-          <Card className="shadow-sm">
-            <CardHeader className="pb-3">
-              <div className="flex items-center justify-between">
-                <CardTitle className="text-lg font-semibold">Recent Activity</CardTitle>
-                <span className="text-xs text-gray-400">{activities.length} events</span>
-              </div>
-            </CardHeader>
-            <CardContent>
+          <div className="bg-white rounded-xl border border-gray-200 shadow-sm">
+            <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+              <h3 className="text-base font-semibold text-gray-900">Recent Activity</h3>
+              <span className="text-xs text-gray-400">{activities.length} events</span>
+            </div>
+            <div className="p-4">
               {activities.length === 0 ? (
                 <div className="text-center py-10">
                   <div className="w-12 h-12 rounded-full bg-gray-100 flex items-center justify-center mx-auto mb-3">
@@ -530,13 +524,11 @@ export default function DashboardPage() {
                       className="flex items-center justify-between gap-3 py-2.5 px-3 rounded-lg hover:bg-gray-50 transition-colors"
                     >
                       <div className="flex items-center gap-3 min-w-0">
-                        <Badge
-                          className={`text-[10px] shrink-0 capitalize font-medium border-0 ${
-                            ENTITY_COLORS[activity.entity_type] ?? 'bg-gray-100 text-gray-700'
-                          }`}
-                        >
+                        <span className={`text-[10px] shrink-0 capitalize font-medium px-2 py-0.5 rounded-full ${
+                          ENTITY_COLORS[activity.entity_type] ?? 'bg-gray-100 text-gray-700'
+                        }`}>
                           {activity.entity_type}
-                        </Badge>
+                        </span>
                         <span className="text-sm text-gray-700 truncate">{formatAction(activity)}</span>
                       </div>
                       <span className="text-xs text-gray-400 shrink-0 tabular-nums">{timeAgo(activity.created_at)}</span>
@@ -544,24 +536,22 @@ export default function DashboardPage() {
                   ))}
                 </div>
               )}
-            </CardContent>
-          </Card>
+            </div>
+          </div>
         )}
 
-        <Card className="shadow-sm">
-          <CardHeader className="pb-3">
-            <div className="flex items-center justify-between">
-              <CardTitle className="text-lg font-semibold">
-                {isInterviewer ? 'My Upcoming Interviews' : 'Upcoming Interviews'}
-              </CardTitle>
-              {interviews.length > 0 && (
-                <Link href="/interviews" className="text-xs text-blue-600 hover:underline">
-                  View all
-                </Link>
-              )}
-            </div>
-          </CardHeader>
-          <CardContent>
+        <div className="bg-white rounded-xl border border-gray-200 shadow-sm">
+          <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+            <h3 className="text-base font-semibold text-gray-900">
+              {isInterviewer ? 'My Upcoming Interviews' : 'Upcoming Interviews'}
+            </h3>
+            {interviews.length > 0 && (
+              <Link href="/interviews" className="text-xs text-blue-600 hover:underline">
+                View all
+              </Link>
+            )}
+          </div>
+          <div className="p-4">
             {interviews.length === 0 ? (
               <div className="text-center py-10">
                 <div className="w-12 h-12 rounded-full bg-gray-100 flex items-center justify-center mx-auto mb-3">
@@ -585,7 +575,7 @@ export default function DashboardPage() {
                   return (
                     <Link key={iv.id} href={`/interviews/${iv.id}`}>
                       <div className="flex items-center gap-3 p-3 rounded-lg hover:bg-gray-50 transition-colors cursor-pointer group">
-                        <div className="w-9 h-9 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center text-xs font-semibold shrink-0 group-hover:bg-indigo-200 transition-colors">
+                        <div className="w-9 h-9 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-xs font-semibold shrink-0 group-hover:bg-blue-200 transition-colors">
                           {initials}
                         </div>
                         <div className="flex-1 min-w-0">
@@ -602,15 +592,15 @@ export default function DashboardPage() {
                             {new Date(iv.scheduled_at).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
                           </p>
                         </div>
-                        <Badge variant="outline" className="text-[10px] capitalize shrink-0">{iv.interview_type}</Badge>
+                        <span className="text-[10px] capitalize shrink-0 px-2 py-0.5 rounded-full border border-gray-200 text-gray-600">{iv.interview_type}</span>
                       </div>
                     </Link>
                   )
                 })}
               </div>
             )}
-          </CardContent>
-        </Card>
+          </div>
+        </div>
       </div>
     </div>
   )

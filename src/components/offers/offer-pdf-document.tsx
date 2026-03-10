@@ -29,7 +29,7 @@ export interface OfferPDFProps {
   workType?: string
   location?: string
   reportingManager?: string
-  salary: string // formatted string e.g. "INR 12,00,000"
+  salary: string
   salaryCurrency: string
   startDate: string
   expiryDate: string
@@ -38,14 +38,12 @@ export interface OfferPDFProps {
   bonusComponents?: BonusComponent[]
   pfApplicable?: boolean
   referenceNumber?: string
-  // Template overrides (legacy)
+  // Template fields
   templateLogoUrl?: string
   templateCompanyName?: string
   templateTerms?: string
-  // Full template customization
   primaryColor?: string
   accentColor?: string
-  headerSubtitle?: string
   greetingText?: string
   introText?: string
   closingText?: string
@@ -61,16 +59,20 @@ export interface OfferPDFProps {
   showAcceptanceSection?: boolean
   showSignatureBlock?: boolean
   footerText?: string
+  // Contact info for header (optional)
+  companyPhone?: string
+  companyEmail?: string
+  companyWebsite?: string
+  companyAddress?: string
 }
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 function fmtNum(n: number): string {
-  return n.toLocaleString('en-IN')
+  return n.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 }
 
-/** Replace {{variable}} placeholders with actual values */
 function sub(text: string, vars: Record<string, string>): string {
   let result = text
   for (const [key, value] of Object.entries(vars)) {
@@ -79,83 +81,193 @@ function sub(text: string, vars: Record<string, string>): string {
   return result
 }
 
-// ---------------------------------------------------------------------------
-// Styles (static — colors applied inline for dynamic overrides)
-// ---------------------------------------------------------------------------
-const c = {
-  gray: '#6b7280',
-  border: '#d1d5db',
-  white: '#ffffff',
-  earningsBg: '#f0fdf4',
-  deductionBg: '#fef2f2',
-  employerBg: '#eff6ff',
+// Strip any unresolved {{placeholder}} patterns
+function stripPlaceholders(text: string): string {
+  return text.replace(/\{\{[^}]+\}\}/g, '').trim()
 }
 
+// Renders text with **bold** markers as inline bold spans
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function FormattedPara({ text, style }: { text: string; style: any }) {
+  const parts = text.split(/\*\*(.*?)\*\*/g)
+  if (parts.length === 1) return <Text style={style}>{text}</Text>
+  return (
+    <Text style={style}>
+      {parts.map((part, i) =>
+        i % 2 === 1
+          ? <Text key={i} style={{ fontFamily: 'Helvetica-Bold' }}>{part}</Text>
+          : <Text key={i}>{part}</Text>
+      )}
+    </Text>
+  )
+}
+
+// Small colored dot — replaces emoji icons
+function Dot({ color }: { color: string }) {
+  return (
+    <View style={{ width: 5, height: 5, borderRadius: 3, backgroundColor: color, marginRight: 5, marginTop: 2 }} />
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Styles
+// ---------------------------------------------------------------------------
 const s = StyleSheet.create({
-  page: { padding: 50, fontFamily: 'Helvetica', fontSize: 10, color: '#1f2937', lineHeight: 1.5 },
+  // Page: horizontal padding for content. Top/bottom handled by header/footer in flow.
+  page: {
+    paddingHorizontal: 48,
+    paddingBottom: 10,
+    fontFamily: 'Helvetica',
+    fontSize: 10,
+    color: '#1f2937',
+    lineHeight: 1.55,
+    backgroundColor: '#ffffff',
+  },
 
-  // Header
-  companyName: { fontSize: 22, fontFamily: 'Helvetica-Bold', color: c.white, letterSpacing: 1 },
-  headerSub: { fontSize: 9, color: '#94a3b8', marginTop: 2 },
+  // ── Header — full-bleed (negative horizontal margin to cancel page padding) ──
+  headerOuter: { marginHorizontal: -48 },
+  header: {
+    flexDirection: 'row' as const,
+    justifyContent: 'space-between' as const,
+    alignItems: 'center' as const,
+    paddingHorizontal: 30,
+    paddingTop: 14,
+    paddingBottom: 12,
+  },
+  headerLogo: { width: 130, height: 52, objectFit: 'contain' as const },
+  headerCompanyText: { fontSize: 16, fontFamily: 'Helvetica-Bold', color: '#1f2937' },
+  headerContactBlock: { flexDirection: 'column' as const, alignItems: 'flex-start' as const },
+  headerContactRow: { flexDirection: 'row' as const, alignItems: 'center' as const, marginBottom: 3 },
+  headerContactText: { fontSize: 8.5, color: '#374151' },
+  headerDivider: { height: 3 },
 
-  // Meta row (date + ref)
-  metaRow: { flexDirection: 'row' as const, justifyContent: 'space-between' as const, marginBottom: 16 },
-  metaText: { fontSize: 9, color: c.gray },
+  // 2-line gap after header divider before body content
+  headerGap: { height: 20 },
 
-  // Title
-  title: { fontSize: 16, fontFamily: 'Helvetica-Bold', textAlign: 'center' as const, marginBottom: 20, textTransform: 'uppercase' as const, letterSpacing: 2 },
+  // ── Letter body ────────────────────────────────────────────────────────
+  docTitle: {
+    fontSize: 12,
+    fontFamily: 'Helvetica-Bold',
+    textAlign: 'center' as const,
+    textDecoration: 'underline',
+    marginBottom: 22,
+    letterSpacing: 0.5,
+  },
+  dateText: { fontSize: 10, fontFamily: 'Helvetica-Bold', marginBottom: 22 },
+  greetText: { fontSize: 10, fontFamily: 'Helvetica-Bold', marginBottom: 14 },
+  body: { fontSize: 10, lineHeight: 1.65, marginBottom: 10, textAlign: 'justify' as const },
 
-  // Candidate block
-  candBlock: { marginBottom: 16 },
-  candName: { fontSize: 11, fontFamily: 'Helvetica-Bold' },
-  candEmail: { fontSize: 9, color: c.gray },
+  // ── Signature block ────────────────────────────────────────────────────
+  sigFor: { fontSize: 10, fontFamily: 'Helvetica-Bold', marginTop: 28 },
+  sigLineRule: { borderBottomWidth: 0.75, borderBottomColor: '#374151', width: 170, marginTop: 34, marginBottom: 5 },
+  sigName: { fontSize: 10, fontFamily: 'Helvetica-Bold' },
+  sigRole: { fontSize: 9, color: '#6b7280' },
 
-  // Section heading
-  sectionHead: { fontSize: 12, fontFamily: 'Helvetica-Bold', marginTop: 18, marginBottom: 8, borderBottomWidth: 1, paddingBottom: 4 },
+  // ── Acceptance page ────────────────────────────────────────────────────
+  acceptTitle: {
+    fontSize: 11,
+    fontFamily: 'Helvetica-Bold',
+    textDecoration: 'underline',
+    marginBottom: 20,
+  },
+  acceptBody: { fontSize: 10, lineHeight: 1.65, marginBottom: 10, textAlign: 'justify' as const },
+  acceptSigLine: { borderBottomWidth: 0.75, borderBottomColor: '#374151', width: 260, marginTop: 36, marginBottom: 4 },
 
-  // Body text
-  body: { fontSize: 10, lineHeight: 1.6, marginBottom: 8 },
-  bodyBold: { fontSize: 10, fontFamily: 'Helvetica-Bold' },
+  // ── Annexure I — salary table ──────────────────────────────────────────
+  annexTitle: { fontSize: 11, fontFamily: 'Helvetica-Bold', textDecoration: 'underline', marginBottom: 14 },
+  tbl: { borderWidth: 0.75, borderColor: '#9ca3af', width: '100%' },
+  tblSectionRow: {
+    flexDirection: 'row' as const,
+    borderBottomWidth: 0.75,
+    borderBottomColor: '#9ca3af',
+    paddingVertical: 5,
+    paddingHorizontal: 8,
+  },
+  tblDataRow: {
+    flexDirection: 'row' as const,
+    borderBottomWidth: 0.5,
+    borderBottomColor: '#e5e7eb',
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+  },
+  tblSubtotalRow: {
+    flexDirection: 'row' as const,
+    borderBottomWidth: 0.75,
+    borderBottomColor: '#9ca3af',
+    paddingVertical: 5,
+    paddingHorizontal: 8,
+  },
+  tblTotalRow: {
+    flexDirection: 'row' as const,
+    borderBottomWidth: 0.75,
+    borderBottomColor: '#9ca3af',
+    paddingVertical: 6,
+    paddingHorizontal: 8,
+  },
+  tblLastRow: {
+    flexDirection: 'row' as const,
+    paddingVertical: 6,
+    paddingHorizontal: 8,
+  },
+  cName: { flex: 1, fontSize: 9, color: '#374151' },
+  cRight: { width: 100, fontSize: 9, textAlign: 'right' as const, color: '#374151' },
+  cNameBold: { flex: 1, fontSize: 9, fontFamily: 'Helvetica-Bold', color: '#1f2937' },
+  cRightBold: { width: 100, fontSize: 9, fontFamily: 'Helvetica-Bold', textAlign: 'right' as const, color: '#1f2937' },
 
-  // Detail table (key-value pairs)
-  detailTable: { marginBottom: 12 },
-  detailRow: { flexDirection: 'row' as const, borderBottomWidth: 0.5, borderBottomColor: '#e5e7eb', paddingVertical: 5 },
-  detailLabel: { width: '40%', fontSize: 9, fontFamily: 'Helvetica-Bold', color: c.gray },
-  detailValue: { width: '60%', fontSize: 10 },
+  // ── Dual signature block (last page) ──────────────────────────────────
+  dualSigRow: { flexDirection: 'row' as const, justifyContent: 'space-between' as const, marginTop: 40 },
+  dualSigCol: { width: '45%' },
+  dualSigLabel: { fontSize: 10, color: '#9ca3af', marginBottom: 8 },
+  dualSigLine: { borderBottomWidth: 0.75, borderBottomColor: '#9ca3af', marginBottom: 6 },
+  dualSigCompany: { fontSize: 10, color: '#374151', marginBottom: 2 },
+  dualSigName: { fontSize: 10, fontFamily: 'Helvetica-Bold', color: '#1f2937' },
+  dualSigTitle: { fontSize: 9, color: '#6b7280' },
 
-  // Salary table
-  salaryTable: { marginTop: 8, marginBottom: 12, borderWidth: 0.5, borderColor: c.border },
-  salaryHeaderRow: { flexDirection: 'row' as const, paddingVertical: 6, paddingHorizontal: 8 },
-  salaryHeaderCell: { fontSize: 8, fontFamily: 'Helvetica-Bold', color: c.white, textTransform: 'uppercase' as const },
-  salarySectionRow: { flexDirection: 'row' as const, paddingVertical: 4, paddingHorizontal: 8 },
-  salarySectionLabel: { fontSize: 9, fontFamily: 'Helvetica-Bold' },
-  salaryRow: { flexDirection: 'row' as const, borderBottomWidth: 0.5, borderBottomColor: '#e5e7eb', paddingVertical: 4, paddingHorizontal: 8 },
-  salaryCell: { fontSize: 9 },
-  salaryCellRight: { fontSize: 9, textAlign: 'right' as const },
-  salaryTotalRow: { flexDirection: 'row' as const, paddingVertical: 6, paddingHorizontal: 8 },
-  salaryTotalCell: { fontSize: 10, fontFamily: 'Helvetica-Bold' },
-  salaryTotalRight: { fontSize: 10, fontFamily: 'Helvetica-Bold', textAlign: 'right' as const },
-
-  // Terms
-  termItem: { flexDirection: 'row' as const, marginBottom: 4 },
-  bullet: { width: 14, fontSize: 10 },
-  termText: { flex: 1, fontSize: 9, lineHeight: 1.5 },
-
-  // Signature block
-  sigBlock: { marginTop: 30 },
-  sigRow: { flexDirection: 'row' as const, justifyContent: 'space-between' as const, marginTop: 10 },
-  sigCol: { width: '45%' },
-  sigLine: { borderBottomWidth: 1, borderBottomColor: '#333', marginBottom: 4, marginTop: 40 },
-  sigLabel: { fontSize: 9, color: c.gray },
-  sigName: { fontSize: 10, fontFamily: 'Helvetica-Bold', marginTop: 2 },
-
-  // Footer
-  footer: { position: 'absolute' as const, bottom: 30, left: 50, right: 50, borderTopWidth: 0.5, borderTopColor: c.border, paddingTop: 8, flexDirection: 'row' as const, justifyContent: 'space-between' as const },
-  footerText: { fontSize: 7, color: '#9ca3af' },
+  // ── Annexure II — terms ────────────────────────────────────────────────
+  termsHead: { fontSize: 10, fontFamily: 'Helvetica-Bold', marginTop: 10, marginBottom: 4 },
+  termsBody: { fontSize: 9.5, lineHeight: 1.6, marginBottom: 8, textAlign: 'justify' as const },
+  noteItem: { flexDirection: 'row' as const, marginBottom: 3 },
+  noteBullet: { width: 18, fontSize: 9.5 },
+  noteText: { flex: 1, fontSize: 9.5, lineHeight: 1.5 },
 })
 
 // ---------------------------------------------------------------------------
-// Component
+// Header & Footer — plain normal-flow Views, no position:absolute, no fixed.
+// Each PageWrapper section is its own <Page>, so every page naturally gets
+// its own header/footer instance at the top and bottom of the flow.
+// ---------------------------------------------------------------------------
+function HeaderBar({
+  logoUrl, companyName, phone, email, website, dividerColor,
+}: {
+  logoUrl?: string; companyName: string; phone?: string; email?: string; website?: string; dividerColor: string
+}) {
+  return (
+    <View style={s.headerOuter}>
+      <View style={s.header}>
+        {/* Left: logo OR company name text */}
+        {logoUrl
+          ? <Image src={logoUrl} style={s.headerLogo} />
+          : <Text style={s.headerCompanyText}>{companyName}</Text>
+        }
+        {/* Right: company name (when logo shown) + contact details */}
+        <View style={s.headerContactBlock}>
+          {logoUrl
+            ? <Text style={{ fontSize: 11, fontFamily: 'Helvetica-Bold', color: '#1f2937', marginBottom: 4 }}>{companyName}</Text>
+            : null
+          }
+          {phone ? <View style={s.headerContactRow}><Dot color={dividerColor} /><Text style={s.headerContactText}>{phone}</Text></View> : null}
+          {email ? <View style={s.headerContactRow}><Dot color={dividerColor} /><Text style={s.headerContactText}>{email}</Text></View> : null}
+          {website ? <View style={s.headerContactRow}><Dot color={dividerColor} /><Text style={s.headerContactText}>{website}</Text></View> : null}
+        </View>
+      </View>
+      <View style={[s.headerDivider, { backgroundColor: dividerColor }]} />
+      <View style={s.headerGap} />
+    </View>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Main Component
 // ---------------------------------------------------------------------------
 export function OfferPDFDocument(props: OfferPDFProps) {
   const {
@@ -164,356 +276,333 @@ export function OfferPDFDocument(props: OfferPDFProps) {
     salary, salaryCurrency, startDate, expiryDate, createdDate,
     salaryComponents, bonusComponents, pfApplicable, referenceNumber,
     templateLogoUrl, templateCompanyName, templateTerms,
+    companyPhone, companyEmail, companyWebsite, companyAddress,
   } = props
 
-  // Template customization with defaults
-  const primaryColor = props.primaryColor || OFFER_PDF_DEFAULTS.primary_color
-  const accentColor = props.accentColor || OFFER_PDF_DEFAULTS.accent_color
-  const headerSubtitle = props.headerSubtitle ?? OFFER_PDF_DEFAULTS.header_subtitle
-  const signatoryLabel = props.signatoryLabel || OFFER_PDF_DEFAULTS.signatory_label
-  const candidateSigLabel = props.candidateSigLabel || OFFER_PDF_DEFAULTS.candidate_sig_label
-  const showSalaryBreakdown = props.showSalaryBreakdown ?? true
-  const showBonusSection = props.showBonusSection ?? true
-  const showTermsSection = props.showTermsSection ?? true
+  const primaryColor        = props.primaryColor   || OFFER_PDF_DEFAULTS.primary_color
+  const rawAccentColor      = props.accentColor    || OFFER_PDF_DEFAULTS.accent_color
+  const dividerColor        = rawAccentColor
+  const signatoryLabel      = props.signatoryLabel || OFFER_PDF_DEFAULTS.signatory_label
+  const showSalaryBreakdown  = props.showSalaryBreakdown  ?? true
+  const showBonusSection     = props.showBonusSection     ?? true
+  const showTermsSection     = props.showTermsSection     ?? true
   const showAcceptanceSection = props.showAcceptanceSection ?? true
-  const showSignatureBlock = props.showSignatureBlock ?? true
+  const showSignatureBlock   = props.showSignatureBlock   ?? true
 
-  // Use template company name if provided, otherwise fall back to companyName prop
   const companyName = templateCompanyName || props.companyName
 
   // Variable substitution map
   const vars: Record<string, string> = {
-    candidate_name: candidateName,
-    candidate_email: candidateEmail,
-    job_title: jobTitle,
+    candidate_name:    candidateName,
+    candidate_email:   candidateEmail,
+    job_title:         jobTitle,
     department,
-    business_unit: businessUnit || '',
-    location: location || '',
+    business_unit:     businessUnit     || '',
+    location:          location         || '',
     salary,
-    start_date: startDate,
-    expiry_date: expiryDate,
-    employment_type: employmentType || '',
-    work_type: workType || '',
+    start_date:        startDate,
+    expiry_date:       expiryDate,
+    created_date:      createdDate,
+    employment_type:   employmentType   || '',
+    work_type:         workType         || '',
     reporting_manager: reportingManager || '',
-    company_name: companyName,
-    signatory_name: props.signatoryName || '',
-    signatory_title: props.signatoryTitle || '',
+    company_name:      companyName,
+    signatory_name:    props.signatoryName?.includes('{{') ? '' : (props.signatoryName || ''),
+    signatory_title:   props.signatoryTitle?.includes('{{') ? '' : (props.signatoryTitle || ''),
   }
 
-  const refNo = referenceNumber || `OL-${Date.now().toString(36).toUpperCase()}`
-
-  // Resolve texts via substitution
-  const greetingText = sub(props.greetingText || OFFER_PDF_DEFAULTS.greeting_text, vars)
-  const introText = sub(props.introText || OFFER_PDF_DEFAULTS.intro_text, vars)
-  const closingText = sub(props.closingText || OFFER_PDF_DEFAULTS.closing_text, vars)
-  const validityText = sub(props.validityText || OFFER_PDF_DEFAULTS.validity_text, vars)
+  // Resolved texts
+  const greetingText   = sub(props.greetingText   || OFFER_PDF_DEFAULTS.greeting_text,   vars)
+  const introText      = sub(props.introText      || OFFER_PDF_DEFAULTS.intro_text,      vars)
+  const closingText    = sub(props.closingText    || OFFER_PDF_DEFAULTS.closing_text,    vars)
+  const validityText   = sub(props.validityText   || OFFER_PDF_DEFAULTS.validity_text,   vars)
   const acceptanceText = sub(props.acceptanceText || OFFER_PDF_DEFAULTS.acceptance_text, vars)
-  const footerText = sub(props.footerText || OFFER_PDF_DEFAULTS.footer_text, vars)
+  // Signatory — clean resolved name (no unsubstituted placeholders)
+  const resolvedSignatoryName  = stripPlaceholders(vars.signatory_name)
+  const resolvedSignatoryTitle = stripPlaceholders(vars.signatory_title)
 
   // Salary breakdown
-  const earnings = salaryComponents?.filter((c) => !c.section || c.section === 'earnings') ?? []
-  const deductions = salaryComponents?.filter((c) => c.section === 'deduction') ?? []
-  const employer = salaryComponents?.filter((c) => c.section === 'employer') ?? []
-  const grossAnnual = earnings.reduce((s, c) => s + c.annual, 0)
-  const grossMonthly = earnings.reduce((s, c) => s + c.monthly, 0)
-  const deductAnnual = deductions.reduce((s, c) => s + c.annual, 0)
-  const deductMonthly = deductions.reduce((s, c) => s + c.monthly, 0)
-  const netAnnual = grossAnnual - deductAnnual
-  const netMonthly = grossMonthly - deductMonthly
-  const employerAnnual = employer.reduce((s, c) => s + c.annual, 0)
-  const employerMonthly = employer.reduce((s, c) => s + c.monthly, 0)
-  const ctcAnnual = grossAnnual + employerAnnual
-  const ctcMonthly = grossMonthly + employerMonthly
+  const earnings   = salaryComponents?.filter((c) => !c.section || c.section === 'earnings') ?? []
+  const deductions = salaryComponents?.filter((c) => c.section === 'deduction')              ?? []
+  const employer   = salaryComponents?.filter((c) => c.section === 'employer')               ?? []
+
+  const earningsMonthly = earnings.reduce((acc, c) => acc + c.monthly, 0)
+  const earningsAnnual  = earnings.reduce((acc, c) => acc + c.annual,  0)
+  const employerMonthly = employer.reduce((acc, c) => acc + c.monthly, 0)
+  const employerAnnual  = employer.reduce((acc, c) => acc + c.annual,  0)
+  const deductMonthly   = deductions.reduce((acc, c) => acc + c.monthly, 0)
+  const deductAnnual    = deductions.reduce((acc, c) => acc + c.annual,  0)
+  const ctcMonthly      = earningsMonthly + employerMonthly
+  const ctcAnnual       = earningsAnnual  + employerAnnual
+  const takeHomeMonthly = ctcMonthly - deductMonthly
+  const takeHomeAnnual  = ctcAnnual  - deductAnnual
 
   const hasSalaryBreakdown = showSalaryBreakdown && salaryComponents && salaryComponents.length > 0
+  const termsContent = templateTerms || OFFER_PDF_DEFAULTS.terms_and_conditions
+  const hasTerms = showTermsSection && !!termsContent
 
-  const empTypeLabel = employmentType?.replace(/_/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase()) || 'Full Time'
-  const workTypeLabel = workType?.replace(/_/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase()) || ''
+  // Determine which section is last so the dual signature block goes there
+  const lastSection = hasTerms ? 'terms' : hasSalaryBreakdown ? 'salary' : showAcceptanceSection ? 'acceptance' : 'body'
 
-  // Reusable header bar component
-  const HeaderBar = ({ subtitle }: { subtitle?: string }) => (
-    <View style={{ backgroundColor: primaryColor, padding: 20, marginHorizontal: -50, marginTop: -50, marginBottom: 20 }}>
-      {templateLogoUrl ? (
-        <View style={{ flexDirection: 'row' as const, alignItems: 'center' as const, gap: 12 }}>
-          <Image src={templateLogoUrl} style={{ width: 40, height: 40 }} />
-          <View>
-            <Text style={s.companyName}>{companyName}</Text>
-            <Text style={s.headerSub}>{subtitle || headerSubtitle}</Text>
-          </View>
-        </View>
-      ) : (
-        <>
-          <Text style={s.companyName}>{companyName}</Text>
-          <Text style={s.headerSub}>{subtitle || headerSubtitle}</Text>
-        </>
-      )}
-    </View>
+  // Shared header/footer props
+  const headerProps = {
+    logoUrl:      templateLogoUrl,
+    companyName,
+    phone:        companyPhone,
+    email:        companyEmail,
+    website:      companyWebsite,
+    dividerColor,
+  }
+  // unused — kept for type safety
+  void primaryColor
+  void companyAddress
+  void referenceNumber
+
+  // ── Page wrapper: each section lives in its own <Page> ──────────────────
+  // This eliminates empty pages caused by <View break> interacting with
+  // natural page overflow. Fixed header/footer repeat on every overflow page
+  // within each <Page> element.
+
+  const PageWrapper = ({ children }: { children: React.ReactNode }) => (
+    <Page size="A4" style={s.page}>
+      <HeaderBar {...headerProps} />
+      {children}
+    </Page>
   )
 
-  const FooterBar = ({ page }: { page: number }) => (
-    <View style={s.footer} fixed>
-      <Text style={s.footerText}>{footerText}</Text>
-      <Text style={s.footerText}>Page {page}</Text>
+  const dualSigBlock = (
+    <View style={s.dualSigRow}>
+      <View style={s.dualSigCol}>
+        <Text style={s.dualSigLabel}>For {companyName}</Text>
+        <View style={s.dualSigLine} />
+        <Text style={s.dualSigCompany}>For {companyName}</Text>
+        {resolvedSignatoryName ? <Text style={s.dualSigName}>{resolvedSignatoryName}</Text> : null}
+        {resolvedSignatoryTitle ? <Text style={s.dualSigTitle}>{resolvedSignatoryTitle}</Text> : null}
+      </View>
+      <View style={s.dualSigCol}>
+        <Text style={s.dualSigLabel}>Acceptance by Candidate</Text>
+        <View style={s.dualSigLine} />
+        <Text style={s.dualSigName}>{candidateName}</Text>
+      </View>
     </View>
   )
 
   return (
     <Document>
-      {/* ================================================================ */}
-      {/* PAGE 1 — Cover + Position Details                               */}
-      {/* ================================================================ */}
-      <Page size="A4" style={s.page}>
-        <HeaderBar />
 
-        {/* Date + Ref */}
-        <View style={s.metaRow}>
-          <Text style={s.metaText}>Date: {createdDate}</Text>
-          <Text style={s.metaText}>Ref: {refNo}</Text>
-        </View>
-
+      {/* ================================================================ */}
+      {/* PAGE 1+ — Offer Letter body                                      */}
+      {/* ================================================================ */}
+      <PageWrapper>
         {/* Title */}
-        <Text style={{ ...s.title, color: primaryColor }}>Offer of Employment</Text>
+        <Text style={s.docTitle}>Offer Letter</Text>
 
-        {/* Candidate */}
-        <View style={s.candBlock}>
-          <Text style={s.candName}>{candidateName}</Text>
-          <Text style={s.candEmail}>{candidateEmail}</Text>
-        </View>
+        {/* Date */}
+        <Text style={s.dateText}>Date: {createdDate}</Text>
 
-        {/* Greeting + Intro */}
-        <Text style={s.body}>{greetingText}</Text>
-        {introText.split('\n').filter((line) => line.trim()).map((para, i) => (
-          <Text key={`intro-${i}`} style={s.body}>{para}</Text>
-        ))}
+        {/* Greeting */}
+        <FormattedPara text={greetingText} style={s.greetText} />
 
-        {/* Position Details */}
-        <Text style={{ ...s.sectionHead, color: primaryColor, borderBottomColor: accentColor }}>Position Details</Text>
-        <View style={s.detailTable}>
-          <DetailRow label="Designation" value={jobTitle} />
-          <DetailRow label="Department" value={department} />
-          {businessUnit ? <DetailRow label="Business Unit" value={businessUnit} /> : null}
-          <DetailRow label="Employment Type" value={empTypeLabel} />
-          {workTypeLabel ? <DetailRow label="Work Type" value={workTypeLabel} /> : null}
-          {location ? <DetailRow label="Place of Posting" value={location} /> : null}
-          {reportingManager ? <DetailRow label="Reporting Manager" value={reportingManager} /> : null}
-          <DetailRow label="Date of Joining" value={startDate} />
-          <DetailRow label="Annual CTC" value={salary} />
-        </View>
+        {/* Body paragraphs */}
+        {introText.split('\n').map((para, i) => {
+          const trimmed = para.trim()
+          if (!trimmed) return null
+          return <FormattedPara key={`p-${i}`} text={trimmed} style={s.body} />
+        })}
 
-        {!hasSalaryBreakdown && (
-          <Text style={s.body}>
-            Your total annual compensation (Cost to Company) will be <Text style={s.bodyBold}>{salary}</Text>.
-          </Text>
-        )}
+        {/* Closing */}
+        {closingText ? (
+          <FormattedPara text={closingText} style={[s.body, { marginTop: 4 }]} />
+        ) : null}
 
-        {hasSalaryBreakdown && (
-          <Text style={s.body}>
-            Your total annual compensation (Cost to Company) will be <Text style={s.bodyBold}>{salary}</Text>.
-            The detailed salary breakdown is provided on the following page.
-          </Text>
-        )}
+        {/* Validity */}
+        {validityText ? (
+          <FormattedPara text={validityText} style={s.body} />
+        ) : null}
 
-        <FooterBar page={1} />
-      </Page>
-
-      {/* ================================================================ */}
-      {/* PAGE 2 — Salary Structure (only if components exist & enabled)  */}
-      {/* ================================================================ */}
-      {hasSalaryBreakdown && (
-        <Page size="A4" style={s.page}>
-          <HeaderBar subtitle={`Compensation Details \u2014 ${candidateName}`} />
-
-          <Text style={{ ...s.sectionHead, color: primaryColor, borderBottomColor: accentColor }}>Salary Structure ({salaryCurrency})</Text>
-
-          <View style={s.salaryTable}>
-            {/* Header */}
-            <View style={{ ...s.salaryHeaderRow, backgroundColor: primaryColor }}>
-              <View style={{ width: '46%' }}><Text style={s.salaryHeaderCell}>Component</Text></View>
-              <View style={{ width: '27%' }}><Text style={{ ...s.salaryHeaderCell, textAlign: 'right' as const }}>Monthly</Text></View>
-              <View style={{ width: '27%' }}><Text style={{ ...s.salaryHeaderCell, textAlign: 'right' as const }}>Annual</Text></View>
-            </View>
-
-            {/* Earnings */}
-            {earnings.length > 0 && (
-              <>
-                <View style={{ ...s.salarySectionRow, backgroundColor: c.earningsBg }}>
-                  <Text style={{ ...s.salarySectionLabel, color: '#166534' }}>A. Earnings</Text>
-                </View>
-                {earnings.map((comp, i) => (
-                  <View key={`e-${i}`} style={s.salaryRow}>
-                    <View style={{ width: '46%' }}><Text style={s.salaryCell}>   {comp.name}</Text></View>
-                    <View style={{ width: '27%' }}><Text style={s.salaryCellRight}>{fmtNum(comp.monthly)}</Text></View>
-                    <View style={{ width: '27%' }}><Text style={s.salaryCellRight}>{fmtNum(comp.annual)}</Text></View>
-                  </View>
-                ))}
-                <View style={{ ...s.salaryTotalRow, backgroundColor: '#dcfce7' }}>
-                  <View style={{ width: '46%' }}><Text style={s.salaryTotalCell}>Gross Salary</Text></View>
-                  <View style={{ width: '27%' }}><Text style={s.salaryTotalRight}>{fmtNum(grossMonthly)}</Text></View>
-                  <View style={{ width: '27%' }}><Text style={s.salaryTotalRight}>{fmtNum(grossAnnual)}</Text></View>
-                </View>
-              </>
-            )}
-
-            {/* Deductions */}
-            {deductions.length > 0 && (
-              <>
-                <View style={{ ...s.salarySectionRow, backgroundColor: c.deductionBg }}>
-                  <Text style={{ ...s.salarySectionLabel, color: '#991b1b' }}>B. Deductions (from Gross)</Text>
-                </View>
-                {deductions.map((comp, i) => (
-                  <View key={`d-${i}`} style={s.salaryRow}>
-                    <View style={{ width: '46%' }}><Text style={s.salaryCell}>   {comp.name}</Text></View>
-                    <View style={{ width: '27%' }}><Text style={s.salaryCellRight}>{fmtNum(comp.monthly)}</Text></View>
-                    <View style={{ width: '27%' }}><Text style={s.salaryCellRight}>{fmtNum(comp.annual)}</Text></View>
-                  </View>
-                ))}
-                <View style={{ ...s.salaryTotalRow, backgroundColor: '#fef9c3' }}>
-                  <View style={{ width: '46%' }}><Text style={s.salaryTotalCell}>Net Pay (Take Home)</Text></View>
-                  <View style={{ width: '27%' }}><Text style={s.salaryTotalRight}>{fmtNum(netMonthly)}</Text></View>
-                  <View style={{ width: '27%' }}><Text style={s.salaryTotalRight}>{fmtNum(netAnnual)}</Text></View>
-                </View>
-              </>
-            )}
-
-            {/* Employer Contributions */}
-            {employer.length > 0 && (
-              <>
-                <View style={{ ...s.salarySectionRow, backgroundColor: c.employerBg }}>
-                  <Text style={{ ...s.salarySectionLabel, color: '#1e40af' }}>C. Employer Contributions</Text>
-                </View>
-                {employer.map((comp, i) => (
-                  <View key={`em-${i}`} style={s.salaryRow}>
-                    <View style={{ width: '46%' }}><Text style={s.salaryCell}>   {comp.name}</Text></View>
-                    <View style={{ width: '27%' }}><Text style={s.salaryCellRight}>{fmtNum(comp.monthly)}</Text></View>
-                    <View style={{ width: '27%' }}><Text style={s.salaryCellRight}>{fmtNum(comp.annual)}</Text></View>
-                  </View>
-                ))}
-              </>
-            )}
-
-            {/* Total CTC */}
-            <View style={{ ...s.salaryTotalRow, backgroundColor: primaryColor }}>
-              <View style={{ width: '46%' }}><Text style={{ ...s.salaryTotalCell, color: c.white }}>Total CTC (A + C)</Text></View>
-              <View style={{ width: '27%' }}><Text style={{ ...s.salaryTotalRight, color: c.white }}>{fmtNum(ctcMonthly)}</Text></View>
-              <View style={{ width: '27%' }}><Text style={{ ...s.salaryTotalRight, color: c.white }}>{fmtNum(ctcAnnual)}</Text></View>
-            </View>
+        {/* Company signature block */}
+        {showSignatureBlock && (
+          <View>
+            <Text style={s.sigFor}>For, {companyName}</Text>
+            <View style={s.sigLineRule} />
+            {resolvedSignatoryName ? <Text style={s.sigName}>{resolvedSignatoryName}</Text> : null}
+            {resolvedSignatoryTitle ? <Text style={s.sigRole}>{resolvedSignatoryTitle}</Text> : null}
+            <Text style={s.sigRole}>{signatoryLabel}</Text>
           </View>
+        )}
+        {lastSection === 'body' && dualSigBlock}
+      </PageWrapper>
 
-          {/* PF note */}
-          {pfApplicable && (
-            <Text style={{ fontSize: 8, color: c.gray, marginBottom: 8 }}>
-              * PF contributions are calculated at 12% of Basic Salary. Gratuity is calculated at 4.81% of Basic Salary as per the Payment of Gratuity Act, 1972.
-            </Text>
-          )}
+      {/* ================================================================ */}
+      {/* PAGE — Acceptance Confirmation                                   */}
+      {/* ================================================================ */}
+      {showAcceptanceSection && (
+        <PageWrapper>
+          <Text style={s.acceptTitle}>ACCEPTANCE CONFIRMATION</Text>
 
-          {/* Bonus */}
-          {showBonusSection && bonusComponents && bonusComponents.length > 0 && (
-            <>
-              <Text style={{ ...s.sectionHead, color: primaryColor, borderBottomColor: accentColor }}>Bonus Components</Text>
-              <View style={s.detailTable}>
-                {bonusComponents.map((b, i) => (
-                  <DetailRow key={i} label={b.name} value={`${salaryCurrency} ${fmtNum(b.amount)} (${b.frequency})`} />
-                ))}
-              </View>
-              <Text style={{ fontSize: 8, color: c.gray }}>
-                * Bonus components are over and above the CTC mentioned above and are subject to applicable terms.
-              </Text>
-            </>
-          )}
+          <Text style={[s.acceptBody, { fontFamily: 'Helvetica-Bold' }]}>Date: {createdDate}</Text>
+          <Text style={[s.acceptBody, { marginBottom: 16 }]}>To: {companyName}</Text>
 
-          <FooterBar page={2} />
-        </Page>
+          {/* Acceptance paragraphs from template */}
+          {acceptanceText.split('\n').map((para, i) => {
+            const trimmed = para.trim()
+            if (!trimmed) return <View key={i} style={{ height: 6 }} />
+            return <FormattedPara key={`acc-${i}`} text={trimmed} style={s.acceptBody} />
+          })}
+
+          {/* Signature line */}
+          <View style={s.acceptSigLine} />
+          <Text style={[s.acceptBody, { color: '#6b7280', marginTop: 4 }]}>Signature</Text>
+          {lastSection === 'acceptance' && dualSigBlock}
+        </PageWrapper>
       )}
 
       {/* ================================================================ */}
-      {/* PAGE 3 — Terms & Conditions + Acceptance                        */}
+      {/* PAGE — ANNEXURE I: Salary Breakdown                              */}
       {/* ================================================================ */}
-      <Page size="A4" style={s.page}>
-        <HeaderBar subtitle={`Terms & Conditions \u2014 ${candidateName}`} />
+      {hasSalaryBreakdown && (
+        <PageWrapper>
+          <Text style={s.annexTitle}>ANNEXURE I</Text>
 
-        {showTermsSection && (
-          <>
-            <Text style={{ ...s.sectionHead, color: primaryColor, borderBottomColor: accentColor }}>Terms & Conditions</Text>
-
-            {templateTerms ? (
-              templateTerms.split('\n').filter((line) => line.trim()).map((line, i) => (
-                <TermItem key={i} text={sub(line.trim(), vars)} />
-              ))
-            ) : (
+          <View style={s.tbl}>
+            {/* EARNINGS section */}
+            {earnings.length > 0 && (
               <>
-                <TermItem text={`Your employment will commence on ${startDate}. Failure to join on the agreed date may result in withdrawal of this offer.`} />
-                <TermItem text="You will be on a probation period of six (6) months from the date of joining. During probation, either party may terminate employment with 15 days written notice." />
-                <TermItem text="After confirmation, the notice period for resignation or termination will be 30 days (or as per company policy applicable at that time)." />
-                <TermItem text="Your appointment is subject to satisfactory completion of background verification, medical fitness, and submission of all required documents. Any discrepancy may lead to termination of employment." />
-                <TermItem text="You will be governed by the company's HR policies, code of conduct, and other applicable rules and regulations as amended from time to time." />
-                <TermItem text="You shall maintain strict confidentiality of all proprietary information, trade secrets, and business strategies of the company during and after your employment." />
-                <TermItem text="You shall not engage in any other employment, business, or consulting activity during the tenure of your employment without prior written consent." />
-                <TermItem text={`Your compensation is confidential and should not be disclosed to any other employee or third party.`} />
+                <View style={s.tblSectionRow}>
+                  <Text style={s.cNameBold}>EARNINGS</Text>
+                  <Text style={s.cRightBold}>MONTHLY</Text>
+                  <Text style={s.cRightBold}>YEARLY</Text>
+                </View>
+                {earnings.map((comp, i) => (
+                  <View key={`e-${i}`} style={s.tblDataRow}>
+                    <Text style={s.cName}>{comp.name}</Text>
+                    <Text style={s.cRight}>{fmtNum(comp.monthly)}</Text>
+                    <Text style={s.cRight}>{fmtNum(comp.annual)}</Text>
+                  </View>
+                ))}
+                <View style={s.tblSubtotalRow}>
+                  <Text style={s.cNameBold}>SUB-TOTAL (A)</Text>
+                  <Text style={s.cRightBold}>{fmtNum(earningsMonthly)}</Text>
+                  <Text style={s.cRightBold}>{fmtNum(earningsAnnual)}</Text>
+                </View>
               </>
             )}
-          </>
-        )}
 
-        <Text style={{ ...s.sectionHead, color: primaryColor, borderBottomColor: accentColor }}>Offer Validity</Text>
-        <Text style={s.body}>{validityText}</Text>
+            {/* BENEFITS AND CONTRIBUTIONS (PART - B) */}
+            {employer.length > 0 && (
+              <>
+                <View style={s.tblSectionRow}>
+                  <Text style={s.cNameBold}>BENEFITS AND CONTRIBUTIONS{'\n'}(PART - B)</Text>
+                  <Text style={s.cRightBold}>{''}</Text>
+                  <Text style={s.cRightBold}>{''}</Text>
+                </View>
+                {employer.map((comp, i) => (
+                  <View key={`em-${i}`} style={s.tblDataRow}>
+                    <Text style={s.cName}>{comp.name}</Text>
+                    <Text style={s.cRight}>{fmtNum(comp.monthly)}</Text>
+                    <Text style={s.cRight}>{fmtNum(comp.annual)}</Text>
+                  </View>
+                ))}
+                <View style={s.tblSubtotalRow}>
+                  <Text style={s.cNameBold}>SUB-TOTAL (B)</Text>
+                  <Text style={s.cRightBold}>{fmtNum(employerMonthly)}</Text>
+                  <Text style={s.cRightBold}>{fmtNum(employerAnnual)}</Text>
+                </View>
+              </>
+            )}
 
-        {showAcceptanceSection && (
-          <>
-            <Text style={{ ...s.sectionHead, color: primaryColor, borderBottomColor: accentColor }}>Acceptance</Text>
-            <Text style={s.body}>{acceptanceText}</Text>
-          </>
-        )}
-
-        {/* Closing text */}
-        {closingText && (
-          <Text style={s.body}>{closingText}</Text>
-        )}
-
-        {/* Signature blocks */}
-        {showSignatureBlock && (
-          <View style={s.sigBlock}>
-            <View style={s.sigRow}>
-              <View style={s.sigCol}>
-                <Text style={{ fontSize: 9, color: c.gray, marginBottom: 2 }}>For {companyName}</Text>
-                <View style={s.sigLine} />
-                <Text style={s.sigLabel}>{signatoryLabel}</Text>
-                {props.signatoryName && <Text style={s.sigName}>{props.signatoryName}</Text>}
-                {props.signatoryTitle && <Text style={s.sigLabel}>{props.signatoryTitle}</Text>}
-                <Text style={s.sigLabel}>Date: _______________</Text>
-              </View>
-              <View style={s.sigCol}>
-                <Text style={{ fontSize: 9, color: c.gray, marginBottom: 2 }}>{candidateSigLabel}</Text>
-                <View style={s.sigLine} />
-                <Text style={s.sigName}>{candidateName}</Text>
-                <Text style={s.sigLabel}>Date: _______________</Text>
-              </View>
+            {/* TOTAL (A + B) */}
+            <View style={s.tblTotalRow}>
+              <Text style={s.cNameBold}>TOTAL (A + B)</Text>
+              <Text style={s.cRightBold}>{salaryCurrency} {fmtNum(ctcMonthly)}</Text>
+              <Text style={s.cRightBold}>{salaryCurrency} {fmtNum(ctcAnnual)}</Text>
             </View>
+
+            {/* DEDUCTIONS */}
+            {deductions.length > 0 && (
+              <>
+                <View style={s.tblSectionRow}>
+                  <Text style={s.cNameBold}>DEDUCTIONS</Text>
+                  <Text style={s.cRightBold}>MONTHLY</Text>
+                  <Text style={s.cRightBold}>YEARLY</Text>
+                </View>
+                {deductions.map((comp, i) => (
+                  <View key={`d-${i}`} style={s.tblDataRow}>
+                    <Text style={s.cName}>{comp.name}</Text>
+                    <Text style={s.cRight}>{fmtNum(comp.monthly)}</Text>
+                    <Text style={s.cRight}>{fmtNum(comp.annual)}</Text>
+                  </View>
+                ))}
+                <View style={s.tblSubtotalRow}>
+                  <Text style={s.cNameBold}>TOTAL DEDUCTIONS (C)</Text>
+                  <Text style={s.cRightBold}>{salaryCurrency} {fmtNum(deductMonthly)}</Text>
+                  <Text style={s.cRightBold}>{salaryCurrency} {fmtNum(deductAnnual)}</Text>
+                </View>
+                <View style={s.tblLastRow}>
+                  <Text style={s.cNameBold}>TOTAL (A-C)</Text>
+                  <Text style={s.cRightBold}>{salaryCurrency} {fmtNum(takeHomeMonthly)}</Text>
+                  <Text style={s.cRightBold}>{salaryCurrency} {fmtNum(takeHomeAnnual)}</Text>
+                </View>
+              </>
+            )}
           </View>
-        )}
 
-        <FooterBar page={hasSalaryBreakdown ? 3 : 2} />
-      </Page>
+          {/* Bonus components */}
+          {showBonusSection && bonusComponents && bonusComponents.length > 0 && (
+            <View style={{ marginTop: 16 }}>
+              <Text style={[s.annexTitle, { fontSize: 10, marginBottom: 8, textDecoration: 'underline' }]}>
+                Bonus Components
+              </Text>
+              {bonusComponents.map((b, i) => (
+                <Text key={i} style={s.body}>
+                  {b.name}: <Text style={{ fontFamily: 'Helvetica-Bold' }}>{salaryCurrency} {fmtNum(b.amount)}</Text> ({b.frequency})
+                </Text>
+              ))}
+            </View>
+          )}
+
+          {pfApplicable && (
+            <Text style={{ fontSize: 8, color: '#9ca3af', marginTop: 10 }}>
+              * PF deducted at 12% of Basic. Gratuity at 4.81% of Basic per Payment of Gratuity Act, 1972.
+            </Text>
+          )}
+          {lastSection === 'salary' && dualSigBlock}
+        </PageWrapper>
+      )}
+
+      {/* ================================================================ */}
+      {/* PAGE — ANNEXURE II: Terms & Notes                                */}
+      {/* ================================================================ */}
+      {hasTerms && (
+        <PageWrapper>
+          <Text style={s.annexTitle}>ANNEXURE II</Text>
+
+          {termsContent.split('\n').map((line, i) => {
+            const trimmed = sub(line.trim(), vars)
+            if (!trimmed) return <View key={i} style={{ height: 5 }} />
+
+            // Numbered list items (e.g. "1. foo")
+            const numbered = trimmed.match(/^(\d+)\.\s+(.+)/)
+            if (numbered) {
+              return (
+                <View key={i} style={s.noteItem}>
+                  <Text style={s.noteBullet}>{numbered[1]}.</Text>
+                  <FormattedPara text={numbered[2]} style={s.noteText} />
+                </View>
+              )
+            }
+
+            // Section headings (short line ending with ":")
+            if (trimmed.endsWith(':') && trimmed.length < 60) {
+              return <Text key={i} style={s.termsHead}>{trimmed}</Text>
+            }
+
+            return <FormattedPara key={i} text={trimmed} style={s.termsBody} />
+          })}
+          {lastSection === 'terms' && dualSigBlock}
+        </PageWrapper>
+      )}
+
     </Document>
-  )
-}
-
-// ---------------------------------------------------------------------------
-// Sub-components
-// ---------------------------------------------------------------------------
-function DetailRow({ label, value }: { label: string; value: string }) {
-  return (
-    <View style={s.detailRow}>
-      <Text style={s.detailLabel}>{label}</Text>
-      <Text style={s.detailValue}>{value}</Text>
-    </View>
-  )
-}
-
-function TermItem({ text }: { text: string }) {
-  return (
-    <View style={s.termItem}>
-      <Text style={s.bullet}>{'\u2022'}</Text>
-      <Text style={s.termText}>{text}</Text>
-    </View>
   )
 }

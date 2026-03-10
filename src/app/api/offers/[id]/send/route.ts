@@ -176,7 +176,6 @@ export async function POST(
       // Full template customization
       primaryColor: activeTemplate?.primary_color || undefined,
       accentColor: activeTemplate?.accent_color || undefined,
-      headerSubtitle: activeTemplate?.header_subtitle || undefined,
       greetingText: activeTemplate?.greeting_text || undefined,
       introText: activeTemplate?.intro_text || undefined,
       closingText: activeTemplate?.closing_text || undefined,
@@ -196,35 +195,26 @@ export async function POST(
     const pdfBuffer = await renderToBuffer(pdfElement)
     const pdfFilename = `offer-${candidate.last_name.toLowerCase()}-${job?.title?.toLowerCase().replace(/\s+/g, '-') || 'position'}.pdf`
 
-    await sendGmailEmail(tokenResult.accessToken, {
-      from: fromEmail,
-      to: candidate.email,
-      subject,
-      html: emailHtml,
-      attachments: [{
-        filename: pdfFilename,
-        content: new Uint8Array(pdfBuffer),
-        contentType: 'application/pdf',
-      }],
-    })
-
-    // Mark as sent in DB
+    // Mark as sent in DB first
     const { error: sendError } = await sendOffer(supabase, id, orgId)
     if (sendError) {
       return NextResponse.json({ error: sendError.message }, { status: 500 })
     }
 
-    // Log the email in background
-    logEmail(supabase, orgId, {
-      candidate_id: candidate.id,
-      application_id: offer.application_id,
-      subject,
-      body_html: emailHtml,
-      to_email: candidate.email,
-      from_email: fromEmail,
-      status: 'sent',
-      sent_at: new Date().toISOString(),
-    }).catch((err) => console.error('[Offer Email Log Error]', err))
+    // Send email + log in background (fire-and-forget)
+    const attachments = [{ filename: pdfFilename, content: new Uint8Array(pdfBuffer), contentType: 'application/pdf' }]
+    sendGmailEmail(tokenResult.accessToken, { from: fromEmail, to: candidate.email, subject, html: emailHtml, attachments })
+      .then(() => logEmail(supabase, orgId, {
+        candidate_id: candidate.id,
+        application_id: offer.application_id,
+        subject,
+        body_html: emailHtml,
+        to_email: candidate.email,
+        from_email: fromEmail,
+        status: 'sent',
+        sent_at: new Date().toISOString(),
+      }))
+      .catch((err) => console.error('[Offer Email Error]', err))
 
     return NextResponse.json({ success: true })
   } catch (err) {
