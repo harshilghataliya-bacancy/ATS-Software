@@ -211,7 +211,7 @@ function formToPayload(form: TemplateForm): AnyData {
 
 export default function OfferTemplatesPage() {
   const { organization, isLoading: userLoading } = useUser()
-  const { isAdmin } = useRole()
+  const { isAdmin, canManageOffers } = useRole()
 
   const [templates, setTemplates] = useState<AnyData[]>([])
   const [loading, setLoading] = useState(true)
@@ -372,11 +372,11 @@ export default function OfferTemplatesPage() {
     )
   }
 
-  if (!isAdmin) {
+  if (!canManageOffers) {
     return (
       <div className="text-center py-12">
         <h2 className="text-lg font-semibold text-gray-900">Access Denied</h2>
-        <p className="text-gray-500 mt-1">Only administrators can manage offer templates.</p>
+        <p className="text-gray-500 mt-1">Only administrators and recruiters can manage offer templates.</p>
       </div>
     )
   }
