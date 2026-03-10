@@ -211,7 +211,7 @@ function formToPayload(form: TemplateForm): AnyData {
 
 export default function OfferTemplatesPage() {
   const { organization, isLoading: userLoading } = useUser()
-  const { isAdmin, canManageOffers } = useRole()
+  const { canManageOffers } = useRole()
 
   const [templates, setTemplates] = useState<AnyData[]>([])
   const [loading, setLoading] = useState(true)
