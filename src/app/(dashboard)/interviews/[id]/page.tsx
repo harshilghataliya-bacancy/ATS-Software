@@ -6,8 +6,9 @@ import Link from 'next/link'
 import { useUser, useRole } from '@/lib/hooks/use-user'
 import { createClient } from '@/lib/supabase/client'
 import { getInterviewById, updateInterview, cancelInterview } from '@/lib/services/interviews'
+import { logActivity } from '@/lib/services/activity'
 import { resolveUserNames, resolveUserDetails } from '../actions'
-import { submitFeedback } from '@/lib/services/feedback'
+import { submitFeedback, updateFeedback } from '@/lib/services/feedback'
 import { getScorecardCriteria } from '@/lib/services/jobs'
 import { INTERVIEW_TYPES, RECOMMENDATION_OPTIONS, RATING_LABELS } from '@/lib/constants'
 import { Button } from '@/components/ui/button'
@@ -16,6 +17,7 @@ import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Skeleton } from '@/components/ui/skeleton'
+import { ArrowLeft, ExternalLink, PenLine, X, Ban, CheckCircle2, MessageSquare, Eye, Download } from 'lucide-react'
 
 interface InterviewDetail {
   id: string
@@ -74,6 +76,7 @@ export default function InterviewDetailPage() {
   const [interview, setInterview] = useState<InterviewDetail | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [showResume, setShowResume] = useState(false)
   const [editing, setEditing] = useState(false)
   const [saving, setSaving] = useState(false)
 
@@ -92,10 +95,12 @@ export default function InterviewDetailPage() {
   const [fbNotes, setFbNotes] = useState('')
   const [fbSaving, setFbSaving] = useState(false)
 
+  const [editingFeedbackId, setEditingFeedbackId] = useState<string | null>(null)
   const [scorecardCriteria, setScorecardCriteria] = useState<Array<{ id: string; name: string; description?: string; weight: number }>>([])
   const [criteriaRatings, setCriteriaRatings] = useState<Record<string, number>>({})
   const [userNames, setUserNames] = useState<Record<string, string>>({})
   const [userDetails, setUserDetails] = useState<Record<string, { name: string; email: string }>>({})
+  const [feedbackCriteriaRatings, setFeedbackCriteriaRatings] = useState<Record<string, Array<{ criteria_id: string; rating: number }>>>({})
 
   const loadInterview = useCallback(async () => {
     if (!organization) return
@@ -118,6 +123,22 @@ export default function InterviewDetailPage() {
       if (jobId) {
         const { data: criteriaData } = await getScorecardCriteria(supabase, jobId, organization.id)
         if (criteriaData) setScorecardCriteria(criteriaData as Array<{ id: string; name: string; description?: string; weight: number }>)
+      }
+      // Fetch criteria ratings for each feedback
+      if (d.feedback?.length > 0) {
+        const feedbackIds = d.feedback.map((f: { id: string }) => f.id)
+        const { data: ratingsData } = await supabase
+          .from('scorecard_ratings')
+          .select('feedback_id, criteria_id, rating')
+          .in('feedback_id', feedbackIds)
+        if (ratingsData) {
+          const grouped: Record<string, Array<{ criteria_id: string; rating: number }>> = {}
+          ratingsData.forEach((r: { feedback_id: string; criteria_id: string; rating: number }) => {
+            if (!grouped[r.feedback_id]) grouped[r.feedback_id] = []
+            grouped[r.feedback_id].push({ criteria_id: r.criteria_id, rating: r.rating })
+          })
+          setFeedbackCriteriaRatings(grouped)
+        }
       }
     } else {
       setError('Interview not found or you do not have access.')
@@ -155,24 +176,50 @@ export default function InterviewDetailPage() {
   }
 
   async function handleMarkCompleted() {
-    if (!organization || !interview) return
+    if (!organization || !interview || !user) return
     const supabase = createClient()
     const { error: e } = await updateInterview(supabase, interview.id, organization.id, { status: 'completed' })
-    if (e) setError(e.message); else loadInterview()
+    if (e) { setError(e.message) } else {
+      logActivity(supabase, organization.id, user.id, 'application', interview.application_id, 'interview_completed', {
+        interview_id: interview.id,
+        candidate_name: `${interview.application.candidate.first_name} ${interview.application.candidate.last_name}`,
+      }).catch(() => {})
+      loadInterview()
+    }
   }
 
   async function handleNoShow() {
-    if (!organization || !interview) return
+    if (!organization || !interview || !user) return
     const supabase = createClient()
     const { error: e } = await updateInterview(supabase, interview.id, organization.id, { status: 'no_show' })
-    if (e) setError(e.message); else loadInterview()
+    if (e) { setError(e.message) } else {
+      logActivity(supabase, organization.id, user.id, 'application', interview.application_id, 'interview_no_show', {
+        interview_id: interview.id,
+        candidate_name: `${interview.application.candidate.first_name} ${interview.application.candidate.last_name}`,
+      }).catch(() => {})
+      loadInterview()
+    }
   }
 
   async function handleCancel() {
-    if (!organization || !interview) return
+    if (!organization || !interview || !user) return
     const supabase = createClient()
     await cancelInterview(supabase, interview.id, organization.id)
+    logActivity(supabase, organization.id, user.id, 'application', interview.application_id, 'interview_cancelled', {
+      interview_id: interview.id,
+      candidate_name: `${interview.application.candidate.first_name} ${interview.application.candidate.last_name}`,
+    }).catch(() => {})
     loadInterview()
+  }
+
+  function startEditFeedback(fb: InterviewDetail['feedback'][0]) {
+    setFbRating(fb.overall_rating)
+    setFbRecommendation(fb.recommendation)
+    setFbStrengths(fb.strengths ?? '')
+    setFbWeaknesses(fb.weaknesses ?? '')
+    setFbNotes(fb.notes ?? '')
+    setEditingFeedbackId(fb.id)
+    setShowFeedback(true)
   }
 
   async function handleSubmitFeedback() {
@@ -186,27 +233,53 @@ export default function InterviewDetailPage() {
     }
     setFbSaving(true); setError(null)
     const supabase = createClient()
-    const feedbackData: Record<string, unknown> = {
-      interview_id: interview.id,
-      application_id: interview.application_id,
-      overall_rating: fbRating,
-      recommendation: fbRecommendation,
-      strengths: fbStrengths,
-      weaknesses: fbWeaknesses,
-      notes: fbNotes,
-    }
-    const filledRatings = Object.entries(criteriaRatings)
-      .filter(([, r]) => r > 0)
-      .map(([criteria_id, rating]) => ({ criteria_id, rating }))
-    if (filledRatings.length > 0) feedbackData.criteria_ratings = filledRatings
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { error: fbError } = await submitFeedback(supabase, organization.id, feedbackData as any, user.id)
-    if (fbError) {
-      setError(fbError.message)
+
+    if (editingFeedbackId) {
+      // Update existing feedback
+      const { error: fbError } = await updateFeedback(supabase, editingFeedbackId, organization.id, {
+        overall_rating: fbRating,
+        recommendation: fbRecommendation,
+        strengths: fbStrengths,
+        weaknesses: fbWeaknesses,
+        notes: fbNotes,
+      })
+      if (fbError) {
+        setError(fbError.message)
+      } else {
+        setShowFeedback(false); setEditingFeedbackId(null)
+        setFbRating(3); setFbRecommendation('neutral')
+        setFbStrengths(''); setFbWeaknesses(''); setFbNotes(''); setCriteriaRatings({})
+        loadInterview()
+      }
     } else {
-      setShowFeedback(false); setFbRating(3); setFbRecommendation('neutral')
-      setFbStrengths(''); setFbWeaknesses(''); setFbNotes(''); setCriteriaRatings({})
-      loadInterview()
+      // Submit new feedback
+      const feedbackData: Record<string, unknown> = {
+        interview_id: interview.id,
+        application_id: interview.application_id,
+        overall_rating: fbRating,
+        recommendation: fbRecommendation,
+        strengths: fbStrengths,
+        weaknesses: fbWeaknesses,
+        notes: fbNotes,
+      }
+      const filledRatings = Object.entries(criteriaRatings)
+        .filter(([, r]) => r > 0)
+        .map(([criteria_id, rating]) => ({ criteria_id, rating }))
+      if (filledRatings.length > 0) feedbackData.criteria_ratings = filledRatings
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { error: fbError } = await submitFeedback(supabase, organization.id, feedbackData as any, user.id)
+      if (fbError) {
+        setError(fbError.message)
+      } else {
+        logActivity(supabase, organization.id, user.id, 'application', interview.application_id, 'feedback_submitted', {
+          interview_id: interview.id,
+          recommendation: fbRecommendation,
+          overall_rating: fbRating,
+        }).catch(() => {})
+        setShowFeedback(false); setFbRating(3); setFbRecommendation('neutral')
+        setFbStrengths(''); setFbWeaknesses(''); setFbNotes(''); setCriteriaRatings({})
+        loadInterview()
+      }
     }
     setFbSaving(false)
   }
@@ -234,10 +307,9 @@ export default function InterviewDetailPage() {
     return (
       <div className="text-center py-16">
         <p className="text-gray-400 text-sm">{error || 'Interview not found'}</p>
-        <button onClick={() => router.back()} className="mt-4 text-sm text-gray-500 hover:text-gray-900 inline-flex items-center gap-1">
-          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" /></svg>
-          Back
-        </button>
+        <Button type="button" variant="ghost" size="sm" className="gap-1.5 text-gray-500 hover:text-gray-900 mt-4" onClick={() => router.back()}>
+          <ArrowLeft className="w-4 h-4" />Back
+        </Button>
       </div>
     )
   }
@@ -263,15 +335,9 @@ export default function InterviewDetailPage() {
     <div className="max-w-5xl space-y-4">
 
       {/* ── BACK ── */}
-      <button
-        onClick={() => router.back()}
-        className="inline-flex items-center gap-1.5 text-sm text-gray-400 hover:text-gray-700 transition-colors group"
-      >
-        <svg className="w-4 h-4 group-hover:-translate-x-0.5 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-          <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" />
-        </svg>
-        Back to Interviews
-      </button>
+      <Button type="button" variant="ghost" size="sm" className="gap-1.5 text-gray-500 hover:text-gray-900" onClick={() => router.back()}>
+        <ArrowLeft className="w-4 h-4" />Back to Interviews
+      </Button>
 
       {/* ── HERO CARD ── */}
       <div className={`bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden border-t-[3px] ${statusMeta.topBorder}`}>
@@ -287,13 +353,16 @@ export default function InterviewDetailPage() {
               <div>
                 <div className="flex items-center gap-2.5 flex-wrap">
                   <h1 className="text-[18px] font-bold text-gray-900 tracking-tight leading-tight">
-                    {candidate?.first_name} {candidate?.last_name}
+                    {(interview as any).title || `${candidate?.first_name} ${candidate?.last_name}`}
                   </h1>
                   <span className={`inline-flex items-center gap-1.5 text-[11px] font-semibold px-2.5 py-0.5 rounded-full border ${statusMeta.bg} ${statusMeta.text} ${statusMeta.border}`}>
                     <span className={`w-1.5 h-1.5 rounded-full ${statusMeta.dot}`} />
                     {statusMeta.label}
                   </span>
                 </div>
+                {(interview as any).title && (
+                  <p className="text-sm text-gray-600 mt-0.5">{candidate?.first_name} {candidate?.last_name}</p>
+                )}
                 <p className="text-sm text-gray-500 mt-0.5">
                   <span className="font-medium text-gray-700">{typeLabel}</span>
                   {job && <> &nbsp;·&nbsp; {job.title}<span className="text-gray-400"> in {job.department}</span></>}
@@ -325,10 +394,10 @@ export default function InterviewDetailPage() {
 
           {/* Action strip */}
           <div className="mt-4 pt-4 border-t border-gray-100 flex flex-wrap items-center gap-2">
-            {interview.meeting_link && (
+            {interview.meeting_link && interview.status === 'scheduled' && (
               <a href={interview.meeting_link} target="_blank" rel="noopener noreferrer">
-                <button className="inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg bg-gray-900 text-white hover:bg-gray-700 transition-colors">
-                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M13.19 8.688a4.5 4.5 0 011.242 7.244l-4.5 4.5a4.5 4.5 0 01-6.364-6.364l1.757-1.757m13.35-.622l1.757-1.757a4.5 4.5 0 00-6.364-6.364l-4.5 4.5a4.5 4.5 0 001.242 7.244" /></svg>
+                <button className="inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg bg-blue-600 text-white hover:bg-blue-700 transition-colors">
+                  <ExternalLink className="w-3.5 h-3.5" />
                   Join Meeting
                 </button>
               </a>
@@ -336,31 +405,40 @@ export default function InterviewDetailPage() {
             {interview.status === 'scheduled' && canManageJobs && (
               <>
                 <button onClick={startEdit} className="inline-flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg bg-white border border-gray-200 text-gray-600 hover:bg-gray-50 hover:text-gray-900 transition-colors">
-                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931z" /></svg>
+                  <PenLine className="w-3.5 h-3.5" />
                   Edit
                 </button>
-                <button onClick={handleCancel} className="inline-flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg bg-red-50 border border-red-200 text-red-600 hover:bg-red-100 transition-colors">
-                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+                <button onClick={handleCancel} className="inline-flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg bg-blue-50 border border-blue-200 text-blue-600 hover:bg-blue-100 transition-colors">
+                  <X className="w-3.5 h-3.5" />
                   Cancel
                 </button>
               </>
             )}
             {interview.status === 'scheduled' && canManageThisInterview && (
               <>
-                <button onClick={handleNoShow} className="inline-flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg bg-amber-50 border border-amber-200 text-amber-700 hover:bg-amber-100 transition-colors">
-                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" /></svg>
+                <button onClick={handleNoShow} className="inline-flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg bg-blue-50 border border-blue-200 text-blue-600 hover:bg-blue-100 transition-colors">
+                  <Ban className="w-3.5 h-3.5" />
                   Not Shown
                 </button>
-                <button onClick={handleMarkCompleted} className="inline-flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-700 hover:bg-emerald-100 transition-colors">
-                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" /></svg>
+                <button onClick={handleMarkCompleted} className="inline-flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg bg-blue-50 border border-blue-200 text-blue-600 hover:bg-blue-100 transition-colors">
+                  <CheckCircle2 className="w-3.5 h-3.5" />
                   Mark Completed
                 </button>
               </>
             )}
-            {interview.status === 'completed' && !hasSubmittedFeedback && isPanelist && (
-              <button onClick={() => setShowFeedback(true)} className="inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg bg-gray-900 text-white hover:bg-gray-700 transition-colors">
-                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931z" /></svg>
+            {interview.status === 'completed' && isPanelist && !hasSubmittedFeedback && (
+              <button onClick={() => setShowFeedback(true)} className="inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg bg-blue-600 text-white hover:bg-blue-700 transition-colors">
+                <PenLine className="w-3.5 h-3.5" />
                 Submit Feedback
+              </button>
+            )}
+            {interview.status === 'completed' && hasSubmittedFeedback && isPanelist && (
+              <button onClick={() => {
+                const myFeedback = interview.feedback?.find((f) => f.user_id === user?.id)
+                if (myFeedback) startEditFeedback(myFeedback)
+              }} className="inline-flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg bg-white border border-gray-200 text-gray-600 hover:bg-gray-50 hover:text-gray-900 transition-colors">
+                <PenLine className="w-3.5 h-3.5" />
+                Edit Feedback
               </button>
             )}
           </div>
@@ -426,7 +504,7 @@ export default function InterviewDetailPage() {
                   <Textarea rows={3} value={editNotes} onChange={(e) => setEditNotes(e.target.value)} className="text-sm resize-none" />
                 </div>
                 <div className="flex gap-2 pt-0.5">
-                  <Button size="sm" onClick={handleSave} disabled={saving} className="bg-gray-900 hover:bg-gray-800 text-white">
+                  <Button size="sm" onClick={handleSave} disabled={saving} className="bg-blue-600 hover:bg-blue-500 text-white">
                     {saving ? 'Saving…' : 'Save Changes'}
                   </Button>
                   <Button size="sm" variant="outline" onClick={() => setEditing(false)}>Cancel</Button>
@@ -458,7 +536,7 @@ export default function InterviewDetailPage() {
                     </span>
                   } />
                   {interview.location && <DetailRow label="Location" value={interview.location} />}
-                  {interview.meeting_link && (
+                  {interview.meeting_link && interview.status === 'scheduled' && (
                     <DetailRow label="Meeting" value={
                       <a href={interview.meeting_link} target="_blank" rel="noopener noreferrer" className="text-gray-700 hover:underline font-medium">
                         Join Meeting →
@@ -540,7 +618,7 @@ export default function InterviewDetailPage() {
                                 onClick={() => setCriteriaRatings((prev) => ({ ...prev, [c.id]: r }))}
                                 className={`w-6 h-6 rounded text-xs font-bold transition-all ${
                                   criteriaRatings[c.id] === r
-                                    ? 'bg-gray-900 text-white'
+                                    ? 'bg-blue-600 text-white'
                                     : 'bg-gray-200 text-gray-500 hover:bg-gray-300'
                                 }`}
                               >{r}</button>
@@ -565,10 +643,10 @@ export default function InterviewDetailPage() {
                   </div>
                   {error && <div className="bg-red-50 border border-red-100 text-red-700 text-xs px-3 py-2 rounded-lg">{error}</div>}
                   <div className="flex gap-2 pt-1">
-                    <Button size="sm" onClick={handleSubmitFeedback} disabled={fbSaving} className="bg-gray-900 hover:bg-gray-800 text-white">
-                      {fbSaving ? 'Submitting…' : 'Submit Feedback'}
+                    <Button size="sm" onClick={handleSubmitFeedback} disabled={fbSaving} className="bg-blue-600 hover:bg-blue-500 text-white">
+                      {fbSaving ? (editingFeedbackId ? 'Updating…' : 'Submitting…') : (editingFeedbackId ? 'Update Feedback' : 'Submit Feedback')}
                     </Button>
-                    <Button size="sm" variant="outline" onClick={() => setShowFeedback(false)}>Cancel</Button>
+                    <Button size="sm" variant="outline" onClick={() => { setShowFeedback(false); setEditingFeedbackId(null) }}>Cancel</Button>
                   </div>
                 </div>
               ) : interview.feedback?.length > 0 ? (
@@ -596,9 +674,39 @@ export default function InterviewDetailPage() {
                             {rec && (
                               <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${rec.color}`}>{rec.label}</span>
                             )}
+                            {fb.user_id === user?.id && (
+                              <button
+                                onClick={() => startEditFeedback(fb)}
+                                className="text-[10px] font-medium text-gray-400 hover:text-gray-700 transition-colors ml-1"
+                              >
+                                Edit
+                              </button>
+                            )}
                           </div>
                         </div>
                         <div className="px-4 py-3 space-y-2.5">
+                          {feedbackCriteriaRatings[fb.id] && feedbackCriteriaRatings[fb.id].length > 0 && (
+                            <div>
+                              <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1.5">Evaluation Criteria</p>
+                              <div className="space-y-1.5">
+                                {feedbackCriteriaRatings[fb.id].map((cr) => {
+                                  const criteria = scorecardCriteria.find((c) => c.id === cr.criteria_id)
+                                  return (
+                                    <div key={cr.criteria_id} className="flex items-center justify-between gap-2">
+                                      <span className="text-xs text-gray-600">{criteria?.name ?? 'Unknown'}</span>
+                                      <div className="flex items-center gap-0.5">
+                                        {[1,2,3,4,5].map((r) => (
+                                          <span key={r} className={`w-5 h-5 rounded text-[10px] font-bold flex items-center justify-center ${
+                                            r === cr.rating ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-300'
+                                          }`}>{r}</span>
+                                        ))}
+                                      </div>
+                                    </div>
+                                  )
+                                })}
+                              </div>
+                            </div>
+                          )}
                           {fb.strengths && (
                             <div>
                               <p className="text-[10px] font-semibold text-emerald-600 uppercase tracking-wider mb-0.5">Strengths</p>
@@ -625,9 +733,7 @@ export default function InterviewDetailPage() {
               ) : (
                 <div className="py-10 text-center">
                   <div className="w-10 h-10 rounded-full bg-gray-50 border border-gray-100 flex items-center justify-center mx-auto mb-3">
-                    <svg className="w-5 h-5 text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M7.5 8.25h9m-9 3H12m-9.75 1.51c0 1.6 1.123 2.994 2.707 3.227 1.129.166 2.27.293 3.423.379.35.026.67.21.865.501L12 21l2.755-4.133a1.14 1.14 0 01.865-.501 48.172 48.172 0 003.423-.379c1.584-.233 2.707-1.626 2.707-3.228V6.741c0-1.602-1.123-2.995-2.707-3.228A48.394 48.394 0 0012 3c-2.392 0-4.744.175-7.043.513C3.373 3.746 2.25 5.14 2.25 6.741v6.018z" />
-                    </svg>
+                    <MessageSquare className="w-5 h-5 text-gray-300" />
                   </div>
                   <p className="text-sm text-gray-400">
                     {interview.status === 'completed'
@@ -668,10 +774,19 @@ export default function InterviewDetailPage() {
                   )}
                   {candidate.location && <SidebarRow label="Location" value={candidate.location} />}
                   {candidate.resume_url && (
-                    <a href={candidate.resume_url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-gray-600 hover:text-gray-800 font-medium pt-0.5">
-                      <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" /></svg>
-                      Resume
-                    </a>
+                    <div className="flex items-center gap-2 pt-0.5">
+                      <button
+                        onClick={() => setShowResume(!showResume)}
+                        className="inline-flex items-center gap-1 text-xs text-gray-600 hover:text-gray-800 font-medium"
+                      >
+                        <Eye className="w-3.5 h-3.5" />
+                        {showResume ? 'Hide Resume' : 'View Resume'}
+                      </button>
+                      <a href={candidate.resume_url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-xs text-gray-600 hover:text-gray-800 font-medium">
+                        <Download className="w-3.5 h-3.5" />
+                        Download
+                      </a>
+                    </div>
                   )}
                 </div>
               </div>
@@ -679,6 +794,35 @@ export default function InterviewDetailPage() {
               <p className="px-5 py-4 text-xs text-gray-400">No candidate data.</p>
             )}
           </div>
+
+          {/* Resume Preview */}
+          {showResume && candidate?.resume_url && (
+            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+              <div className="px-5 py-3.5 border-b border-gray-50 flex items-center justify-between">
+                <h2 className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Resume Preview</h2>
+                <button onClick={() => setShowResume(false)} className="text-xs text-gray-400 hover:text-gray-700 font-medium transition-colors">
+                  Close
+                </button>
+              </div>
+              <div className="p-2">
+                {candidate.resume_url.toLowerCase().endsWith('.pdf') ? (
+                  <iframe
+                    src={candidate.resume_url}
+                    title="Candidate Resume"
+                    className="w-full rounded-lg border border-gray-100"
+                    style={{ height: '500px' }}
+                  />
+                ) : (
+                  <div className="py-6 text-center">
+                    <p className="text-sm text-gray-500">Preview is only available for PDF files.</p>
+                    <a href={candidate.resume_url} target="_blank" rel="noopener noreferrer" className="text-sm text-blue-600 hover:underline mt-1 inline-block">
+                      Open in new tab
+                    </a>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
 
           {/* Position */}
           {job && (

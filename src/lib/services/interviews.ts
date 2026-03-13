@@ -66,7 +66,8 @@ export async function getInterviews(
         candidate:candidates(id, first_name, last_name, email),
         job:jobs(id, title, department)
       ),
-      interview_panelists(*)
+      interview_panelists(*),
+      interview_feedback(*)
     `,
       { count: 'exact' }
     )

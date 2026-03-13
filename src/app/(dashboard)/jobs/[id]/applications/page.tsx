@@ -26,6 +26,11 @@ import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from '@/components/ui/table'
 import { ScoreBreakdownDialog } from './score-breakdown-dialog'
+import { BulkResumeUploadDialog } from '@/components/bulk-upload/bulk-resume-upload-dialog'
+import { AddCandidateDialog } from '@/components/add-candidate-dialog'
+import {
+  ArrowLeft, UserPlus, Upload, List, Columns3, Briefcase, Sparkles,
+} from 'lucide-react'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -214,32 +219,6 @@ function DraggableAppCard({ app }: { app: ApplicationRow }) {
 }
 
 // ---------------------------------------------------------------------------
-// View toggle icons
-// ---------------------------------------------------------------------------
-
-function IconTable({ active }: { active: boolean }) {
-  return (
-    <svg width="15" height="15" viewBox="0 0 15 15" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round">
-      <rect x="1" y="1" width="13" height="13" rx="1.5" />
-      <line x1="1" y1="5" x2="14" y2="5" />
-      <line x1="1" y1="9" x2="14" y2="9" />
-      <line x1="5.5" y1="5" x2="5.5" y2="14" />
-      {active && <rect x="1" y="1" width="13" height="4" rx="1.5" fill="currentColor" opacity="0.15" />}
-    </svg>
-  )
-}
-
-function IconKanban({ active }: { active: boolean }) {
-  return (
-    <svg width="15" height="15" viewBox="0 0 15 15" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
-      <rect x="1" y="1" width="3.5" height="9" rx="1" fill={active ? 'currentColor' : 'none'} opacity={active ? 0.2 : 1} />
-      <rect x="5.75" y="1" width="3.5" height="12" rx="1" fill={active ? 'currentColor' : 'none'} opacity={active ? 0.2 : 1} />
-      <rect x="10.5" y="1" width="3.5" height="6" rx="1" fill={active ? 'currentColor' : 'none'} opacity={active ? 0.2 : 1} />
-    </svg>
-  )
-}
-
-// ---------------------------------------------------------------------------
 // Main Page
 // ---------------------------------------------------------------------------
 
@@ -272,6 +251,12 @@ export default function ApplicationsPage() {
 
   // Assessment invitations
   const [assessmentInvitations, setAssessmentInvitations] = useState<Record<string, AssessmentInv>>({})
+
+  // Bulk upload dialog
+  const [bulkUploadOpen, setBulkUploadOpen] = useState(false)
+
+  // Add candidate dialog
+  const [addCandidateOpen, setAddCandidateOpen] = useState(false)
 
   // Pipeline drag-and-drop state
   const [activeApp, setActiveApp] = useState<ApplicationRow | null>(null)
@@ -577,29 +562,31 @@ export default function ApplicationsPage() {
 
   return (
     <div className="space-y-4">
-      {/* Back */}
-      <button
-        onClick={() => window.history.back()}
-        className="inline-flex items-center gap-1 text-sm text-gray-500 hover:text-gray-900 transition-colors"
-      >
-        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-          <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" />
-        </svg>
-        Back
-      </button>
-
       {/* Header */}
       <div className="flex items-center justify-between">
-        <div>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => window.history.back()}
+            className="p-1.5 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors"
+          >
+            <ArrowLeft className="w-4 h-4" />
+          </button>
           <div className="flex items-center gap-3">
-            <h1 className="text-2xl font-bold text-gray-900">{job.title}</h1>
-            <span className="text-[11px] font-medium px-2 py-0.5 rounded-full bg-gray-100 text-gray-700">{allApps.length} applicant{allApps.length !== 1 ? 's' : ''}</span>
-            {batchScoring && <span className="text-[10px] font-medium px-2 py-0.5 rounded-full border border-gray-200 text-gray-500 animate-pulse">AI Scoring...</span>}
-            {moving && <span className="text-xs text-gray-400 animate-pulse">Saving…</span>}
+            <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-blue-500 to-indigo-600 text-white flex items-center justify-center shrink-0">
+              <Briefcase className="w-4 h-4" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2.5">
+                <h1 className="text-lg font-semibold text-gray-900">{job.title}</h1>
+                <span className="text-[11px] font-medium px-2 py-0.5 rounded-full bg-gray-100 text-gray-600">{allApps.length} applicant{allApps.length !== 1 ? 's' : ''}</span>
+                {batchScoring && <span className="text-[10px] font-medium px-2 py-0.5 rounded-full border border-blue-200 text-blue-500 animate-pulse">AI Scoring...</span>}
+                {moving && <span className="text-xs text-gray-400 animate-pulse">Saving…</span>}
+              </div>
+              <p className="text-xs text-gray-400 mt-0.5">
+                {viewMode === 'table' ? 'Applications · Table View' : 'Applications · Pipeline View'}
+              </p>
+            </div>
           </div>
-          <p className="text-gray-500 mt-0.5 text-sm">
-            {viewMode === 'table' ? 'Applications · Table View' : 'Applications · Pipeline View'}
-          </p>
         </div>
 
         <div className="flex items-center gap-2">
@@ -614,7 +601,7 @@ export default function ApplicationsPage() {
                   : 'text-gray-400 hover:text-gray-600'
               }`}
             >
-              <IconTable active={viewMode === 'table'} />
+              <List className="w-3.5 h-3.5" />
             </button>
             <button
               onClick={() => setViewMode('pipeline')}
@@ -625,12 +612,25 @@ export default function ApplicationsPage() {
                   : 'text-gray-400 hover:text-gray-600'
               }`}
             >
-              <IconKanban active={viewMode === 'pipeline'} />
+              <Columns3 className="w-3.5 h-3.5" />
             </button>
           </div>
 
+          {canManageJobs && (
+            <>
+              <Button variant="outline" size="sm" onClick={() => setAddCandidateOpen(true)} className="gap-1.5">
+                <UserPlus className="w-3.5 h-3.5" />
+                Add Candidate
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => setBulkUploadOpen(true)} className="gap-1.5">
+                <Upload className="w-3.5 h-3.5" />
+                Bulk Upload
+              </Button>
+            </>
+          )}
           {allApps.length > 0 && canManageJobs && (
-            <Button variant="default" size="sm" disabled={batchScoring} onClick={handleBatchScore}>
+            <Button size="sm" disabled={batchScoring} onClick={handleBatchScore} className="bg-blue-600 hover:bg-blue-700 text-white gap-1.5">
+              <Sparkles className="w-3.5 h-3.5" />
               {batchScoring ? 'Scoring...' : 'AI Re-Score All'}
             </Button>
           )}
@@ -711,7 +711,7 @@ export default function ApplicationsPage() {
           {allApps.length === 0 ? (
             <div className="text-center py-12 text-gray-500">No applications yet for this job.</div>
           ) : (
-            <div className="border rounded-lg">
+            <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
               {(() => {
                 const filteredApps = allApps.filter((app) => {
                   if (filterStage !== 'all' && app.current_stage_id !== filterStage) return false
@@ -739,15 +739,15 @@ export default function ApplicationsPage() {
                 return (
                   <Table>
                     <TableHeader>
-                      <TableRow>
-                        <TableHead>Candidate</TableHead>
-                        <TableHead>Status</TableHead>
-                        <TableHead>AI Score</TableHead>
-                        <TableHead>Assessment</TableHead>
-                        <TableHead>Email</TableHead>
-                        <TableHead>Phone</TableHead>
-                        <TableHead>Current Stage</TableHead>
-                        <TableHead>Applied</TableHead>
+                      <TableRow className="bg-gray-50/40 hover:bg-gray-50/40 border-b border-gray-100">
+                        <TableHead className="text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Candidate</TableHead>
+                        <TableHead className="text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Status</TableHead>
+                        <TableHead className="text-[11px] font-semibold text-gray-500 uppercase tracking-wider">AI Score</TableHead>
+                        <TableHead className="text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Assessment</TableHead>
+                        <TableHead className="text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Email</TableHead>
+                        <TableHead className="text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Phone</TableHead>
+                        <TableHead className="text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Current Stage</TableHead>
+                        <TableHead className="text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Applied</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -927,6 +927,23 @@ export default function ApplicationsPage() {
           score={matchScores[scoreDetailApp.id] ?? null}
         />
       )}
+
+      {/* Add Candidate Dialog */}
+      <AddCandidateDialog
+        open={addCandidateOpen}
+        onOpenChange={setAddCandidateOpen}
+        jobId={params.id as string}
+        jobTitle={job?.title ?? ''}
+        onSuccess={() => loadData()}
+      />
+
+      {/* Bulk Upload Dialog */}
+      <BulkResumeUploadDialog
+        open={bulkUploadOpen}
+        onOpenChange={setBulkUploadOpen}
+        jobId={params.id as string}
+        jobTitle={job?.title ?? ''}
+      />
     </div>
   )
 }

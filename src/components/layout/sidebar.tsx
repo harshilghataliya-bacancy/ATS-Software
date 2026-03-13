@@ -11,37 +11,45 @@ import { Separator } from '@/components/ui/separator'
 import {
   Tooltip, TooltipContent, TooltipProvider, TooltipTrigger,
 } from '@/components/ui/tooltip'
+import {
+  LayoutDashboard, Briefcase, CalendarClock, FileText, Landmark,
+  BarChart3, Mail, FileSignature, Building2, Users, LogOut,
+  ChevronsLeft, ChevronsRight,
+} from 'lucide-react'
 
 const mainNav = [
-  { href: '/dashboard', label: 'Dashboard', icon: '⌂' },
-  { href: '/jobs', label: 'Jobs', icon: '⊞' },
-  { href: '/candidates', label: 'Candidates', icon: '⊡' },
-  { href: '/interviews', label: 'Interviews', icon: '◷' },
-  { href: '/offers', label: 'Offers', icon: '✉' },
-  { href: '/reports', label: 'Reports', icon: '◈' },
+  { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
+  { href: '/jobs', label: 'Jobs', icon: Briefcase },
+  { href: '/interviews', label: 'Interviews', icon: CalendarClock },
+  { href: '/offers', label: 'Offers', icon: FileText },
+  { href: '/banks', label: 'Candidate Bank', icon: Landmark },
+  { href: '/reports', label: 'Reports', icon: BarChart3 },
 ]
 
 const secondaryNav = [
-  { href: '/email-templates', label: 'Email Templates', icon: '▤' },
-  { href: '/settings/offer-templates', label: 'Offer Templates', icon: '▤' },
+  { href: '/email-templates', label: 'Email Templates', icon: Mail },
+  { href: '/settings/offer-templates', label: 'Offer Templates', icon: FileSignature },
 ]
 
 const settingsNav = [
-  { href: '/settings/organization', label: 'Organization', icon: '⚙' },
-  { href: '/settings/members', label: 'Members', icon: '⊕' },
+  { href: '/settings/organization', label: 'Organization', icon: Building2 },
+  { href: '/settings/members', label: 'Members', icon: Users },
 ]
 
-function NavItem({ href, label, icon, active, collapsed }: { href: string; label: string; icon: string; active: boolean; collapsed: boolean }) {
+function NavItem({ href, label, icon: Icon, active, collapsed }: { href: string; label: string; icon: React.ComponentType<{ className?: string }>; active: boolean; collapsed: boolean }) {
   const link = (
     <Link
       href={href}
-      className={`flex items-center gap-3 px-3 py-2 rounded-md text-sm transition-colors ${
+      className={`group relative flex items-center gap-3 px-3 py-2 rounded-lg text-[13px] font-medium transition-all duration-150 ${
         active
-          ? 'bg-blue-50 text-blue-700 font-medium'
-          : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
-      } ${collapsed ? 'justify-center' : ''}`}
+          ? 'bg-blue-50 text-blue-700 shadow-sm shadow-blue-100/50'
+          : 'text-gray-500 hover:bg-gray-50 hover:text-gray-900'
+      } ${collapsed ? 'justify-center px-2' : ''}`}
     >
-      <span className="text-base w-5 text-center shrink-0">{icon}</span>
+      {active && (
+        <span className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-4 bg-blue-600 rounded-r-full" />
+      )}
+      <Icon className={`w-[18px] h-[18px] shrink-0 transition-colors ${active ? 'text-blue-600' : 'text-gray-400 group-hover:text-gray-600'}`} />
       {!collapsed && <span className="truncate">{label}</span>}
     </Link>
   )
@@ -50,7 +58,7 @@ function NavItem({ href, label, icon, active, collapsed }: { href: string; label
     return (
       <Tooltip delayDuration={0}>
         <TooltipTrigger asChild>{link}</TooltipTrigger>
-        <TooltipContent side="right" sideOffset={8}>
+        <TooltipContent side="right" sideOffset={8} className="text-xs font-medium">
           {label}
         </TooltipContent>
       </Tooltip>
@@ -63,14 +71,14 @@ function NavItem({ href, label, icon, active, collapsed }: { href: string; label
 export function Sidebar() {
   const pathname = usePathname()
   const { user, organization } = useUser()
-  const { role, canManageMembers, canViewReports, isInterviewer } = useRole()
+  const { role, canManageMembers, canViewReports, canAccessBanks, isInterviewer } = useRole()
   const [collapsed, setCollapsed] = useState(false)
 
   const roleBadge: Record<string, { label: string; color: string }> = {
-    admin: { label: 'Admin', color: 'bg-purple-100 text-purple-700' },
+    admin: { label: 'Admin', color: 'bg-violet-100 text-violet-700' },
     recruiter: { label: 'Recruiter', color: 'bg-blue-100 text-blue-700' },
-    hiring_manager: { label: 'Hiring Manager', color: 'bg-green-100 text-green-700' },
-    interviewer: { label: 'Interviewer', color: 'bg-orange-100 text-orange-700' },
+    hiring_manager: { label: 'Hiring Mgr', color: 'bg-emerald-100 text-emerald-700' },
+    interviewer: { label: 'Interviewer', color: 'bg-amber-100 text-amber-700' },
   }
   const currentRole = role ? roleBadge[role] : null
 
@@ -83,19 +91,17 @@ export function Sidebar() {
 
   return (
     <TooltipProvider>
-      <aside className={`${collapsed ? 'w-[68px]' : 'w-64'} h-screen bg-white border-r flex flex-col transition-all duration-200 shrink-0`}>
+      <aside className={`${collapsed ? 'w-[68px]' : 'w-60'} h-screen bg-white border-r border-gray-200/80 flex flex-col transition-all duration-200 shrink-0`}>
         {/* Org header */}
-        <div className={`border-b flex items-center ${collapsed ? 'p-3 justify-center' : 'p-4'}`}>
+        <div className={`border-b border-gray-100 flex items-center ${collapsed ? 'p-3 justify-center' : 'px-4 py-3.5'}`}>
           {collapsed ? (
             <Tooltip delayDuration={0}>
               <TooltipTrigger asChild>
                 <button
                   onClick={() => setCollapsed(false)}
-                  className="text-gray-400 hover:text-gray-600 transition-colors"
+                  className="p-1.5 rounded-md text-gray-400 hover:text-gray-600 hover:bg-gray-50 transition-colors"
                 >
-                  <svg className="w-4 h-4 rotate-180" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M18.75 19.5l-7.5-7.5 7.5-7.5m-6 15L5.25 12l7.5-7.5" />
-                  </svg>
+                  <ChevronsRight className="w-4 h-4" />
                 </button>
               </TooltipTrigger>
               <TooltipContent side="right" sideOffset={8}>Expand sidebar</TooltipContent>
@@ -103,30 +109,29 @@ export function Sidebar() {
           ) : (
             <>
               <div className="flex-1 min-w-0">
-                <Link href="/dashboard" className="text-lg font-bold">
+                <Link href="/dashboard" className="text-[15px] font-bold tracking-tight">
                   Hire<span className="text-blue-600">Flow</span>
                 </Link>
                 {organization && (
-                  <p className="text-xs text-gray-500 mt-1 truncate">{organization.name}</p>
+                  <p className="text-[11px] text-gray-400 mt-0.5 truncate">{organization.name}</p>
                 )}
               </div>
               <button
                 onClick={() => setCollapsed(true)}
-                className="p-1 rounded-md text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors"
+                className="p-1.5 rounded-md text-gray-300 hover:text-gray-500 hover:bg-gray-50 transition-colors"
               >
-                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M18.75 19.5l-7.5-7.5 7.5-7.5m-6 15L5.25 12l7.5-7.5" />
-                </svg>
+                <ChevronsLeft className="w-4 h-4" />
               </button>
             </>
           )}
         </div>
 
         {/* Main nav */}
-        <nav className={`flex-1 overflow-y-auto ${collapsed ? 'p-2' : 'p-3'} space-y-1`}>
+        <nav className={`flex-1 overflow-y-auto ${collapsed ? 'p-2' : 'px-3 py-3'} space-y-0.5`}>
           {mainNav
             .filter((item) => {
               if (item.href === '/reports' && !canViewReports) return false
+              if (item.href === '/banks' && !canAccessBanks) return false
               if (isInterviewer && !['/dashboard', '/interviews'].includes(item.href)) return false
               return true
             })
@@ -141,8 +146,13 @@ export function Sidebar() {
 
           {!isInterviewer && (
             <>
-              <Separator className="my-3" />
+              <Separator className="!my-3" />
 
+              {!collapsed && (
+                <p className="px-3 pb-1 text-[10px] font-semibold text-gray-300 uppercase tracking-widest">
+                  Templates
+                </p>
+              )}
               {secondaryNav.map((item) => (
                 <NavItem
                   key={item.href}
@@ -156,10 +166,10 @@ export function Sidebar() {
 
           {canManageMembers && (
             <>
-              <Separator className="my-3" />
+              <Separator className="!my-3" />
 
               {!collapsed && (
-                <p className="px-3 text-xs font-medium text-gray-400 uppercase tracking-wider mb-1">
+                <p className="px-3 pb-1 text-[10px] font-semibold text-gray-300 uppercase tracking-widest">
                   Settings
                 </p>
               )}
@@ -176,52 +186,48 @@ export function Sidebar() {
         </nav>
 
         {/* User footer */}
-        <div className={`border-t ${collapsed ? 'p-2' : 'p-3'}`}>
+        <div className={`border-t border-gray-100 ${collapsed ? 'p-2' : 'px-3 py-3'}`}>
           {collapsed ? (
             <Tooltip delayDuration={0}>
               <TooltipTrigger asChild>
                 <div className="flex justify-center py-1">
                   <Avatar className="h-8 w-8">
-                    <AvatarFallback className="text-xs bg-blue-100 text-blue-700">
+                    <AvatarFallback className="text-[10px] font-semibold bg-gradient-to-br from-blue-500 to-indigo-600 text-white">
                       {initials}
                     </AvatarFallback>
                   </Avatar>
                 </div>
               </TooltipTrigger>
               <TooltipContent side="right" sideOffset={8}>
-                <p className="font-medium">{user?.full_name}</p>
+                <p className="font-medium text-sm">{user?.full_name}</p>
                 <p className="text-xs text-gray-400">{user?.email}</p>
                 {currentRole && <p className="text-xs font-medium mt-1">{currentRole.label}</p>}
               </TooltipContent>
             </Tooltip>
           ) : (
-            <div className="flex items-center gap-3 px-2 py-1">
-              <Avatar className="h-8 w-8">
-                <AvatarFallback className="text-xs bg-blue-100 text-blue-700">
+            <div className="flex items-center gap-2.5 px-1 py-1">
+              <Avatar className="h-8 w-8 shrink-0">
+                <AvatarFallback className="text-[10px] font-semibold bg-gradient-to-br from-blue-500 to-indigo-600 text-white">
                   {initials}
                 </AvatarFallback>
               </Avatar>
               <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium truncate">{user?.full_name}</p>
-                <div className="flex items-center gap-1.5 mt-0.5">
-                  <p className="text-xs text-gray-500 truncate">{user?.email}</p>
-                </div>
-                {currentRole && (
-                  <span className={`inline-block text-[10px] font-medium px-1.5 py-0.5 rounded mt-1 ${currentRole.color}`}>
-                    {currentRole.label}
-                  </span>
-                )}
+                <p className="text-[13px] font-medium text-gray-900 truncate">{user?.full_name}</p>
+                <p className="text-[11px] text-gray-400 truncate">{user?.email}</p>
               </div>
+              {currentRole && (
+                <span className={`shrink-0 text-[9px] font-semibold px-1.5 py-0.5 rounded-full ${currentRole.color}`}>
+                  {currentRole.label}
+                </span>
+              )}
             </div>
           )}
           <form action={signOut}>
             {collapsed ? (
               <Tooltip delayDuration={0}>
                 <TooltipTrigger asChild>
-                  <Button variant="ghost" size="sm" className="w-full mt-1 text-gray-500 px-0" type="submit">
-                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0013.5 3h-6a2.25 2.25 0 00-2.25 2.25v13.5A2.25 2.25 0 007.5 21h6a2.25 2.25 0 002.25-2.25V15m3 0l3-3m0 0l-3-3m3 3H9" />
-                    </svg>
+                  <Button variant="ghost" size="sm" className="w-full mt-1 text-gray-400 hover:text-red-500 px-0" type="submit">
+                    <LogOut className="w-4 h-4" />
                   </Button>
                 </TooltipTrigger>
                 <TooltipContent side="right" sideOffset={8}>
@@ -229,7 +235,8 @@ export function Sidebar() {
                 </TooltipContent>
               </Tooltip>
             ) : (
-              <Button variant="ghost" size="sm" className="w-full mt-2 text-gray-500" type="submit">
+              <Button variant="ghost" size="sm" className="w-full mt-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 text-xs justify-start gap-2" type="submit">
+                <LogOut className="w-3.5 h-3.5" />
                 Sign out
               </Button>
             )}

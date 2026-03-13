@@ -1,6 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 
+/** Prepend https:// if a URL-like string is missing a protocol */
+function normalizeUrl(url: string | null | undefined): string | null {
+  if (!url || typeof url !== 'string') return null
+  const trimmed = url.trim()
+  if (!trimmed) return null
+  if (/^https?:\/\//i.test(trimmed)) return trimmed
+  if (/^(www\.|linkedin\.com|github\.com|gitlab\.com|behance\.net|dribbble\.com)/i.test(trimmed)) {
+    return `https://${trimmed}`
+  }
+  return trimmed
+}
+
 export async function POST(request: NextRequest) {
   const body = await request.json()
   const {
@@ -15,6 +27,10 @@ export async function POST(request: NextRequest) {
   if (!jobId || !orgId || !form?.email || !form?.first_name || !form?.last_name) {
     return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
   }
+
+  // Normalize URLs before processing
+  form.linkedin_url = normalizeUrl(form.linkedin_url) ?? ''
+  form.portfolio_url = normalizeUrl(form.portfolio_url) ?? ''
 
   const supabase = createAdminClient()
 

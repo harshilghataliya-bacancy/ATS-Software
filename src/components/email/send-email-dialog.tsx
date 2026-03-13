@@ -132,6 +132,10 @@ export function SendEmailDialog({
       setError('All fields are required')
       return
     }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to)) {
+      setError('Please enter a valid email address')
+      return
+    }
 
     setSending(true)
     setError(null)
@@ -232,7 +236,7 @@ export function SendEmailDialog({
 
               <div className="space-y-2">
                 <Label>To</Label>
-                <Input value={to} onChange={(e) => setTo(e.target.value)} />
+                <Input type="email" value={to} onChange={(e) => setTo(e.target.value)} placeholder="recipient@example.com" />
               </div>
 
               <div className="space-y-2">

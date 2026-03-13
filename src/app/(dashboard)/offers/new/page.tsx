@@ -21,6 +21,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Switch } from '@/components/ui/switch'
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { ArrowLeft, Check, X, FileText } from 'lucide-react'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type AnyData = Record<string, any>
@@ -311,14 +312,14 @@ export default function NewOfferWizardPage() {
   const deductionsAnnual = deductions.reduce((s, c) => s + c.annual, 0)
   const employerAnnual = employerContribs.reduce((s, c) => s + c.annual, 0)
   const netPayAnnual = grossAnnual - deductionsAnnual
-  const totalCtc = grossAnnual + employerAnnual
+  const totalCtc = form.totalSalary || (grossAnnual + employerAnnual)
 
   // Build email body preview (simple — full details are in the PDF)
   const previewHtml = substituteOfferVariables(form.templateHtml, {
     candidate_name: candidateName,
     job_title: form.jobTitle,
     department: form.department,
-    salary: formatSalary(totalCtc || form.totalSalary, form.currency),
+    salary: formatSalary(totalCtc, form.currency),
     start_date: form.startDate ? new Date(form.startDate).toLocaleDateString('en-US', { dateStyle: 'long' }) : '',
     expiry_date: form.expiryDate ? new Date(form.expiryDate).toLocaleDateString('en-US', { dateStyle: 'long' }) : '',
     company_name: organization?.name || '',
@@ -350,7 +351,7 @@ export default function NewOfferWizardPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           application_id: applicationId,
-          salary: totalCtc || form.totalSalary,
+          salary: totalCtc,
           salary_currency: form.currency,
           start_date: form.startDate,
           expiry_date: form.expiryDate,
@@ -417,7 +418,7 @@ export default function NewOfferWizardPage() {
       workType: workLabel,
       location: form.location || undefined,
       reportingManager: form.reportingManager || undefined,
-      salary: formatSalary(totalCtc || form.totalSalary, form.currency),
+      salary: formatSalary(totalCtc, form.currency),
       salaryCurrency: form.currency,
       startDate: form.startDate ? new Date(form.startDate).toLocaleDateString('en-US', { dateStyle: 'long' }) : 'TBD',
       expiryDate: form.expiryDate ? new Date(form.expiryDate).toLocaleDateString('en-US', { dateStyle: 'long' }) : 'TBD',
@@ -532,17 +533,11 @@ export default function NewOfferWizardPage() {
   return (
     <div className="max-w-6xl space-y-6">
       {/* Back */}
-      <button
-        onClick={() => router.back()}
-        className="inline-flex items-center gap-1 text-sm text-gray-500 hover:text-gray-900 transition-colors"
-      >
-        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-          <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" />
-        </svg>
-        Back
-      </button>
+      <Button type="button" variant="ghost" size="sm" className="gap-1.5 text-gray-500 hover:text-gray-900" onClick={() => router.back()}>
+        <ArrowLeft className="w-4 h-4" />Back
+      </Button>
 
-      <h1 className="text-2xl font-bold text-gray-900">Create Offer</h1>
+      <h1 className="text-xl font-semibold text-gray-900">Create Offer</h1>
 
       {/* Step Indicator */}
       <div className="flex items-center justify-between">
@@ -560,9 +555,7 @@ export default function NewOfferWizardPage() {
                   }`}
                 >
                   {idx < step ? (
-                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
-                    </svg>
+                    <Check className="w-4 h-4" />
                   ) : (
                     idx + 1
                   )}
@@ -711,6 +704,7 @@ export default function NewOfferWizardPage() {
                     <Input
                       type="date"
                       value={form.startDate}
+                      min={new Date().toISOString().split('T')[0]}
                       onChange={(e) => setForm((p) => ({ ...p, startDate: e.target.value }))}
                     />
                   </div>
@@ -719,6 +713,7 @@ export default function NewOfferWizardPage() {
                     <Input
                       type="date"
                       value={form.expiryDate}
+                      min={new Date().toISOString().split('T')[0]}
                       onChange={(e) => setForm((p) => ({ ...p, expiryDate: e.target.value }))}
                     />
                   </div>
@@ -801,9 +796,14 @@ export default function NewOfferWizardPage() {
                 <CardHeader>
                   <div className="flex items-center justify-between">
                     <CardTitle>Salary Structure</CardTitle>
-                    <Button variant="outline" size="sm" onClick={() => addSalaryComponent('earnings')}>
-                      + Add Component
-                    </Button>
+                    <div className="flex gap-2">
+                      <Button variant="outline" size="sm" onClick={() => addSalaryComponent('earnings')}>
+                        + Add Earning
+                      </Button>
+                      <Button variant="outline" size="sm" onClick={() => addSalaryComponent('deduction')}>
+                        + Add Deduction
+                      </Button>
+                    </div>
                   </div>
                 </CardHeader>
                 <CardContent>
@@ -862,9 +862,7 @@ export default function NewOfferWizardPage() {
                                   className="h-7 w-7 p-0 text-gray-300 hover:text-red-500"
                                   onClick={() => removeSalaryComponent(comp.idx)}
                                 >
-                                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                                  </svg>
+                                  <X className="w-3.5 h-3.5" />
                                 </Button>
                               </div>
                             </div>
@@ -916,9 +914,7 @@ export default function NewOfferWizardPage() {
                                   className="h-7 w-7 p-0 text-gray-300 hover:text-red-500"
                                   onClick={() => removeSalaryComponent(comp.idx)}
                                 >
-                                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                                  </svg>
+                                  <X className="w-3.5 h-3.5" />
                                 </Button>
                               </div>
                             </div>
@@ -981,9 +977,7 @@ export default function NewOfferWizardPage() {
                                     className="h-7 w-7 p-0 text-gray-300 hover:text-red-500"
                                     onClick={() => removeSalaryComponent(comp.idx)}
                                   >
-                                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                                      <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                                    </svg>
+                                    <X className="w-3.5 h-3.5" />
                                   </Button>
                                 </div>
                               </div>
@@ -1060,9 +1054,7 @@ export default function NewOfferWizardPage() {
                             className="h-9 w-9 p-0 text-gray-400 hover:text-red-500"
                             onClick={() => removeBonusComponent(idx)}
                           >
-                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                            </svg>
+                            <X className="w-4 h-4" />
                           </Button>
                         </div>
                       ))}
@@ -1175,9 +1167,7 @@ export default function NewOfferWizardPage() {
                 <CardContent>
                   {!pdfPreviewUrl && !pdfLoading && (
                     <div className="border-2 border-dashed rounded-lg p-12 text-center text-gray-400">
-                      <svg className="w-12 h-12 mx-auto mb-3 text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1}>
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
-                      </svg>
+                      <FileText className="w-12 h-12 mx-auto mb-3 text-gray-300" />
                       <p className="text-sm">Click &ldquo;Generate Preview&rdquo; to see the offer letter PDF</p>
                       <p className="text-xs mt-1">The PDF includes position details, salary structure, terms & conditions, and acceptance section</p>
                     </div>

@@ -16,6 +16,15 @@ import {
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger,
 } from '@/components/ui/alert-dialog'
 import { Pagination } from '@/components/ui/pagination'
+import {
+  Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle,
+} from '@/components/ui/dialog'
+import { BulkResumeUploadDialog } from '@/components/bulk-upload/bulk-resume-upload-dialog'
+import { getJobs } from '@/lib/services/jobs'
+import {
+  LayoutGrid, List, Download, Upload, Plus, Users, Search,
+  Mail, Phone, Briefcase, MapPin,
+} from 'lucide-react'
 
 type ViewMode = 'table' | 'card'
 
@@ -42,30 +51,6 @@ interface Candidate {
   application_count?: number
 }
 
-function IconGrid({ active }: { active: boolean }) {
-  return (
-    <svg width="15" height="15" viewBox="0 0 15 15" fill={active ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="1.3">
-      <rect x="1" y="1" width="5.5" height="5.5" rx="1" />
-      <rect x="8.5" y="1" width="5.5" height="5.5" rx="1" />
-      <rect x="1" y="8.5" width="5.5" height="5.5" rx="1" />
-      <rect x="8.5" y="8.5" width="5.5" height="5.5" rx="1" />
-    </svg>
-  )
-}
-
-function IconList({ active }: { active: boolean }) {
-  return (
-    <svg width="15" height="15" viewBox="0 0 15 15" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
-      <line x1="5" y1="3.5" x2="13.5" y2="3.5" />
-      <line x1="5" y1="7.5" x2="13.5" y2="7.5" />
-      <line x1="5" y1="11.5" x2="13.5" y2="11.5" />
-      <circle cx="2" cy="3.5" r="0.8" fill={active ? 'currentColor' : 'none'} />
-      <circle cx="2" cy="7.5" r="0.8" fill={active ? 'currentColor' : 'none'} />
-      <circle cx="2" cy="11.5" r="0.8" fill={active ? 'currentColor' : 'none'} />
-    </svg>
-  )
-}
-
 export default function CandidatesPage() {
   const { organization, isLoading } = useUser()
   const { canManageCandidates, isInterviewer } = useRole()
@@ -85,19 +70,75 @@ export default function CandidatesPage() {
   const [titleFilter, setTitleFilter] = useState<string>('all')
   const [appStatusFilter, setAppStatusFilter] = useState<string>('all')
   const [jobFilter, setJobFilter] = useState<string>('all')
+  const [tagFilter, setTagFilter] = useState<string>('all')
+  const [sortBy, setSortBy] = useState<string>('date_desc')
   const [locations, setLocations] = useState<string[]>([])
   const [titles, setTitles] = useState<string[]>([])
+  const [availableTags, setAvailableTags] = useState<string[]>([])
   const [availableJobs, setAvailableJobs] = useState<{ id: string; title: string }[]>([])
   const [total, setTotal] = useState(0)
   const [page, setPage] = useState(1)
-  const [viewMode, setViewMode] = useState<ViewMode>('table')
+  const [viewMode, setViewMode] = useState<ViewMode>(() => {
+    if (typeof window !== 'undefined') {
+      return (localStorage.getItem('candidates-view') as ViewMode) || 'table'
+    }
+    return 'table'
+  })
+
+  function changeViewMode(mode: ViewMode) {
+    setViewMode(mode)
+    localStorage.setItem('candidates-view', mode)
+  }
+
+  // Bulk upload state
+  const [bulkJobPickerOpen, setBulkJobPickerOpen] = useState(false)
+  const [bulkUploadOpen, setBulkUploadOpen] = useState(false)
+  const [bulkSelectedJob, setBulkSelectedJob] = useState<{ id: string; title: string } | null>(null)
+  const [allJobs, setAllJobs] = useState<{ id: string; title: string }[]>([])
+  const [loadingJobs, setLoadingJobs] = useState(false)
+
+  async function openBulkUpload() {
+    if (allJobs.length === 0) {
+      setLoadingJobs(true)
+      const supabase = createClient()
+      const { data } = await getJobs(supabase, organization!.id, { status: 'published' })
+      if (data) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        setAllJobs(data.map((j: any) => ({ id: j.id, title: j.title })))
+      }
+      setLoadingJobs(false)
+    }
+    setBulkJobPickerOpen(true)
+  }
+
+  function handleBulkJobSelect(jobId: string) {
+    const job = allJobs.find((j) => j.id === jobId)
+    if (job) {
+      setBulkSelectedJob(job)
+      setBulkJobPickerOpen(false)
+      setBulkUploadOpen(true)
+    }
+  }
+
+  const [debouncedSearch, setDebouncedSearch] = useState(search)
+
+  // Debounce search: reload when user stops typing or clears the field
+  useEffect(() => {
+    if (search === '') {
+      // Immediately reload when cleared
+      setDebouncedSearch('')
+      return
+    }
+    const timer = setTimeout(() => setDebouncedSearch(search), 400)
+    return () => clearTimeout(timer)
+  }, [search])
 
   useEffect(() => {
     if (!organization) return
     loadCandidates()
-  }, [organization, sourceFilter, titleFilter, page])
+  }, [organization, sourceFilter, titleFilter, tagFilter, page, debouncedSearch])
 
-  useEffect(() => { setPage(1) }, [sourceFilter, locationFilter, titleFilter, appStatusFilter, jobFilter])
+  useEffect(() => { setPage(1) }, [sourceFilter, locationFilter, titleFilter, appStatusFilter, jobFilter, tagFilter])
 
   async function loadCandidates() {
     if (!organization) return
@@ -106,12 +147,13 @@ export default function CandidatesPage() {
     const filters: Record<string, unknown> = { page }
     if (sourceFilter !== 'all') filters.source = sourceFilter
     if (titleFilter !== 'all') filters.current_title = titleFilter
-    if (search) filters.search = search
+    if (tagFilter !== 'all') filters.tags = [tagFilter]
+    if (debouncedSearch) filters.search = debouncedSearch
     const { data, count } = await getCandidates(supabase, organization.id, filters)
     if (data) {
       const list = data as Candidate[]
       setCandidates(list)
-      if (sourceFilter === 'all' && locationFilter === 'all' && titleFilter === 'all' && !search) {
+      if (sourceFilter === 'all' && locationFilter === 'all' && titleFilter === 'all' && tagFilter === 'all' && !search) {
         // Normalize to city-only (first segment before comma) to avoid duplicates like "Ahmedabad" / "Ahmedabad, GJ" / "Ahmedabad, India"
         const citySet = new Set<string>()
         list.forEach((c) => {
@@ -121,6 +163,10 @@ export default function CandidatesPage() {
         const tls = Array.from(new Set(list.map((c) => c.current_title).filter(Boolean) as string[])).sort()
         setLocations(locs)
         setTitles(tls)
+        // Collect unique tags across all candidates
+        const tagSet = new Set<string>()
+        list.forEach((c) => c.tags?.forEach((t) => tagSet.add(t)))
+        setAvailableTags(Array.from(tagSet).sort())
         // Collect unique jobs across all candidates' applications
         const jobMap = new Map<string, string>()
         list.forEach((c) => c.applications?.forEach((a) => {
@@ -133,9 +179,9 @@ export default function CandidatesPage() {
     setLoading(false)
   }
 
-  async function handleSearch() {
+  function handleSearch() {
     setPage(1)
-    loadCandidates()
+    setDebouncedSearch(search)
   }
 
   async function handleDelete(candidateId: string) {
@@ -168,6 +214,22 @@ export default function CandidatesPage() {
       if (!c.location || !c.location.toLowerCase().startsWith(city)) return false
     }
     return true
+  }).sort((a, b) => {
+    switch (sortBy) {
+      case 'name_asc':
+        return `${a.first_name} ${a.last_name}`.localeCompare(`${b.first_name} ${b.last_name}`)
+      case 'name_desc':
+        return `${b.first_name} ${b.last_name}`.localeCompare(`${a.first_name} ${a.last_name}`)
+      case 'date_asc':
+        return new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+      case 'location_asc':
+        return (a.location ?? '').localeCompare(b.location ?? '')
+      case 'location_desc':
+        return (b.location ?? '').localeCompare(a.location ?? '')
+      case 'date_desc':
+      default:
+        return new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+    }
   })
 
   const hasClientFilters = appStatusFilter !== 'all' || jobFilter !== 'all' || locationFilter !== 'all'
@@ -237,18 +299,22 @@ export default function CandidatesPage() {
   return (
     <div className="space-y-5">
       {/* Header */}
-      <div className="flex items-center justify-between gap-4">
-        <div>
-          <h1 className="text-[22px] font-bold tracking-tight text-gray-900">Candidates</h1>
-          <p className="text-sm text-gray-400 mt-0.5 font-medium">
-            {total > 0 ? `${total} total candidate${total !== 1 ? 's' : ''}` : 'Manage your candidate pool'}
-          </p>
+      <div className="flex items-end justify-between">
+        <div className="flex items-center gap-3">
+          <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 text-white flex items-center justify-center shadow-sm shadow-blue-200">
+            <Users className="w-5 h-5" />
+          </div>
+          <div>
+            <h1 className="text-xl font-semibold text-gray-900">Candidates</h1>
+            <p className="text-sm text-gray-400 mt-0.5">
+              {total > 0 ? `${total} total candidate${total !== 1 ? 's' : ''}` : 'Manage your candidate pool'}
+            </p>
+          </div>
         </div>
         <div className="flex items-center gap-2">
-          {/* View toggle */}
           <div className="flex items-center gap-0.5 rounded-lg border border-gray-200 bg-gray-50 p-1">
             <button
-              onClick={() => setViewMode('table')}
+              onClick={() => changeViewMode('table')}
               title="Table view"
               className={`flex items-center justify-center w-8 h-7 rounded-md transition-all duration-150 ${
                 viewMode === 'table'
@@ -256,10 +322,10 @@ export default function CandidatesPage() {
                   : 'text-gray-400 hover:text-gray-600'
               }`}
             >
-              <IconList active={viewMode === 'table'} />
+              <List className="w-3.5 h-3.5" />
             </button>
             <button
-              onClick={() => setViewMode('card')}
+              onClick={() => changeViewMode('card')}
               title="Card view"
               className={`flex items-center justify-center w-8 h-7 rounded-md transition-all duration-150 ${
                 viewMode === 'card'
@@ -267,32 +333,41 @@ export default function CandidatesPage() {
                   : 'text-gray-400 hover:text-gray-600'
               }`}
             >
-              <IconGrid active={viewMode === 'card'} />
+              <LayoutGrid className="w-3.5 h-3.5" />
             </button>
           </div>
 
-          <Button variant="outline" size="sm" className="h-9" onClick={downloadCSV} disabled={candidates.length === 0}>
+          <Button variant="outline" size="sm" className="h-9 gap-1.5" onClick={downloadCSV} disabled={candidates.length === 0}>
+            <Download className="w-3.5 h-3.5" />
             Export CSV
           </Button>
           {canManageCandidates && (
-            <Link href="/candidates/new">
-              <Button size="sm" className="h-9 bg-blue-600 hover:bg-blue-700 text-white">
-                + Add Candidate
+            <>
+              <Button variant="outline" size="sm" className="h-9 gap-1.5" onClick={openBulkUpload}>
+                <Upload className="w-3.5 h-3.5" />
+                Bulk Upload
               </Button>
-            </Link>
+              <Link href="/candidates/new">
+                <Button size="sm" className="h-9 gap-1.5 bg-blue-600 hover:bg-blue-700 text-white shadow-sm">
+                  <Plus className="w-4 h-4" />
+                  Add Candidate
+                </Button>
+              </Link>
+            </>
           )}
         </div>
       </div>
 
       {/* Filters */}
       <div className="flex flex-wrap gap-2">
-        <div className="flex-1 min-w-[200px]">
+        <div className="flex-1 min-w-[200px] relative">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
           <Input
             placeholder="Search by name or email…"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
-            className="h-9 bg-white border-gray-200"
+            className="h-9 bg-white border-gray-200 pl-9"
           />
         </div>
         <Select value={appStatusFilter} onValueChange={setAppStatusFilter}>
@@ -353,6 +428,30 @@ export default function CandidatesPage() {
             </SelectContent>
           </Select>
         )}
+        {availableTags.length > 0 && (
+          <Select value={tagFilter} onValueChange={setTagFilter}>
+            <SelectTrigger className="h-9 w-[140px] border-gray-200 bg-white text-sm">
+              <SelectValue placeholder="Tag" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Tags</SelectItem>
+              {availableTags.map((t) => <SelectItem key={t} value={t}>{t}</SelectItem>)}
+            </SelectContent>
+          </Select>
+        )}
+        <Select value={sortBy} onValueChange={setSortBy}>
+          <SelectTrigger className="h-9 w-[150px] border-gray-200 bg-white text-sm">
+            <SelectValue placeholder="Sort by" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="date_desc">Newest First</SelectItem>
+            <SelectItem value="date_asc">Oldest First</SelectItem>
+            <SelectItem value="name_asc">Name A-Z</SelectItem>
+            <SelectItem value="name_desc">Name Z-A</SelectItem>
+            <SelectItem value="location_asc">Location A-Z</SelectItem>
+            <SelectItem value="location_desc">Location Z-A</SelectItem>
+          </SelectContent>
+        </Select>
         {hasClientFilters && (
           <Button
             variant="ghost" size="sm"
@@ -376,25 +475,20 @@ export default function CandidatesPage() {
           </div>
         )
       ) : filteredCandidates.length === 0 ? (
-        <div className="bg-white rounded-xl border border-gray-200 shadow-sm">
-          <div className="p-6 py-16 text-center">
-            <div className="flex flex-col items-center">
-              <div className="w-12 h-12 rounded-full bg-gray-100 flex items-center justify-center mb-4">
-                <svg className="w-6 h-6 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M15 19.128a9.38 9.38 0 002.625.372 9.337 9.337 0 004.121-.952 4.125 4.125 0 00-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 018.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0111.964-3.07M12 6.375a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zm8.25 2.25a2.625 2.625 0 11-5.25 0 2.625 2.625 0 015.25 0z" />
-                </svg>
-              </div>
-              <p className="text-gray-900 font-medium mb-1">No candidates found</p>
-              <p className="text-gray-500 text-sm mb-4">
-                {search || sourceFilter !== 'all' || hasClientFilters ? 'Try adjusting your filters.' : 'Add your first candidate to get started.'}
-              </p>
-              {canManageCandidates && !search && sourceFilter === 'all' && !hasClientFilters && (
-                <Link href="/candidates/new">
-                  <Button size="sm" className="bg-blue-600 hover:bg-blue-700 text-white">Add Candidate</Button>
-                </Link>
-              )}
-            </div>
-          </div>
+        <div className="text-center py-20 border-2 border-dashed border-gray-200 rounded-xl">
+          <Users className="w-10 h-10 text-gray-300 mx-auto mb-3" />
+          <p className="text-sm text-gray-500 font-medium">No candidates found</p>
+          <p className="text-xs text-gray-400 mt-1">
+            {search || sourceFilter !== 'all' || hasClientFilters ? 'Try adjusting your filters.' : 'Add your first candidate to get started.'}
+          </p>
+          {canManageCandidates && !search && sourceFilter === 'all' && !hasClientFilters && (
+            <Link href="/candidates/new">
+              <Button size="sm" className="mt-4 gap-1.5 bg-blue-600 hover:bg-blue-700 text-white">
+                <Plus className="w-3.5 h-3.5" />
+                Add Candidate
+              </Button>
+            </Link>
+          )}
         </div>
 
       ) : viewMode === 'table' ? (
@@ -495,24 +589,18 @@ export default function CandidatesPage() {
 
                     <div className="space-y-1.5 text-[12px] text-gray-500">
                       <div className="flex items-center gap-1.5">
-                        <svg className="w-3 h-3 text-gray-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M21.75 6.75v10.5a2.25 2.25 0 01-2.25 2.25h-15a2.25 2.25 0 01-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25m19.5 0v.243a2.25 2.25 0 01-1.07 1.916l-7.5 4.615a2.25 2.25 0 01-2.36 0L3.32 8.91a2.25 2.25 0 01-1.07-1.916V6.75" />
-                        </svg>
+                        <Mail className="w-3 h-3 text-gray-400 shrink-0" />
                         <span className="truncate">{candidate.email}</span>
                       </div>
                       {candidate.phone && (
                         <div className="flex items-center gap-1.5">
-                          <svg className="w-3 h-3 text-gray-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 6.75c0 8.284 6.716 15 15 15h2.25a2.25 2.25 0 002.25-2.25v-1.372c0-.516-.351-.966-.852-1.091l-4.423-1.106c-.44-.11-.902.055-1.173.417l-.97 1.293c-.282.376-.769.542-1.21.38a12.035 12.035 0 01-7.143-7.143c-.162-.441.004-.928.38-1.21l1.293-.97c.363-.271.527-.734.417-1.173L6.963 3.102a1.125 1.125 0 00-1.091-.852H4.5A2.25 2.25 0 002.25 4.5v2.25z" />
-                          </svg>
+                          <Phone className="w-3 h-3 text-gray-400 shrink-0" />
                           <span>{candidate.phone}</span>
                         </div>
                       )}
                       {(candidate.current_title || candidate.current_company) && (
                         <div className="flex items-center gap-1.5">
-                          <svg className="w-3 h-3 text-gray-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M20.25 14.15v4.25c0 1.094-.787 2.036-1.872 2.18-2.087.277-4.216.42-6.378.42s-4.291-.143-6.378-.42c-1.085-.144-1.872-1.086-1.872-2.18v-4.25m16.5 0a2.18 2.18 0 00.75-1.661V8.706c0-1.081-.768-2.015-1.837-2.175a48.114 48.114 0 00-3.413-.387m4.5 8.006c-.194.165-.42.295-.673.38A23.978 23.978 0 0112 15.75c-2.648 0-5.195-.429-7.577-1.22a2.016 2.016 0 01-.673-.38m0 0A2.18 2.18 0 013 12.489V8.706c0-1.081.768-2.015 1.837-2.175a48.111 48.111 0 013.413-.387m7.5 0V5.25A2.25 2.25 0 0013.5 3h-3a2.25 2.25 0 00-2.25 2.25v.894m7.5 0a48.667 48.667 0 00-7.5 0" />
-                          </svg>
+                          <Briefcase className="w-3 h-3 text-gray-400 shrink-0" />
                           <span className="truncate">
                             {[candidate.current_title, candidate.current_company].filter(Boolean).join(' · ')}
                           </span>
@@ -520,10 +608,7 @@ export default function CandidatesPage() {
                       )}
                       {candidate.location && (
                         <div className="flex items-center gap-1.5">
-                          <svg className="w-3 h-3 text-gray-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M15 10.5a3 3 0 11-6 0 3 3 0 016 0z" />
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 10.5c0 7.142-7.5 11.25-7.5 11.25S4.5 17.642 4.5 10.5a7.5 7.5 0 1115 0z" />
-                          </svg>
+                          <MapPin className="w-3 h-3 text-gray-400 shrink-0" />
                           <span>{candidate.location}</span>
                         </div>
                       )}
@@ -573,6 +658,48 @@ export default function CandidatesPage() {
           </div>
           <Pagination page={page} totalPages={totalPages} onPageChange={setPage} />
         </>
+      )}
+      {/* Bulk Upload: Job Picker Dialog */}
+      <Dialog open={bulkJobPickerOpen} onOpenChange={setBulkJobPickerOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Select a Job for Bulk Upload</DialogTitle>
+            <DialogDescription>
+              Choose which job posting these resumes should be applied to.
+            </DialogDescription>
+          </DialogHeader>
+          {loadingJobs ? (
+            <div className="py-8 text-center text-sm text-gray-500">Loading jobs...</div>
+          ) : allJobs.length === 0 ? (
+            <div className="py-8 text-center text-sm text-gray-500">No published jobs found. Create a job first.</div>
+          ) : (
+            <div className="space-y-2 max-h-[50vh] overflow-y-auto">
+              {allJobs.map((job) => (
+                <button
+                  key={job.id}
+                  onClick={() => handleBulkJobSelect(job.id)}
+                  className="w-full text-left px-3 py-2.5 rounded-lg border border-gray-200 hover:border-blue-300 hover:bg-blue-50 transition-colors text-sm font-medium text-gray-800"
+                >
+                  {job.title}
+                </button>
+              ))}
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Bulk Upload Dialog */}
+      {bulkSelectedJob && (
+        <BulkResumeUploadDialog
+          open={bulkUploadOpen}
+          onOpenChange={(open) => {
+            setBulkUploadOpen(open)
+            if (!open) setBulkSelectedJob(null)
+          }}
+          jobId={bulkSelectedJob.id}
+          jobTitle={bulkSelectedJob.title}
+          onComplete={() => loadCandidates()}
+        />
       )}
     </div>
   )

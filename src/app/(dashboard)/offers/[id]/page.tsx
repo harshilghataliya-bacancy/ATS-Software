@@ -16,6 +16,7 @@ import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
+import { ArrowLeft, Download, Loader2 } from 'lucide-react'
 
 interface SalaryComponent {
   name: string
@@ -283,10 +284,9 @@ export default function OfferDetailPage() {
   return (
     <div className="space-y-6">
       {/* Back link */}
-      <button onClick={() => router.back()} className="inline-flex items-center gap-1 text-sm text-gray-500 hover:text-gray-900 transition-colors">
-        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" /></svg>
-        Back
-      </button>
+      <Button type="button" variant="ghost" size="sm" className="gap-1.5 text-gray-500 hover:text-gray-900" onClick={() => router.back()}>
+        <ArrowLeft className="w-4 h-4" />Back
+      </Button>
 
       {/* Header Card */}
       <div className={`bg-white rounded-xl border border-gray-200 shadow-sm border-l-4 ${statusBorder}`}>
@@ -298,7 +298,7 @@ export default function OfferDetailPage() {
               </div>
               <div>
                 <div className="flex items-center gap-3">
-                  <h1 className="text-xl font-bold text-gray-900">{candidateName}</h1>
+                  <h1 className="text-xl font-semibold text-gray-900">{candidateName}</h1>
                   <span className="text-[11px] font-medium px-2 py-0.5 rounded-full bg-gray-100 text-gray-700">
                     {statusConfig?.label ?? offer.status}
                   </span>
@@ -310,7 +310,7 @@ export default function OfferDetailPage() {
             </div>
             <div className="flex items-center gap-2">
               <Button variant="outline" size="sm" onClick={handleDownloadPdf} disabled={downloadingPdf}>
-                <svg className="w-4 h-4 mr-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" /></svg>
+                <Download className="w-4 h-4 mr-1.5" />
                 {downloadingPdf ? 'Generating...' : 'Download PDF'}
               </Button>
               {canManageOffers && isDraft && (
@@ -500,10 +500,7 @@ export default function OfferDetailPage() {
             <div className="p-6">
               {pdfLoading && (
                 <div className="flex items-center justify-center py-12">
-                  <svg className="w-6 h-6 animate-spin text-gray-400" viewBox="0 0 24 24" fill="none">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                  </svg>
+                  <Loader2 className="w-6 h-6 animate-spin text-gray-400" />
                   <span className="ml-2 text-sm text-gray-500">Loading PDF preview...</span>
                 </div>
               )}

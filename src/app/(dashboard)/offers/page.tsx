@@ -16,6 +16,7 @@ import {
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger,
 } from '@/components/ui/alert-dialog'
 import { Pagination } from '@/components/ui/pagination'
+import { List, LayoutGrid, FileText, Briefcase, DollarSign, Calendar, Send } from 'lucide-react'
 
 type ViewMode = 'list' | 'card'
 
@@ -57,30 +58,6 @@ const STATUS_TOP: Record<string, string> = {
   sent:      'border-t-blue-500',
   expired:   'border-t-gray-300',
   draft:     'border-t-amber-400',
-}
-
-function IconList({ active }: { active: boolean }) {
-  return (
-    <svg width="15" height="15" viewBox="0 0 15 15" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
-      <line x1="5" y1="3.5" x2="13.5" y2="3.5" />
-      <line x1="5" y1="7.5" x2="13.5" y2="7.5" />
-      <line x1="5" y1="11.5" x2="13.5" y2="11.5" />
-      <circle cx="2" cy="3.5" r="0.8" fill={active ? 'currentColor' : 'none'} />
-      <circle cx="2" cy="7.5" r="0.8" fill={active ? 'currentColor' : 'none'} />
-      <circle cx="2" cy="11.5" r="0.8" fill={active ? 'currentColor' : 'none'} />
-    </svg>
-  )
-}
-
-function IconGrid({ active }: { active: boolean }) {
-  return (
-    <svg width="15" height="15" viewBox="0 0 15 15" fill={active ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="1.3">
-      <rect x="1" y="1" width="5.5" height="5.5" rx="1" />
-      <rect x="8.5" y="1" width="5.5" height="5.5" rx="1" />
-      <rect x="1" y="8.5" width="5.5" height="5.5" rx="1" />
-      <rect x="8.5" y="8.5" width="5.5" height="5.5" rx="1" />
-    </svg>
-  )
 }
 
 export default function OffersPage() {
@@ -170,7 +147,7 @@ export default function OffersPage() {
       {/* Header */}
       <div className="flex items-center justify-between gap-4">
         <div>
-          <h1 className="text-[22px] font-bold tracking-tight text-gray-900">Offers</h1>
+          <h1 className="text-xl font-semibold tracking-tight text-gray-900">Offers</h1>
           <p className="text-sm text-gray-400 mt-0.5 font-medium">
             {total > 0 ? `${total} total offers` : 'Manage offer letters for candidates'}
           </p>
@@ -185,7 +162,7 @@ export default function OffersPage() {
                 viewMode === 'list' ? 'bg-white text-gray-900 shadow-sm ring-1 ring-gray-200' : 'text-gray-400 hover:text-gray-600'
               }`}
             >
-              <IconList active={viewMode === 'list'} />
+              <List className="w-4 h-4" />
             </button>
             <button
               onClick={() => setViewMode('card')}
@@ -194,7 +171,7 @@ export default function OffersPage() {
                 viewMode === 'card' ? 'bg-white text-gray-900 shadow-sm ring-1 ring-gray-200' : 'text-gray-400 hover:text-gray-600'
               }`}
             >
-              <IconGrid active={viewMode === 'card'} />
+              <LayoutGrid className="w-4 h-4" />
             </button>
           </div>
           <Button variant="outline" size="sm" className="h-9" onClick={downloadCSV} disabled={filtered.length === 0}>
@@ -243,9 +220,7 @@ export default function OffersPage() {
           <div className="p-6 py-16 text-center">
             <div className="flex flex-col items-center">
               <div className="w-12 h-12 rounded-full bg-gray-100 flex items-center justify-center mb-4">
-                <svg className="w-6 h-6 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M21.75 6.75v10.5a2.25 2.25 0 01-2.25 2.25h-15a2.25 2.25 0 01-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25m19.5 0v.243a2.25 2.25 0 01-1.07 1.916l-7.5 4.615a2.25 2.25 0 01-2.36 0L3.32 8.91a2.25 2.25 0 01-1.07-1.916V6.75" />
-                </svg>
+                <FileText className="w-6 h-6 text-gray-400" />
               </div>
               <p className="text-gray-900 font-medium mb-1">{search ? 'No offers match your search' : 'No offers yet'}</p>
               <p className="text-gray-500 text-sm">{search ? 'Try a different search term.' : 'Create one from the applications page.'}</p>
@@ -286,7 +261,7 @@ export default function OffersPage() {
                         </div>
                         <div className="flex items-center gap-3 mt-1 text-sm text-gray-500 flex-wrap">
                           <span className="flex items-center gap-1">
-                            <svg className="w-3.5 h-3.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M20.25 14.15v4.25c0 1.094-.787 2.036-1.872 2.18-2.087.277-4.216.42-6.378.42s-4.291-.143-6.378-.42c-1.085-.144-1.872-1.086-1.872-2.18v-4.25m16.5 0a2.18 2.18 0 00.75-1.661V8.706c0-1.081-.768-2.015-1.837-2.175a48.114 48.114 0 00-3.413-.387m4.5 8.006c-.194.165-.42.295-.673.38A23.978 23.978 0 0112 15.75c-2.648 0-5.195-.429-7.577-1.22a2.016 2.016 0 01-.673-.38m0 0A2.18 2.18 0 013 12.489V8.706c0-1.081.768-2.015 1.837-2.175a48.111 48.111 0 013.413-.387m7.5 0V5.25A2.25 2.25 0 0013.5 3h-3a2.25 2.25 0 00-2.25 2.25v.894m7.5 0a48.667 48.667 0 00-7.5 0" /></svg>
+                            <Briefcase className="w-3.5 h-3.5 shrink-0" />
                             {offer.application?.job?.title ?? 'Unknown Position'}
                           </span>
                           {offer.application?.job?.department && (
@@ -372,7 +347,7 @@ export default function OffersPage() {
                     {/* Job */}
                     {offer.application?.job && (
                       <div className="flex items-center gap-1.5 text-[12px] text-gray-600">
-                        <svg className="w-3.5 h-3.5 text-gray-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M20.25 14.15v4.25c0 1.094-.787 2.036-1.872 2.18-2.087.277-4.216.42-6.378.42s-4.291-.143-6.378-.42c-1.085-.144-1.872-1.086-1.872-2.18v-4.25m16.5 0a2.18 2.18 0 00.75-1.661V8.706c0-1.081-.768-2.015-1.837-2.175a48.114 48.114 0 00-3.413-.387m4.5 8.006c-.194.165-.42.295-.673.38A23.978 23.978 0 0112 15.75c-2.648 0-5.195-.429-7.577-1.22a2.016 2.016 0 01-.673-.38m0 0A2.18 2.18 0 013 12.489V8.706c0-1.081.768-2.015 1.837-2.175a48.111 48.111 0 013.413-.387m7.5 0V5.25A2.25 2.25 0 0013.5 3h-3a2.25 2.25 0 00-2.25 2.25v.894m7.5 0a48.667 48.667 0 00-7.5 0" /></svg>
+                        <Briefcase className="w-3.5 h-3.5 text-gray-400 shrink-0" />
                         <span className="font-medium truncate">{offer.application.job.title}</span>
                         <span className="text-gray-400 shrink-0">· {offer.application.job.department}</span>
                       </div>
@@ -381,18 +356,18 @@ export default function OffersPage() {
                     {/* Salary + dates */}
                     <div className="space-y-1 text-[12px] text-gray-500">
                       <div className="flex items-center gap-1.5">
-                        <svg className="w-3.5 h-3.5 text-gray-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M12 6v12m-3-2.818l.879.659c1.171.879 3.07.879 4.242 0 1.172-.879 1.172-2.303 0-3.182C13.536 12.219 12.768 12 12 12c-.725 0-1.45-.22-2.003-.659-1.106-.879-1.106-2.303 0-3.182s2.9-.879 4.006 0l.415.33M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                        <DollarSign className="w-3.5 h-3.5 text-gray-400 shrink-0" />
                         <span className="font-semibold text-gray-700">{formatSalary(offer.salary, offer.salary_currency)}</span>
                       </div>
                       {offer.start_date && (
                         <div className="flex items-center gap-1.5">
-                          <svg className="w-3.5 h-3.5 text-gray-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5" /></svg>
+                          <Calendar className="w-3.5 h-3.5 text-gray-400 shrink-0" />
                           <span>Start: {new Date(offer.start_date).toLocaleDateString()}</span>
                         </div>
                       )}
                       {offer.sent_at && (
                         <div className="flex items-center gap-1.5">
-                          <svg className="w-3.5 h-3.5 text-gray-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M6 12L3.269 3.126A59.768 59.768 0 0121.485 12 59.77 59.77 0 013.27 20.876L5.999 12zm0 0h7.5" /></svg>
+                          <Send className="w-3.5 h-3.5 text-gray-400 shrink-0" />
                           <span>Sent: {new Date(offer.sent_at).toLocaleDateString()}</span>
                         </div>
                       )}

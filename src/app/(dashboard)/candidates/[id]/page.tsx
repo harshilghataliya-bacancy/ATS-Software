@@ -7,6 +7,7 @@ import { useUser, useRole } from '@/lib/hooks/use-user'
 import { createClient } from '@/lib/supabase/client'
 import { getCandidateById, updateCandidate } from '@/lib/services/candidates'
 import { createApplication } from '@/lib/services/applications'
+import { getCandidateActivityLog } from '@/lib/services/activity'
 import { getJobs } from '@/lib/services/jobs'
 import { CANDIDATE_SOURCES } from '@/lib/constants'
 import { EDUCATION_LABELS, GENDER_OPTIONS, NOTICE_PERIOD_OPTIONS } from '@/lib/validators/candidate'
@@ -20,8 +21,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger,
 } from '@/components/ui/dialog'
+import { LocationInput } from '@/components/ui/location-input'
 import { SendEmailDialog } from '@/components/email/send-email-dialog'
+import { ActivityTimeline } from '@/components/shared/activity-timeline'
 import { ResumeUpload } from './resume-upload'
+import { ArrowLeft, Mail, MapPin, Download, PenLine, Briefcase, ArrowRightLeft, XCircle, ExternalLink, FileText, Brain } from 'lucide-react'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type AnyData = Record<string, any>
@@ -83,6 +87,10 @@ export default function CandidateDetailPage() {
   const [moving, setMoving] = useState(false)
   const [moveCurrentJobId, setMoveCurrentJobId] = useState<string | null>(null)
 
+  // Activity log
+  const [activityLogs, setActivityLogs] = useState<AnyData[]>([])
+  const [activityLoading, setActivityLoading] = useState(false)
+
   // Edit form state
   const [formData, setFormData] = useState<AnyData>({})
 
@@ -97,6 +105,14 @@ export default function CandidateDetailPage() {
     } else if (data) {
       setCandidate(data)
       setFormData(data)
+
+      // Fetch activity logs for this candidate (across all applications)
+      setActivityLoading(true)
+      const supabaseAct = createClient()
+      const { data: activities } = await getCandidateActivityLog(supabaseAct, organization.id, data.id, 50)
+      setActivityLogs(activities || [])
+      setActivityLoading(false)
+
       // Fetch AI scores for all applications
       if (data.applications?.length > 0) {
         const appIds = data.applications.map((a: AnyData) => a.id)
@@ -128,6 +144,10 @@ export default function CandidateDetailPage() {
 
   async function handleSave() {
     if (!organization || !candidate) return
+    if (formData.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
+      setError('Please enter a valid email address')
+      return
+    }
     setSaving(true)
     setError(null)
     setSuccess(false)
@@ -276,26 +296,21 @@ export default function CandidateDetailPage() {
 
   return (
     <div className="max-w-7xl space-y-6">
-      {/* Back link */}
-      <button
-        onClick={() => window.history.back()}
-        className="inline-flex items-center gap-1 text-sm text-gray-500 hover:text-gray-900 transition-colors"
-      >
-        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" /></svg>
-        Back
-      </button>
-
-      {/* Header */}
+      {/* Back + Header */}
       <div className="flex items-start justify-between">
         <div className="flex items-center gap-4">
-          <div className="w-16 h-16 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-xl font-semibold">
+          <Button type="button" variant="ghost" size="sm" className="gap-1.5 text-gray-500 hover:text-gray-900" onClick={() => window.history.back()}>
+            <ArrowLeft className="w-4 h-4" />
+            Back
+          </Button>
+          <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 text-white flex items-center justify-center text-sm font-semibold shadow-sm shadow-blue-200">
             {candidate.first_name?.[0]}{candidate.last_name?.[0]}
           </div>
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">
+            <h1 className="text-xl font-semibold text-gray-900">
               {candidate.first_name} {candidate.last_name}
             </h1>
-            <p className="text-gray-500">
+            <p className="text-gray-500 text-sm">
               {candidate.current_title && candidate.current_company
                 ? `${candidate.current_title} at ${candidate.current_company}`
                 : candidate.current_title || candidate.email}
@@ -303,7 +318,7 @@ export default function CandidateDetailPage() {
             <div className="flex items-center gap-2 mt-1 flex-wrap">
               {candidate.location && (
                 <span className="text-xs text-gray-400 flex items-center gap-1">
-                  <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M15 10.5a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" d="M19.5 10.5c0 7.142-7.5 11.25-7.5 11.25S4.5 17.642 4.5 10.5a7.5 7.5 0 1115 0z" /></svg>
+                  <MapPin className="w-3 h-3" />
                   {candidate.location}
                 </span>
               )}
@@ -317,13 +332,14 @@ export default function CandidateDetailPage() {
           <div className="flex flex-wrap gap-2">
             {candidate.applications?.length > 0 && (
               <Link href={`/applications/${candidate.applications[0].id}`}>
-                <Button size="sm" variant="outline">
+                <Button size="sm" variant="outline" className="gap-1.5">
+                  <FileText className="w-3.5 h-3.5" />
                   View Application
                 </Button>
               </Link>
             )}
-            <Button size="sm" variant="outline" onClick={() => setEmailOpen(true)}>
-              <svg className="w-4 h-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M21.75 6.75v10.5a2.25 2.25 0 01-2.25 2.25h-15a2.25 2.25 0 01-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25m19.5 0v.243a2.25 2.25 0 01-1.07 1.916l-7.5 4.615a2.25 2.25 0 01-2.36 0L3.32 8.91a2.25 2.25 0 01-1.07-1.916V6.75" /></svg>
+            <Button size="sm" variant="outline" className="gap-1.5" onClick={() => setEmailOpen(true)}>
+              <Mail className="w-3.5 h-3.5" />
               Email
             </Button>
 
@@ -332,11 +348,13 @@ export default function CandidateDetailPage() {
               <Button
                 size="sm"
                 variant="outline"
+                className="gap-1.5"
                 onClick={() => {
                   const app = candidate.applications[0]
                   openMoveDialog(app.id, app.job_id || app.job?.id)
                 }}
               >
+                <ArrowRightLeft className="w-3.5 h-3.5" />
                 Move to Job
               </Button>
             ) : candidate.applications?.length === 0 ? (
@@ -372,7 +390,10 @@ export default function CandidateDetailPage() {
             ) : null}
 
             {!editing ? (
-              <Button size="sm" variant="outline" onClick={() => setEditing(true)}>Edit</Button>
+              <Button size="sm" variant="outline" className="gap-1.5" onClick={() => setEditing(true)}>
+                <PenLine className="w-3.5 h-3.5" />
+                Edit
+              </Button>
             ) : (
               <>
                 <Button size="sm" onClick={handleSave} disabled={saving}>{saving ? 'Saving...' : 'Save'}</Button>
@@ -405,7 +426,10 @@ export default function CandidateDetailPage() {
                     <FormField label="Phone" value={formData.phone} onChange={(v) => setFormData(p => ({ ...p, phone: v }))} />
                   </div>
                   <div className="grid grid-cols-2 gap-4">
-                    <FormField label="Location" value={formData.location} onChange={(v) => setFormData(p => ({ ...p, location: v }))} />
+                    <div className="space-y-2">
+                      <Label>Location</Label>
+                      <LocationInput value={formData.location ?? ''} onChange={(v) => setFormData(p => ({ ...p, location: v }))} />
+                    </div>
                     <div className="space-y-2">
                       <Label>Gender</Label>
                       <Select value={formData.gender ?? ''} onValueChange={(v) => setFormData(p => ({ ...p, gender: v }))}>
@@ -416,7 +440,7 @@ export default function CandidateDetailPage() {
                       </Select>
                     </div>
                   </div>
-                  <FormField label="Date of Birth" type="date" value={formData.date_of_birth} onChange={(v) => setFormData(p => ({ ...p, date_of_birth: v }))} />
+                  <FormField label="Date of Birth" type="date" value={formData.date_of_birth} onChange={(v) => setFormData(p => ({ ...p, date_of_birth: v }))} max={new Date().toISOString().split('T')[0]} />
                 </>
               ) : (
                 <div className="grid grid-cols-2 gap-y-4 text-sm">
@@ -487,13 +511,13 @@ export default function CandidateDetailPage() {
             <div className="p-6 space-y-4">
               {editing ? (
                 <div className="grid grid-cols-2 gap-4">
-                  <FormField label="Current Salary (Annual)" type="number" value={formData.current_salary} onChange={(v) => setFormData(p => ({ ...p, current_salary: v }))} />
-                  <FormField label="Expected Salary (Annual)" type="number" value={formData.expected_salary} onChange={(v) => setFormData(p => ({ ...p, expected_salary: v }))} />
+                  <FormField label="Current Salary (Annual)" type="number" min={0} value={formData.current_salary} onChange={(v) => setFormData(p => ({ ...p, current_salary: v }))} onKeyDown={(e) => { if (e.key === '-' || e.key === 'e') e.preventDefault() }} />
+                  <FormField label="Expected Salary (Annual)" type="number" min={0} value={formData.expected_salary} onChange={(v) => setFormData(p => ({ ...p, expected_salary: v }))} onKeyDown={(e) => { if (e.key === '-' || e.key === 'e') e.preventDefault() }} />
                 </div>
               ) : (
                 <div className="grid grid-cols-2 gap-y-4 text-sm">
-                  <InfoField label="Current Salary" value={candidate.current_salary != null ? `$${Number(candidate.current_salary).toLocaleString()}` : null} />
-                  <InfoField label="Expected Salary" value={candidate.expected_salary != null ? `$${Number(candidate.expected_salary).toLocaleString()}` : null} />
+                  <InfoField label="Current Salary" value={candidate.current_salary != null ? `₹${Number(candidate.current_salary).toLocaleString('en-IN')}` : null} />
+                  <InfoField label="Expected Salary" value={candidate.expected_salary != null ? `₹${Number(candidate.expected_salary).toLocaleString('en-IN')}` : null} />
                 </div>
               )}
             </div>
@@ -642,18 +666,20 @@ export default function CandidateDetailPage() {
                           <Button
                             size="sm"
                             variant="outline"
-                            className="h-7 text-xs"
+                            className="h-7 text-xs gap-1"
                             onClick={() => openMoveDialog(app.id, app.job_id || app.job?.id)}
                           >
+                            <ArrowRightLeft className="w-3 h-3" />
                             Move to Job
                           </Button>
                           <Button
                             size="sm"
                             variant="destructive"
-                            className="h-7 text-xs"
+                            className="h-7 text-xs gap-1"
                             disabled={rejectingAppId === app.id}
                             onClick={() => handleRejectApplication(app.id)}
                           >
+                            <XCircle className="w-3 h-3" />
                             {rejectingAppId === app.id ? 'Rejecting...' : 'Reject'}
                           </Button>
                         </div>
@@ -661,9 +687,10 @@ export default function CandidateDetailPage() {
                     </div>
                   ))
                 ) : (
-                  <p className="text-sm text-gray-400 text-center py-4">
-                    No applications yet
-                  </p>
+                  <div className="text-center py-6 border-2 border-dashed border-gray-200 rounded-lg">
+                    <Briefcase className="w-8 h-8 text-gray-300 mx-auto mb-2" />
+                    <p className="text-sm text-gray-400">No applications yet</p>
+                  </div>
                 )}
               </div>
             </div>
@@ -681,15 +708,18 @@ export default function CandidateDetailPage() {
                   {candidate.experience_years != null && <InfoRow label="Experience" value={`${candidate.experience_years} yrs`} />}
                   {noticeLabel && <InfoRow label="Notice" value={noticeLabel} />}
                   {educationLabel && <InfoRow label="Education" value={educationLabel} />}
-                  {candidate.current_salary != null && <InfoRow label="Current CTC" value={`$${Number(candidate.current_salary).toLocaleString()}`} />}
-                  {candidate.expected_salary != null && <InfoRow label="Expected CTC" value={`$${Number(candidate.expected_salary).toLocaleString()}`} />}
+                  {candidate.current_salary != null && <InfoRow label="Current CTC" value={`₹${Number(candidate.current_salary).toLocaleString('en-IN')}`} />}
+                  {candidate.expected_salary != null && <InfoRow label="Expected CTC" value={`₹${Number(candidate.expected_salary).toLocaleString('en-IN')}`} />}
                 </div>
 
                 <Separator />
 
                 {/* AI Scores */}
                 <div>
-                  <h4 className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-2">AI Score</h4>
+                  <h4 className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-2 flex items-center gap-1.5">
+                    <Brain className="w-3.5 h-3.5" />
+                    AI Score
+                  </h4>
                   {candidate.applications?.length > 0 ? (
                     candidate.applications.map((app: AnyData) => {
                       const score = aiScores[app.id]
@@ -745,13 +775,34 @@ export default function CandidateDetailPage() {
                       rel="noopener noreferrer"
                       className="inline-flex items-center gap-1.5 text-sm text-blue-600 hover:underline"
                     >
-                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" /></svg>
+                      <Download className="w-4 h-4" />
                       Download Resume (PDF)
                     </a>
                   ) : (
                     <p className="text-sm text-gray-400">No resume uploaded</p>
                   )}
                 </div>
+              </div>
+            </div>
+
+            {/* Activity Log Card */}
+            <div className="bg-white rounded-xl border border-gray-200 shadow-sm">
+              <div className="px-6 py-4 border-b border-gray-100">
+                <h3 className="text-base font-semibold text-gray-900">
+                  Activity Log
+                  {activityLogs.length > 0 && (
+                    <span className="ml-2 text-[11px] font-medium px-2 py-0.5 rounded-full bg-gray-100 text-gray-700">
+                      {activityLogs.length}
+                    </span>
+                  )}
+                </h3>
+              </div>
+              <div className="p-5">
+                <ActivityTimeline
+                  activities={activityLogs}
+                  loading={activityLoading}
+                  emptyMessage="No activity recorded for this candidate yet"
+                />
               </div>
             </div>
           </div>
@@ -824,7 +875,10 @@ function LinkField({ label, url, text }: { label: string; url: string | null | u
       <span className="text-gray-500 text-xs uppercase tracking-wide">{label}</span>
       <p className="font-medium mt-0.5">
         {url ? (
-          <a href={url} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">{text}</a>
+          <a href={url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-blue-600 hover:underline">
+            {text}
+            <ExternalLink className="w-3 h-3" />
+          </a>
         ) : <span className="text-gray-300">-</span>}
       </p>
     </div>
@@ -840,13 +894,13 @@ function InfoRow({ label, value }: { label: string; value: string }) {
   )
 }
 
-function FormField({ label, value, onChange, type = 'text' }: {
-  label: string; value: string | number | null | undefined; onChange: (v: string) => void; type?: string
+function FormField({ label, value, onChange, type = 'text', max, min, onKeyDown }: {
+  label: string; value: string | number | null | undefined; onChange: (v: string) => void; type?: string; max?: string; min?: number; onKeyDown?: (e: React.KeyboardEvent<HTMLInputElement>) => void
 }) {
   return (
     <div className="space-y-2">
       <Label>{label}</Label>
-      <Input type={type} value={value ?? ''} onChange={(e) => onChange(e.target.value)} />
+      <Input type={type} value={value ?? ''} onChange={(e) => onChange(e.target.value)} max={max} min={min} onKeyDown={onKeyDown} />
     </div>
   )
 }

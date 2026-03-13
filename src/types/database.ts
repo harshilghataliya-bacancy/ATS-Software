@@ -157,6 +157,7 @@ export interface Interview {
   application_id: string
   job_id: string
   candidate_id: string
+  title: string | null
   scheduled_at: string
   duration_minutes: number
   location: string | null
@@ -452,6 +453,27 @@ export interface WhatsAppMessage {
   sent_by: string | null
   error_message: string | null
   created_at: string
+}
+
+// Candidate Bank Types
+export interface CandidateBank {
+  id: string
+  organization_id: string
+  name: string
+  description: string | null
+  is_default: boolean
+  created_by: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface CandidateBankMember {
+  id: string
+  bank_id: string
+  candidate_id: string
+  organization_id: string
+  added_by: string | null
+  added_at: string
 }
 
 // Join Types

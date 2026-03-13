@@ -23,6 +23,11 @@ import { Pagination } from '@/components/ui/pagination'
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from '@/components/ui/table'
+import {
+  Search, Plus, Download, LayoutGrid, List, Eye, Users, Trash2, Briefcase,
+  Building2, MapPin, Clock, DollarSign, CalendarDays, GraduationCap, Globe,
+  UserCircle,
+} from 'lucide-react'
 
 type ViewMode = 'card' | 'table'
 
@@ -65,77 +70,6 @@ const PRIORITY_CONFIG: Record<string, { label: string; cls: string }> = {
   low:    { label: 'Low',    cls: 'bg-slate-50 text-slate-600 border border-slate-200' },
 }
 
-// ── Minimal SVG icons ──────────────────────────────────────────────────────
-
-function IconGrid({ active }: { active: boolean }) {
-  return (
-    <svg width="15" height="15" viewBox="0 0 15 15" fill={active ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="1.3">
-      <rect x="1" y="1" width="5.5" height="5.5" rx="1" />
-      <rect x="8.5" y="1" width="5.5" height="5.5" rx="1" />
-      <rect x="1" y="8.5" width="5.5" height="5.5" rx="1" />
-      <rect x="8.5" y="8.5" width="5.5" height="5.5" rx="1" />
-    </svg>
-  )
-}
-
-function IconList({ active }: { active: boolean }) {
-  return (
-    <svg width="15" height="15" viewBox="0 0 15 15" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
-      <line x1="5" y1="3.5" x2="13.5" y2="3.5" />
-      <line x1="5" y1="7.5" x2="13.5" y2="7.5" />
-      <line x1="5" y1="11.5" x2="13.5" y2="11.5" />
-      <circle cx="2" cy="3.5" r="0.8" fill={active ? 'currentColor' : 'none'} />
-      <circle cx="2" cy="7.5" r="0.8" fill={active ? 'currentColor' : 'none'} />
-      <circle cx="2" cy="11.5" r="0.8" fill={active ? 'currentColor' : 'none'} />
-    </svg>
-  )
-}
-
-function IconPlus() {
-  return (
-    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-      <line x1="7" y1="1" x2="7" y2="13" /><line x1="1" y1="7" x2="13" y2="7" />
-    </svg>
-  )
-}
-
-function IconDownload() {
-  return (
-    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M7 1v8M4 6l3 3 3-3M2 11h10" />
-    </svg>
-  )
-}
-
-function IconEye() {
-  return (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
-      <circle cx="12" cy="12" r="3" />
-    </svg>
-  )
-}
-
-function IconUsers() {
-  return (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
-      <circle cx="9" cy="7" r="4" />
-      <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
-      <path d="M16 3.13a4 4 0 0 1 0 7.75" />
-    </svg>
-  )
-}
-
-function IconTrash() {
-  return (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <polyline points="3 6 5 6 21 6" />
-      <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
-    </svg>
-  )
-}
-
 // ── Main Page ──────────────────────────────────────────────────────────────
 
 export default function JobsPage() {
@@ -155,7 +89,7 @@ export default function JobsPage() {
   const [recruiterNames, setRecruiterNames] = useState<Record<string, string>>({})
   const [total, setTotal] = useState(0)
   const [page, setPage] = useState(1)
-  const [viewMode, setViewMode] = useState<ViewMode>('card')
+  const [viewMode, setViewMode] = useState<ViewMode>('table')
   const router = useRouter()
 
   useEffect(() => {
@@ -271,7 +205,7 @@ export default function JobsPage() {
             className="h-8 w-8 p-0 text-slate-400 hover:text-red-500 hover:bg-red-50 transition-colors"
             title="Delete job"
           >
-            <IconTrash />
+            <Trash2 className="w-3.5 h-3.5" />
           </Button>
         </AlertDialogTrigger>
         <AlertDialogContent>
@@ -301,8 +235,8 @@ export default function JobsPage() {
       {/* ── Page Header ──────────────────────────────────────────────────── */}
       <div className="flex items-center justify-between gap-4">
         <div>
-          <h1 className="text-[22px] font-bold tracking-tight text-gray-900">Jobs</h1>
-          <p className="text-sm text-gray-400 mt-0.5 font-medium">
+          <h1 className="text-xl font-semibold text-gray-900">Jobs</h1>
+          <p className="text-sm text-gray-400 mt-0.5">
             {total > 0 ? `${total} position${total !== 1 ? 's' : ''}` : 'Manage your job postings'}
           </p>
         </div>
@@ -319,7 +253,7 @@ export default function JobsPage() {
                   : 'text-gray-400 hover:text-gray-600'
               }`}
             >
-              <IconGrid active={viewMode === 'card'} />
+              <LayoutGrid className="w-3.5 h-3.5" />
             </button>
             <button
               onClick={() => setViewMode('table')}
@@ -330,7 +264,7 @@ export default function JobsPage() {
                   : 'text-gray-400 hover:text-gray-600'
               }`}
             >
-              <IconList active={viewMode === 'table'} />
+              <List className="w-3.5 h-3.5" />
             </button>
           </div>
 
@@ -339,7 +273,7 @@ export default function JobsPage() {
             onClick={downloadCSV} disabled={jobs.length === 0}
             className="h-9 gap-1.5 text-gray-600 border-gray-200 hover:border-gray-300"
           >
-            <IconDownload />
+            <Download className="w-3.5 h-3.5" />
             <span className="hidden sm:inline">Export CSV</span>
           </Button>
 
@@ -349,7 +283,7 @@ export default function JobsPage() {
                 size="sm"
                 className="h-9 gap-1.5 bg-blue-600 hover:bg-blue-700 text-white shadow-sm"
               >
-                <IconPlus />
+                <Plus className="w-3.5 h-3.5" />
                 New Job
               </Button>
             </Link>
@@ -359,13 +293,14 @@ export default function JobsPage() {
 
       {/* ── Filters ──────────────────────────────────────────────────────── */}
       <div className="flex flex-wrap gap-2">
-        <div className="flex-1 min-w-[200px]">
+        <div className="relative flex-1 min-w-[200px] max-w-sm">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
           <Input
             placeholder="Search jobs…"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
-            className="h-9 bg-white border-gray-200 focus-visible:ring-indigo-500/30 focus-visible:border-indigo-400"
+            className="pl-9 h-9 bg-white border-gray-200 text-sm"
           />
         </div>
 
@@ -455,21 +390,17 @@ export default function JobsPage() {
         )
       ) : jobs.length === 0 ? (
         /* ── Empty State ── */
-        <div className="rounded-xl border border-dashed border-gray-200 bg-gray-50/50 py-16">
+        <div className="rounded-xl border-2 border-dashed border-gray-200 py-20">
           <div className="flex flex-col items-center text-center px-6">
-            <div className="w-14 h-14 rounded-full bg-white border border-gray-200 shadow-sm flex items-center justify-center mb-4">
-              <svg className="w-7 h-7 text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M20.25 14.15v4.25c0 1.094-.787 2.036-1.872 2.18-2.087.277-4.216.42-6.378.42s-4.291-.143-6.378-.42c-1.085-.144-1.872-1.086-1.872-2.18v-4.25m16.5 0a2.18 2.18 0 00.75-1.661V8.706c0-1.081-.768-2.015-1.837-2.175a48.114 48.114 0 00-3.413-.387m4.5 8.006c-.194.165-.42.295-.673.38A23.978 23.978 0 0112 15.75c-2.648 0-5.195-.429-7.577-1.22a2.016 2.016 0 01-.673-.38m0 0A2.18 2.18 0 013 12.489V8.706c0-1.081.768-2.015 1.837-2.175a48.111 48.111 0 013.413-.387m7.5 0V5.25A2.25 2.25 0 0013.5 3h-3a2.25 2.25 0 00-2.25 2.25v.894m7.5 0a48.667 48.667 0 00-7.5 0" />
-              </svg>
-            </div>
-            <p className="text-sm font-semibold text-gray-700 mb-1">No jobs found</p>
-            <p className="text-sm text-gray-400 mb-5 max-w-xs">
+            <Briefcase className="w-10 h-10 text-gray-300 mb-3" />
+            <p className="text-sm font-medium text-gray-500 mb-1">No jobs found</p>
+            <p className="text-xs text-gray-400 mb-4 max-w-xs">
               {search || statusFilter !== 'all' ? 'Try adjusting your filters.' : 'Create your first job posting to start receiving applications.'}
             </p>
             {canManageJobs && !search && statusFilter === 'all' && (
               <Link href="/jobs/new">
-                <Button size="sm" className="bg-blue-600 hover:bg-blue-700 text-white gap-1.5">
-                  <IconPlus />New Job
+                <Button size="sm" variant="outline" className="gap-1.5">
+                  <Plus className="w-3.5 h-3.5" />New Job
                 </Button>
               </Link>
             )}
@@ -515,17 +446,13 @@ export default function JobsPage() {
                     <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px] text-gray-500 mb-3">
                       {job.department && (
                         <span className="flex items-center gap-1">
-                          <svg className="w-3 h-3 flex-shrink-0 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 21h16.5M4.5 3h15M5.25 3v18m13.5-18v18M9 6.75h1.5m-1.5 3h1.5m-1.5 3h1.5m3-6H15m-1.5 3H15m-1.5 3H15M9 21v-3.375c0-.621.504-1.125 1.125-1.125h3.75c.621 0 1.125.504 1.125 1.125V21" />
-                          </svg>
+                          <Building2 className="w-3 h-3 flex-shrink-0 text-gray-400" />
                           {job.department}
                         </span>
                       )}
                       {job.location && (
                         <span className="flex items-center gap-1">
-                          <svg className="w-3 h-3 flex-shrink-0 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M15 10.5a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" d="M19.5 10.5c0 7.142-7.5 11.25-7.5 11.25S4.5 17.642 4.5 10.5a7.5 7.5 0 1115 0z" />
-                          </svg>
+                          <MapPin className="w-3 h-3 flex-shrink-0 text-gray-400" />
                           {job.location}
                         </span>
                       )}
@@ -534,9 +461,7 @@ export default function JobsPage() {
                     {/* Assigned recruiter */}
                     {job.assigned_to && recruiterNames[job.assigned_to] && (
                       <div className="flex items-center gap-1.5 text-[12px] text-blue-600 font-medium mb-2.5">
-                        <svg className="w-3 h-3 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0" />
-                        </svg>
+                        <UserCircle className="w-3 h-3 flex-shrink-0" />
                         {recruiterNames[job.assigned_to]}
                       </div>
                     )}
@@ -544,27 +469,19 @@ export default function JobsPage() {
                     {/* Key stats grid */}
                     <div className="grid grid-cols-2 gap-x-3 gap-y-1.5 text-[12px] text-gray-600 mb-3 bg-gray-50/70 rounded-lg px-3 py-2.5">
                       <div className="flex items-center gap-1.5">
-                        <svg className="w-3 h-3 text-gray-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
-                        </svg>
+                        <Clock className="w-3 h-3 text-gray-400 flex-shrink-0" />
                         {employmentLabel(job.employment_type)}
                       </div>
                       <div className="flex items-center gap-1.5">
-                        <svg className="w-3 h-3 text-gray-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 21h19.5m-18-18v18m10.5-18v18m6-13.5V21M6.75 6.75h.75m-.75 3h.75m-.75 3h.75m3-6h.75m-.75 3h.75m-.75 3h.75M6.75 21v-3.375c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125V21M3 3h12m-.75 4.5H21m-3.75 3.75h.008v.008h-.008v-.008zm0 3h.008v.008h-.008v-.008zm0 3h.008v.008h-.008v-.008z" />
-                        </svg>
+                        <Globe className="w-3 h-3 text-gray-400 flex-shrink-0" />
                         {remoteLabel(job.remote_policy)}
                       </div>
                       <div className="flex items-center gap-1.5">
-                        <svg className="w-3 h-3 text-gray-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M15 19.128a9.38 9.38 0 002.625.372 9.337 9.337 0 004.121-.952 4.125 4.125 0 00-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 018.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0111.964-3.07M12 6.375a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zm8.25 2.25a2.625 2.625 0 11-5.25 0 2.625 2.625 0 015.25 0z" />
-                        </svg>
+                        <Users className="w-3 h-3 text-gray-400 flex-shrink-0" />
                         <span>{openings} opening{openings !== 1 ? 's' : ''}</span>
                       </div>
                       <div className="flex items-center gap-1.5">
-                        <svg className="w-3 h-3 text-gray-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
-                        </svg>
+                        <Briefcase className="w-3 h-3 text-gray-400 flex-shrink-0" />
                         <span className="font-semibold text-gray-800">{job.application_count}</span>
                         <span>applicant{job.application_count !== 1 ? 's' : ''}</span>
                       </div>
@@ -573,9 +490,7 @@ export default function JobsPage() {
                     {/* Experience */}
                     {job.experience_level && (
                       <div className="flex items-center gap-1.5 text-[12px] text-gray-500 mb-1.5">
-                        <svg className="w-3 h-3 text-gray-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M4.26 10.147a60.436 60.436 0 00-.491 6.347A48.627 48.627 0 0112 20.904a48.627 48.627 0 018.232-4.41 60.46 60.46 0 00-.491-6.347m-15.482 0a50.57 50.57 0 00-2.658-.813A59.905 59.905 0 0112 3.493a59.902 59.902 0 0110.399 5.84c-.896.248-1.783.52-2.658.814m-15.482 0A50.697 50.697 0 0112 13.489a50.702 50.702 0 017.74-3.342" />
-                        </svg>
+                        <GraduationCap className="w-3 h-3 text-gray-400 flex-shrink-0" />
                         {experienceLabel(job.experience_level)}
                         {(job.experience_min !== null || job.experience_max !== null) && (
                           <span className="text-gray-400">· {job.experience_min ?? 0}{job.experience_max ? `–${job.experience_max}` : '+'} yrs</span>
@@ -586,9 +501,7 @@ export default function JobsPage() {
                     {/* Salary */}
                     {salary && (
                       <div className="flex items-center gap-1.5 text-[12px] font-semibold text-emerald-700 mb-1.5">
-                        <svg className="w-3 h-3 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v12m-3-2.818l.879.659c1.171.879 3.07.879 4.242 0 1.172-.879 1.172-2.303 0-3.182C13.536 12.219 12.768 12 12 12c-.725 0-1.45-.22-2.003-.659-1.106-.879-1.106-2.303 0-3.182s2.9-.879 4.006 0l.415.33M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                        </svg>
+                        <DollarSign className="w-3 h-3 flex-shrink-0" />
                         {salary}
                       </div>
                     )}
@@ -596,9 +509,7 @@ export default function JobsPage() {
                     {/* Deadline */}
                     {deadline && (
                       <div className={`flex items-center gap-1.5 text-[12px] mb-1.5 ${deadline.urgent ? 'text-red-600 font-semibold' : 'text-gray-500'}`}>
-                        <svg className="w-3 h-3 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5" />
-                        </svg>
+                        <CalendarDays className="w-3 h-3 flex-shrink-0" />
                         Deadline: {deadline.text}
                         {deadline.urgentLabel && <span className="text-gray-400 font-normal">({deadline.urgentLabel})</span>}
                       </div>
@@ -767,7 +678,7 @@ export default function JobsPage() {
                                 className="h-8 w-8 p-0 text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-colors"
                                 title="View / Edit"
                               >
-                                <IconEye />
+                                <Eye className="w-3.5 h-3.5" />
                               </Button>
                             </Link>
                             <Link href={`/jobs/${job.id}/applications`}>
@@ -776,7 +687,7 @@ export default function JobsPage() {
                                 className="h-8 w-8 p-0 text-gray-400 hover:text-blue-600 hover:bg-blue-50 transition-colors"
                                 title="View Applications"
                               >
-                                <IconUsers />
+                                <Users className="w-3.5 h-3.5" />
                               </Button>
                             </Link>
                             {isAdmin && <DeleteDialog job={job} />}

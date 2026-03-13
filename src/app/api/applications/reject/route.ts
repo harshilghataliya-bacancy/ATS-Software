@@ -4,6 +4,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { rejectApplication } from '@/lib/services/applications'
 import { getEmailTemplates, logEmail } from '@/lib/services/email'
 import { getValidAccessToken, sendGmailEmail } from '@/lib/services/gmail'
+import { logActivity } from '@/lib/services/activity'
 
 const DEFAULT_REJECTION_SUBJECT = 'Update on Your Application for {{job_title}}'
 const DEFAULT_REJECTION_BODY = `<p>Dear {{candidate_name}},</p>
@@ -66,6 +67,11 @@ export async function POST(request: NextRequest) {
   if (rejectError) {
     return NextResponse.json({ error: rejectError.message }, { status: 500 })
   }
+
+  // Log activity
+  logActivity(supabase, orgId, user.id, 'application', applicationId, 'application_rejected', {
+    reason: reason || '',
+  }).catch(() => {})
 
   // 2. Send rejection email in background (don't block response)
   sendRejectionEmail(supabase, user.id, orgId, applicationId, companyName).catch((err) => {

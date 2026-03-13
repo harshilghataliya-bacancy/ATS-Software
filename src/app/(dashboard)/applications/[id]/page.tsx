@@ -25,7 +25,14 @@ import { ScheduleInterviewDialog } from '@/app/(dashboard)/jobs/[id]/application
 import { SendEmailDialog } from '@/components/email/send-email-dialog'
 import { SendWhatsAppDialog } from '@/components/whatsapp/send-whatsapp-dialog'
 import { InterviewFeedbackDialog } from '@/app/(dashboard)/jobs/[id]/applications/interview-feedback-dialog'
+import { logActivity } from '@/lib/services/activity'
 import { resolveUserNames } from '@/app/(dashboard)/interviews/actions'
+import {
+  ArrowLeft, Mail, MessageSquare, FileText, UserCircle, Calendar, Link as LinkIcon,
+  Download, X, Eye, Plus, Trash2, CheckCircle2, XCircle, Clock, ChevronDown,
+  ClipboardList, Loader2, PenLine, Info, ExternalLink,
+  User,
+} from 'lucide-react'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type AnyData = Record<string, any>
@@ -38,9 +45,9 @@ interface PipelineStage {
 }
 
 const INTERVIEW_TYPES_MAP: Record<string, string> = {
+  video: 'Online Video',
+  onsite: 'Offline Face to Face',
   phone: 'Phone Screen',
-  video: 'Video Call',
-  onsite: 'On-site',
   technical: 'Technical',
   cultural: 'Cultural Fit',
 }
@@ -98,6 +105,7 @@ export default function ApplicationDetailPage() {
 
   // Action dialogs
   const [scheduleOpen, setScheduleOpen] = useState(false)
+  const [expandedFeedback, setExpandedFeedback] = useState<Record<string, boolean>>({})
   const [emailOpen, setEmailOpen] = useState(false)
   const [whatsappOpen, setWhatsappOpen] = useState(false)
   const [feedbackOpen, setFeedbackOpen] = useState(false)
@@ -118,6 +126,7 @@ export default function ApplicationDetailPage() {
   const [noteInput, setNoteInput] = useState('')
   const [addingNote, setAddingNote] = useState(false)
   const [noteError, setNoteError] = useState<string | null>(null)
+
 
   // Interviewers only have access to Dashboard + Interviews
   useEffect(() => {
@@ -214,6 +223,10 @@ export default function ApplicationDetailPage() {
     if (hireError) {
       setError(hireError.message)
     } else {
+      logActivity(supabase, organization.id, user.id, 'application', application.id, 'application_hired', {
+        candidate_name: `${application.candidate?.first_name} ${application.candidate?.last_name}`,
+        job_title: application.job?.title,
+      }).catch(() => {})
       await loadApplication()
     }
   }
@@ -268,6 +281,11 @@ export default function ApplicationDetailPage() {
     if (moveError) {
       setError(moveError.message)
     } else {
+      logActivity(supabase, organization.id, user.id, 'application', application.id, 'stage_changed', {
+        to_stage: targetStage?.name,
+        to_stage_id: newStageId,
+        candidate_name: `${application.candidate?.first_name} ${application.candidate?.last_name}`,
+      }).catch(() => {})
       await loadApplication()
     }
   }
@@ -396,27 +414,22 @@ export default function ApplicationDetailPage() {
   const noticeLabel = candidate?.notice_period ? (NOTICE_PERIOD_OPTIONS.find((n: AnyData) => n.value === candidate.notice_period)?.label || candidate.notice_period) : null
   return (
     <div className="max-w-6xl space-y-6">
-      {/* Back */}
-      <button
-        onClick={() => router.back()}
-        className="inline-flex items-center gap-1 text-sm text-gray-500 hover:text-gray-900 transition-colors"
-      >
-        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" /></svg>
-        Back
-      </button>
-
-      {/* Header */}
+      {/* Back + Header */}
       <div className="flex items-start justify-between">
         <div className="flex items-center gap-4">
-          <div className="w-14 h-14 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-lg font-semibold">
+          <Button type="button" variant="ghost" size="sm" className="gap-1.5 text-gray-500 hover:text-gray-900" onClick={() => router.back()}>
+            <ArrowLeft className="w-4 h-4" />
+            Back
+          </Button>
+          <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 text-white flex items-center justify-center text-sm font-semibold shadow-sm shadow-blue-200">
             {candidate?.first_name?.[0]}{candidate?.last_name?.[0]}
           </div>
           <div>
             <div className="flex items-center gap-3">
-              <h1 className="text-2xl font-bold text-gray-900">
+              <h1 className="text-xl font-semibold text-gray-900">
                 {candidate?.first_name} {candidate?.last_name}
               </h1>
-              <span className={`text-[11px] font-medium px-2 py-0.5 rounded-full ${STATUS_COLORS[application.status] || 'bg-gray-100 text-gray-800'}`}>
+              <span className={`text-[11px] font-semibold px-2.5 py-0.5 rounded-full ${STATUS_COLORS[application.status] || 'bg-gray-100 text-gray-800'}`}>
                 {application.status}
               </span>
             </div>
@@ -427,7 +440,6 @@ export default function ApplicationDetailPage() {
               </Link>
               {job?.department && <span className="text-gray-400"> &middot; {job.department}</span>}
             </p>
-            {/* Stage selector inline */}
             {isActive && canManageCandidates && stages.length > 0 && (
               <div className="flex items-center gap-2 mt-1.5">
                 <span className="text-xs text-gray-500">Stage:</span>
@@ -449,24 +461,36 @@ export default function ApplicationDetailPage() {
         {/* Header actions */}
         <div className="flex flex-wrap gap-2">
           {canManageCandidates && (
-            <Button size="sm" variant="outline" onClick={() => setEmailOpen(true)}>
-              <svg className="w-4 h-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M21.75 6.75v10.5a2.25 2.25 0 01-2.25 2.25h-15a2.25 2.25 0 01-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25m19.5 0v.243a2.25 2.25 0 01-1.07 1.916l-7.5 4.615a2.25 2.25 0 01-2.36 0L3.32 8.91a2.25 2.25 0 01-1.07-1.916V6.75" /></svg>
+            <Button size="sm" variant="outline" className="gap-1.5" onClick={() => setEmailOpen(true)}>
+              <Mail className="w-3.5 h-3.5" />
               Email
             </Button>
           )}
           {canSendWhatsApp && candidate?.phone && (
-            <Button size="sm" variant="outline" onClick={() => setWhatsappOpen(true)} className="text-green-700 border-green-200 hover:bg-green-50">
-              <svg className="w-4 h-4 mr-1" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
+            <Button size="sm" variant="outline" onClick={() => setWhatsappOpen(true)} className="gap-1.5 text-green-700 border-green-200 hover:bg-green-50">
+              <MessageSquare className="w-3.5 h-3.5" />
               WhatsApp
             </Button>
           )}
+          {job?.id && (
+            <Link href={`/jobs/${job.id}`}>
+              <Button size="sm" variant="outline" className="gap-1.5">
+                <FileText className="w-3.5 h-3.5" />
+                View JD
+              </Button>
+            </Link>
+          )}
           {canManageCandidates && (
             <Link href={`/candidates/${candidate?.id}`}>
-              <Button size="sm" variant="outline">View Profile</Button>
+              <Button size="sm" variant="outline" className="gap-1.5">
+                <UserCircle className="w-3.5 h-3.5" />
+                View Profile
+              </Button>
             </Link>
           )}
           {isActive && canManageCandidates && (
-            <Button size="sm" variant="destructive" onClick={() => setRejectOpen(true)}>
+            <Button size="sm" variant="destructive" className="gap-1.5" onClick={() => setRejectOpen(true)}>
+              <XCircle className="w-3.5 h-3.5" />
               Reject
             </Button>
           )}
@@ -600,7 +624,7 @@ export default function ApplicationDetailPage() {
                         rel="noopener noreferrer"
                         className="inline-flex items-center gap-1 text-xs text-gray-500 hover:text-gray-800 border border-gray-200 rounded-md px-2 py-1 hover:border-gray-300 transition-colors"
                       >
-                        <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" /></svg>
+                        <Download className="w-3 h-3" />
                         Download
                       </a>
                     )}
@@ -615,9 +639,7 @@ export default function ApplicationDetailPage() {
                     </div>
                   ) : (
                     <div className="flex flex-col items-center justify-center py-10 border-2 border-dashed border-gray-200 rounded-md">
-                      <svg className="w-10 h-10 text-gray-200 mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1}>
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
-                      </svg>
+                      <FileText className="w-10 h-10 text-gray-200 mb-3" />
                       <p className="text-sm text-gray-400 mb-1">No resume uploaded</p>
                       <p className="text-xs text-gray-300 mb-3">PDF only, max 10MB</p>
                       {canManageCandidates && (
@@ -647,22 +669,22 @@ export default function ApplicationDetailPage() {
                     <div className="px-6 py-4 border-b border-gray-100"><h3 className="text-sm font-semibold text-gray-900">Quick Actions</h3></div>
                     <div className="p-5 space-y-2">
                       <Button size="sm" variant="outline" className="w-full justify-start gap-2 h-8 text-xs" onClick={() => setScheduleOpen(true)}>
-                        <svg className="w-3.5 h-3.5 text-purple-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5" /></svg>
+                        <Calendar className="w-3.5 h-3.5 text-purple-500" />
                         Schedule Interview
                       </Button>
                       <Link href={`/offers/new?applicationId=${application.id}`} className="block">
                         <Button size="sm" variant="outline" className="w-full justify-start gap-2 h-8 text-xs">
-                          <svg className="w-3.5 h-3.5 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" /></svg>
+                          <FileText className="w-3.5 h-3.5 text-green-500" />
                           Create Offer
                         </Button>
                       </Link>
                       <Button size="sm" variant="outline" className="w-full justify-start gap-2 h-8 text-xs" onClick={() => setEmailOpen(true)}>
-                        <svg className="w-3.5 h-3.5 text-blue-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M21.75 6.75v10.5a2.25 2.25 0 01-2.25 2.25h-15a2.25 2.25 0 01-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25m19.5 0v.243a2.25 2.25 0 01-1.07 1.916l-7.5 4.615a2.25 2.25 0 01-2.36 0L3.32 8.91a2.25 2.25 0 01-1.07-1.916V6.75" /></svg>
+                        <Mail className="w-3.5 h-3.5 text-blue-500" />
                         Send Email
                       </Button>
                       {canSendWhatsApp && candidate?.phone && (
                         <Button size="sm" variant="outline" className="w-full justify-start gap-2 h-8 text-xs text-green-700 border-green-200 hover:bg-green-50" onClick={() => setWhatsappOpen(true)}>
-                          <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
+                          <MessageSquare className="w-3.5 h-3.5" />
                           Send WhatsApp
                         </Button>
                       )}
@@ -716,7 +738,7 @@ export default function ApplicationDetailPage() {
                             className="h-7 text-xs gap-1.5"
                             onClick={() => setResumeOpen(true)}
                           >
-                            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M2.036 12.322a1.012 1.012 0 010-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.964-7.178z" /><path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
+                            <Eye className="w-3.5 h-3.5" />
                             See Resume
                           </Button>
                           <a
@@ -744,7 +766,7 @@ export default function ApplicationDetailPage() {
                 {/* View Profile Link */}
                 <Link href={`/candidates/${candidate?.id}`} className="block">
                   <Button variant="outline" size="sm" className="w-full justify-start gap-2 h-8 text-xs">
-                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z" /></svg>
+                    <User className="w-3.5 h-3.5" />
                     View Full Profile
                   </Button>
                 </Link>
@@ -780,13 +802,10 @@ export default function ApplicationDetailPage() {
           )}
 
           {interviews.length === 0 ? (
-            <div className="bg-white rounded-xl border border-gray-200 shadow-sm">
-              <div className="py-12 text-center">
-                <svg className="w-12 h-12 mx-auto text-gray-300 mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5" />
-                </svg>
-                <p className="text-gray-500 text-sm">No interviews scheduled yet</p>
-              </div>
+            <div className="text-center py-16 border-2 border-dashed border-gray-200 rounded-xl">
+              <Calendar className="w-10 h-10 text-gray-300 mx-auto mb-3" />
+              <p className="text-sm text-gray-500 font-medium">No interviews scheduled yet</p>
+              <p className="text-xs text-gray-400 mt-1">Schedule an interview to get started</p>
             </div>
           ) : (
             <div className="space-y-4">
@@ -801,7 +820,7 @@ export default function ApplicationDetailPage() {
                       <div className="flex items-start justify-between">
                         <div className="space-y-1">
                           <div className="flex items-center gap-2">
-                            <h3 className="font-semibold text-sm">Round {idx + 1}: {typeLabel}</h3>
+                            <h3 className="font-semibold text-sm">{iv.title || `Round ${idx + 1}`}: {typeLabel}</h3>
                             <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full ${INTERVIEW_STATUS_COLORS[iv.status] || 'bg-gray-100 text-gray-800'}`}>
                               {iv.status}
                             </span>
@@ -836,18 +855,83 @@ export default function ApplicationDetailPage() {
                         </div>
                       )}
 
-                      {/* Feedback */}
+                      {/* Feedback — collapsible */}
                       {hasFeedback ? (
-                        <div className="mt-3 p-3 bg-gray-50 rounded-lg">
-                          <div className="flex items-center gap-2">
-                            <span className="text-xs font-medium text-gray-700">Feedback:</span>
-                            <span className="text-amber-500 text-xs">
-                              {'★'.repeat(feedback.overall_rating)}{'☆'.repeat(5 - feedback.overall_rating)}
-                            </span>
-                            <span className="text-[10px] font-medium px-2 py-0.5 rounded-full border border-gray-200 text-gray-700">
-                              {feedback.recommendation}
-                            </span>
-                          </div>
+                        <div className="mt-3">
+                          <button
+                            onClick={() => setExpandedFeedback((prev) => ({ ...prev, [iv.id]: !prev[iv.id] }))}
+                            className="w-full p-3 bg-gray-50 rounded-lg flex items-center justify-between hover:bg-gray-100 transition-colors"
+                          >
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs font-medium text-gray-700">Feedback:</span>
+                              <span className="text-amber-500 text-xs">
+                                {'★'.repeat(feedback.overall_rating)}{'☆'.repeat(5 - feedback.overall_rating)}
+                              </span>
+                              <span className="text-[10px] font-medium px-2 py-0.5 rounded-full border border-gray-200 text-gray-700">
+                                {feedback.recommendation}
+                              </span>
+                            </div>
+                            <ChevronDown className={`w-4 h-4 text-gray-400 transition-transform ${expandedFeedback[iv.id] ? 'rotate-180' : ''}`} />
+                          </button>
+                          {expandedFeedback[iv.id] && (
+                            <div className="mt-2 border border-gray-200 rounded-lg overflow-hidden">
+                              {iv.interview_feedback.map((fb: AnyData) => {
+                                const fbDate = fb.submitted_at || fb.created_at
+                                return (
+                                  <div key={fb.id} className="p-4 space-y-3 border-b border-gray-100 last:border-b-0">
+                                    <div className="flex items-center justify-between">
+                                      <div className="flex items-center gap-2">
+                                        <span className="text-xs font-semibold text-gray-800">
+                                          {userNames[fb.user_id] || 'Reviewer'}
+                                        </span>
+                                        <span className="text-amber-500 text-xs">
+                                          {'★'.repeat(fb.overall_rating || 0)}{'☆'.repeat(5 - (fb.overall_rating || 0))}
+                                        </span>
+                                        <span className="text-[10px] font-medium px-2 py-0.5 rounded-full border border-gray-200 text-gray-700">
+                                          {fb.recommendation?.replace(/_/g, ' ')}
+                                        </span>
+                                      </div>
+                                      {fbDate && (
+                                        <span className="text-[10px] text-gray-400">
+                                          {new Date(fbDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                                        </span>
+                                      )}
+                                    </div>
+                                    {fb.scorecard_ratings?.length > 0 && (
+                                      <div>
+                                        <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1">Evaluation Criteria</p>
+                                        <div className="flex flex-wrap gap-1.5">
+                                          {fb.scorecard_ratings.map((cr: AnyData) => (
+                                            <span key={cr.id} className="text-[10px] bg-gray-100 px-2 py-0.5 rounded-md text-gray-600">
+                                              {cr.criteria?.name || 'Criteria'}: <strong>{cr.rating}/5</strong>
+                                            </span>
+                                          ))}
+                                        </div>
+                                      </div>
+                                    )}
+                                    {fb.strengths && (
+                                      <div>
+                                        <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Strengths</p>
+                                        <p className="text-xs text-gray-700 mt-0.5">{fb.strengths}</p>
+                                      </div>
+                                    )}
+                                    {fb.weaknesses && (
+                                      <div>
+                                        <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Weaknesses</p>
+                                        <p className="text-xs text-gray-700 mt-0.5">{fb.weaknesses}</p>
+                                      </div>
+                                    )}
+                                    {fb.notes && (
+                                      <div>
+                                        <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Notes</p>
+                                        <p className="text-xs text-gray-700 mt-0.5">{fb.notes}</p>
+                                      </div>
+                                    )}
+                                  </div>
+                                )
+                              })}
+                            </div>
+                          )}
                         </div>
                       ) : iv.status === 'completed' ? (
                         <div className="mt-3 p-3 bg-amber-50 rounded-lg flex items-center justify-between">
@@ -864,12 +948,7 @@ export default function ApplicationDetailPage() {
             </div>
           )}
 
-          {/* Feedback summary button */}
-          {application.feedback?.length > 0 && (
-            <Button variant="outline" onClick={() => setFeedbackOpen(true)}>
-              View All Feedback ({application.feedback.length})
-            </Button>
-          )}
+          {/* View All Feedback button removed — feedback is now collapsible inside each interview card */}
         </TabsContent>
 
         {/* ============ TAB 4: Offer & Hire ============ */}
@@ -877,9 +956,7 @@ export default function ApplicationDetailPage() {
           {/* Status banner */}
           {application.status === 'hired' && (
             <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-4 flex items-center gap-3">
-              <svg className="w-6 h-6 text-emerald-600 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
+              <CheckCircle2 className="w-6 h-6 text-emerald-600 shrink-0" />
               <div>
                 <p className="font-semibold text-emerald-800">Candidate Hired</p>
                 {application.hired_at && (
@@ -977,18 +1054,16 @@ export default function ApplicationDetailPage() {
               ))}
             </div>
           ) : (
-            <div className="bg-white rounded-xl border border-gray-200 shadow-sm">
-              <div className="py-12 text-center">
-                <svg className="w-12 h-12 mx-auto text-gray-300 mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
-                </svg>
-                <p className="text-gray-500 text-sm">No offers created yet</p>
+            <div className="text-center py-16 border-2 border-dashed border-gray-200 rounded-xl">
+              <FileText className="w-10 h-10 text-gray-300 mx-auto mb-3" />
+                <p className="text-sm text-gray-500 font-medium">No offers created yet</p>
+                <p className="text-xs text-gray-400 mt-1">Create an offer letter to extend to this candidate</p>
                 {isActive && canManageCandidates && (
-                  <Button className="mt-4" onClick={() => router.push(`/offers/new?applicationId=${application.id}`)}>
+                  <Button className="mt-4 gap-1.5" onClick={() => router.push(`/offers/new?applicationId=${application.id}`)}>
+                    <Plus className="w-3.5 h-3.5" />
                     Create Offer
                   </Button>
                 )}
-              </div>
             </div>
           )}
 
@@ -1010,8 +1085,8 @@ export default function ApplicationDetailPage() {
                 )}
                 <div className="flex gap-2">
                   {phase === 'OFFER' && (
-                    <Button className="bg-green-600 hover:bg-green-700" onClick={handleHire}>
-                      <svg className="w-4 h-4 mr-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                    <Button className="bg-green-600 hover:bg-green-700 gap-1.5" onClick={handleHire}>
+                      <CheckCircle2 className="w-4 h-4" />
                       Mark as Hired
                     </Button>
                   )}
@@ -1051,12 +1126,12 @@ export default function ApplicationDetailPage() {
                     >
                       {addingNote ? (
                         <>
-                          <svg className="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>
+                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
                           Saving…
                         </>
                       ) : (
                         <>
-                          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" /></svg>
+                          <Plus className="w-3.5 h-3.5" />
                           Add Note
                         </>
                       )}
@@ -1068,9 +1143,7 @@ export default function ApplicationDetailPage() {
               {/* Notes timeline */}
               {notes.length === 0 ? (
                 <div className="text-center py-12 border-2 border-dashed border-gray-200 rounded-lg">
-                  <svg className="w-8 h-8 mx-auto mb-2 text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0115.75 21H5.25A2.25 2.25 0 013 18.75V8.25A2.25 2.25 0 015.25 6H10" />
-                  </svg>
+                  <PenLine className="w-8 h-8 mx-auto mb-2 text-gray-300" />
                   <p className="text-sm text-gray-500">No notes yet</p>
                   <p className="text-xs text-gray-400 mt-0.5">Team notes are visible only to your organization</p>
                 </div>
@@ -1099,9 +1172,7 @@ export default function ApplicationDetailPage() {
                               className="opacity-0 group-hover:opacity-100 text-gray-400 hover:text-red-500 transition-all"
                               title="Delete note"
                             >
-                              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                              </svg>
+                              <Trash2 className="w-3.5 h-3.5" />
                             </button>
                           )}
                         </div>
@@ -1117,7 +1188,7 @@ export default function ApplicationDetailPage() {
             <div className="lg:col-span-2">
               <div className="lg:sticky lg:top-6 rounded-lg border border-gray-100 bg-gray-50/60 p-4 space-y-3">
                 <div className="flex items-center gap-2 text-xs text-gray-500">
-                  <svg className="w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M11.25 11.25l.041-.02a.75.75 0 011.063.852l-.708 2.836a.75.75 0 001.063.853l.041-.021M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9-3.75h.008v.008H12V8.25z" /></svg>
+                  <Info className="w-4 h-4 text-gray-400" />
                   <span className="font-medium text-gray-700">About Notes</span>
                 </div>
                 <p className="text-xs text-gray-500 leading-relaxed">
@@ -1131,6 +1202,7 @@ export default function ApplicationDetailPage() {
             </div>
           </div>
         </TabsContent>
+
 
       </Tabs>
 
@@ -1213,7 +1285,7 @@ export default function ApplicationDetailPage() {
                 rel="noopener noreferrer"
                 className="inline-flex items-center gap-1 text-xs text-gray-500 hover:text-gray-800 border border-gray-200 bg-white rounded-md px-2.5 py-1.5 hover:border-gray-300 transition-colors"
               >
-                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" /></svg>
+                <Download className="w-3.5 h-3.5" />
                 Download
               </a>
             )}
@@ -1222,9 +1294,7 @@ export default function ApplicationDetailPage() {
               className="flex items-center justify-center w-8 h-8 rounded-lg text-gray-400 hover:text-gray-700 hover:bg-gray-200 transition-colors"
               title="Close"
             >
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-              </svg>
+              <X className="w-4 h-4" />
             </button>
           </div>
         </div>
@@ -1239,9 +1309,7 @@ export default function ApplicationDetailPage() {
             />
           ) : (
             <div className="flex flex-col items-center justify-center h-full text-center px-8">
-              <svg className="w-14 h-14 text-gray-200 mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
-              </svg>
+              <FileText className="w-14 h-14 text-gray-200 mb-4" />
               <p className="text-sm font-medium text-gray-500 mb-1">No resume uploaded</p>
               <p className="text-xs text-gray-400 mb-4">PDF only, max 10MB</p>
               <ResumeUploadButton
@@ -1394,6 +1462,7 @@ function AssessmentTab({ assessmentInvitations, isActive, canManage, sending, on
   const [expiryDate, setExpiryDate] = useState('')
   const [scoreInputs, setScoreInputs] = useState<Record<string, string>>({})
   const [savingScore, setSavingScore] = useState<Record<string, boolean>>({})
+  const [formErrors, setFormErrors] = useState<Record<string, string>>({})
 
   async function handleScoreSave(invId: string) {
     const n = parseFloat(scoreInputs[invId] || '')
@@ -1403,8 +1472,24 @@ function AssessmentTab({ assessmentInvitations, isActive, canManage, sending, on
     setSavingScore((prev) => ({ ...prev, [invId]: false }))
   }
 
+  function isValidUrl(str: string) {
+    try {
+      const url = new URL(str)
+      return url.protocol === 'http:' || url.protocol === 'https:'
+    } catch { return false }
+  }
+
   function handleSend() {
-    if (!link.trim()) return
+    const errors: Record<string, string> = {}
+    if (!name.trim()) errors.name = 'Please enter an assessment name'
+    if (!expiryDate) errors.expiryDate = 'Please select an expiry date'
+    if (!link.trim()) errors.link = 'Please enter an assessment link'
+    else if (!isValidUrl(link.trim())) errors.link = 'Please enter a valid URL (e.g. https://...)'
+    if (Object.keys(errors).length > 0) {
+      setFormErrors(errors)
+      return
+    }
+    setFormErrors({})
     onSend(name, link, instructions, expiryDate)
     setName('')
     setLink('')
@@ -1437,40 +1522,42 @@ function AssessmentTab({ assessmentInvitations, isActive, canManage, sending, on
             <div className="p-6 space-y-4">
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1.5">
-                  <Label>Assessment Name</Label>
+                  <Label>Assessment Name <span className="text-red-500">*</span></Label>
                   <input
                     type="text"
-                    className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                    className={`flex h-9 w-full rounded-md border bg-transparent px-3 py-1 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring ${formErrors.name ? 'border-red-500' : 'border-input'}`}
                     placeholder="e.g. Technical Round 1"
                     value={name}
-                    onChange={(e) => setName(e.target.value)}
+                    onChange={(e) => { setName(e.target.value); setFormErrors((p) => ({ ...p, name: '' })) }}
                   />
+                  {formErrors.name && <p className="text-xs text-red-500">{formErrors.name}</p>}
                 </div>
                 <div className="space-y-1.5">
-                  <Label>Expiry Date</Label>
+                  <Label>Expiry Date <span className="text-red-500">*</span></Label>
                   <input
                     type="date"
-                    className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                    className={`flex h-9 w-full rounded-md border bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring ${formErrors.expiryDate ? 'border-red-500' : 'border-input'}`}
+                    min={new Date().toISOString().split('T')[0]}
                     value={expiryDate}
-                    onChange={(e) => setExpiryDate(e.target.value)}
+                    onChange={(e) => { setExpiryDate(e.target.value); setFormErrors((p) => ({ ...p, expiryDate: '' })) }}
                   />
+                  {formErrors.expiryDate && <p className="text-xs text-red-500">{formErrors.expiryDate}</p>}
                 </div>
               </div>
 
               <div className="space-y-1.5">
                 <Label>Assessment Link <span className="text-red-500">*</span></Label>
                 <div className="relative">
-                  <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M13.19 8.688a4.5 4.5 0 011.242 7.244l-4.5 4.5a4.5 4.5 0 01-6.364-6.364l1.757-1.757m13.35-.622l1.757-1.757a4.5 4.5 0 00-6.364-6.364l-4.5 4.5a4.5 4.5 0 001.242 7.244" />
-                  </svg>
+                  <LinkIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
                   <input
                     type="url"
-                    className="flex h-9 w-full rounded-md border border-input bg-transparent pl-9 pr-3 py-1 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                    className={`flex h-9 w-full rounded-md border bg-transparent pl-9 pr-3 py-1 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring ${formErrors.link ? 'border-red-500' : 'border-input'}`}
                     placeholder="https://your-platform.com/test/..."
                     value={link}
-                    onChange={(e) => setLink(e.target.value)}
+                    onChange={(e) => { setLink(e.target.value); setFormErrors((p) => ({ ...p, link: '' })) }}
                   />
                 </div>
+                {formErrors.link && <p className="text-xs text-red-500">{formErrors.link}</p>}
               </div>
 
               <div className="space-y-1.5">
@@ -1484,20 +1571,15 @@ function AssessmentTab({ assessmentInvitations, isActive, canManage, sending, on
                 />
               </div>
 
-              <Button onClick={handleSend} disabled={sending || !link.trim()} className="gap-1.5">
+              <Button onClick={handleSend} disabled={sending} className="gap-1.5">
                 {sending ? (
                   <>
-                    <svg className="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                    </svg>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
                     Sending…
                   </>
                 ) : (
                   <>
-                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M6 12L3.269 3.126A59.768 59.768 0 0121.485 12 59.77 59.77 0 013.27 20.876L5.999 12zm0 0h7.5" />
-                    </svg>
+                    <Mail className="w-3.5 h-3.5" />
                     Send Assessment Email
                   </>
                 )}
@@ -1508,13 +1590,10 @@ function AssessmentTab({ assessmentInvitations, isActive, canManage, sending, on
 
         {/* Empty state (no history, read-only) */}
         {!hasHistory && (!isActive || !canManage) && (
-          <div className="bg-white rounded-xl border border-gray-200 shadow-sm">
-            <div className="py-12 text-center">
-              <svg className="w-12 h-12 mx-auto text-gray-300 mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h3.75M9 15h3.75M9 18h3.75m3 .75H18a2.25 2.25 0 002.25-2.25V6.108c0-1.135-.845-2.098-1.976-2.192a48.424 48.424 0 00-1.123-.08m-5.801 0c-.065.21-.1.433-.1.664 0 .414.336.75.75.75h4.5a.75.75 0 00.75-.75 2.25 2.25 0 00-.1-.664m-5.8 0A2.251 2.251 0 0113.5 2.25H15c1.012 0 1.867.668 2.15 1.586m-5.8 0c-.376.023-.75.05-1.124.08C9.095 4.01 8.25 4.973 8.25 6.108V8.25m0 0H4.875c-.621 0-1.125.504-1.125 1.125v11.25c0 .621.504 1.125 1.125 1.125h9.75c.621 0 1.125-.504 1.125-1.125V9.375c0-.621-.504-1.125-1.125-1.125H8.25zM6.75 12h.008v.008H6.75V12zm0 3h.008v.008H6.75V15zm0 3h.008v.008H6.75V18z" />
-              </svg>
-              <p className="text-sm text-gray-500">No assessments sent yet</p>
-            </div>
+          <div className="text-center py-16 border-2 border-dashed border-gray-200 rounded-xl">
+            <ClipboardList className="w-10 h-10 text-gray-300 mx-auto mb-3" />
+            <p className="text-sm text-gray-500 font-medium">No assessments sent yet</p>
+            <p className="text-xs text-gray-400 mt-1">Send an assessment to evaluate this candidate</p>
           </div>
         )}
       </div>
@@ -1576,9 +1655,7 @@ function AssessmentTab({ assessmentInvitations, isActive, canManage, sending, on
                             rel="noopener noreferrer"
                             className="inline-flex items-center gap-1 text-xs text-blue-600 hover:underline mb-2"
                           >
-                            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                              <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 6H5.25A2.25 2.25 0 003 8.25v10.5A2.25 2.25 0 005.25 21h10.5A2.25 2.25 0 0018 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25" />
-                            </svg>
+                            <ExternalLink className="w-3 h-3" />
                             Open link
                           </a>
                         )}
@@ -1620,9 +1697,7 @@ function AssessmentTab({ assessmentInvitations, isActive, canManage, sending, on
                 </div>
               ) : (
                 <div className="px-5 pb-5 text-center">
-                  <svg className="w-8 h-8 mx-auto text-gray-200 mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
+                  <Clock className="w-8 h-8 mx-auto text-gray-200 mb-2" />
                   <p className="text-xs text-gray-400">No assessments sent yet</p>
                 </div>
               )}

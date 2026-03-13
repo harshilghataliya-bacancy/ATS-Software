@@ -89,3 +89,33 @@ export async function getActivityLog(
 
   return { data, error, count }
 }
+
+// ---------------------------------------------------------------------------
+// Query Activity for a Candidate (across all their applications)
+// ---------------------------------------------------------------------------
+
+export async function getCandidateActivityLog(
+  supabase: SupabaseClient,
+  orgId: string,
+  candidateId: string,
+  limit = 50
+) {
+  // First get all application IDs for this candidate
+  const { data: apps } = await supabase
+    .from('applications')
+    .select('id')
+    .eq('organization_id', orgId)
+    .eq('candidate_id', candidateId)
+
+  const entityIds = [candidateId, ...(apps?.map((a) => a.id) || [])]
+
+  const { data, error, count } = await supabase
+    .from('activity_logs')
+    .select('*', { count: 'exact' })
+    .eq('organization_id', orgId)
+    .in('entity_id', entityIds)
+    .order('created_at', { ascending: false })
+    .limit(limit)
+
+  return { data, error, count }
+}

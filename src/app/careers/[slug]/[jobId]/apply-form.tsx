@@ -316,8 +316,9 @@ export function ApplyForm({ jobId, orgId }: ApplyFormProps) {
                 <Label htmlFor="phone">Phone *</Label>
                 <Input
                   id="phone"
+                  type="tel"
                   required
-                  placeholder="+1 (555) 123-4567"
+                  placeholder="+91 98765 43210"
                   value={form.phone}
                   onChange={(e) => updateField('phone', e.target.value)}
                 />
@@ -342,6 +343,7 @@ export function ApplyForm({ jobId, orgId }: ApplyFormProps) {
                   <Input
                     id="dob"
                     type="date"
+                    max={new Date().toISOString().split('T')[0]}
                     value={form.date_of_birth}
                     onChange={(e) => updateField('date_of_birth', e.target.value)}
                   />
@@ -446,6 +448,7 @@ export function ApplyForm({ jobId, orgId }: ApplyFormProps) {
                   placeholder="e.g. 80000"
                   value={form.current_salary}
                   onChange={(e) => updateField('current_salary', e.target.value)}
+                  onKeyDown={(e) => { if (e.key === '-' || e.key === 'e') e.preventDefault() }}
                 />
               </div>
               <div className="space-y-1">
@@ -458,6 +461,7 @@ export function ApplyForm({ jobId, orgId }: ApplyFormProps) {
                   placeholder="e.g. 100000"
                   value={form.expected_salary}
                   onChange={(e) => updateField('expected_salary', e.target.value)}
+                  onKeyDown={(e) => { if (e.key === '-' || e.key === 'e') e.preventDefault() }}
                 />
               </div>
             </div>

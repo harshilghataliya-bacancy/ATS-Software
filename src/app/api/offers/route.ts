@@ -3,6 +3,7 @@ import { createClient } from '@/lib/supabase/server'
 import { getOffers, createOffer } from '@/lib/services/offers'
 import { moveApplication } from '@/lib/services/applications'
 import { createOfferSchema } from '@/lib/validators/offer'
+import { logActivity } from '@/lib/services/activity'
 
 export async function GET(request: NextRequest) {
   const supabase = await createClient()
@@ -109,6 +110,13 @@ export async function POST(request: NextRequest) {
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
+
+  // Log activity against the application so it shows in the Activity tab
+  logActivity(supabase, membership.organization_id, user.id, 'application', parsed.data.application_id, 'offer_created', {
+    offer_id: data.id,
+    salary: parsed.data.salary,
+    salary_currency: parsed.data.salary_currency,
+  }).catch(() => {})
 
   // Auto-advance application to the 'offer' stage if not already past it
   try {

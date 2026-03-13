@@ -7,8 +7,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     <UserProvider>
       <div className="flex h-screen">
         <Sidebar />
-        <main className="flex-1 overflow-y-auto bg-gray-50">
-          <div className="max-w-7xl mx-auto p-6">
+        <main className="flex-1 overflow-y-auto bg-[#f8f9fb]">
+          <div className="max-w-7xl mx-auto px-6 py-5">
             {children}
           </div>
         </main>

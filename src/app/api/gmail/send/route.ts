@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { getValidAccessToken, sendGmailEmail } from '@/lib/services/gmail'
 import { logEmail } from '@/lib/services/email'
+import { logActivity } from '@/lib/services/activity'
 
 export async function POST(request: NextRequest) {
   const supabase = await createClient()
@@ -38,6 +39,10 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
   }
 
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to)) {
+    return NextResponse.json({ error: 'Invalid email address format' }, { status: 400 })
+  }
+
   // Get a valid access token (auto-refreshes if needed)
   const tokenResult = await getValidAccessToken(supabase, user.id, orgId)
   if (!tokenResult.accessToken) {
@@ -54,6 +59,14 @@ export async function POST(request: NextRequest) {
       subject,
       html,
     })
+
+    // Log activity
+    const entityId = applicationId || candidateId
+    const entityType = applicationId ? 'application' : 'candidate'
+    logActivity(supabase, orgId, user.id, entityType as 'application' | 'candidate', entityId, 'email_sent', {
+      subject,
+      to_email: to,
+    }).catch(() => {})
 
     // Log the email in background
     logEmail(supabase, orgId, {

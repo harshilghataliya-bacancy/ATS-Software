@@ -59,11 +59,8 @@ export const CANDIDATE_SOURCES = [
 ] as const
 
 export const INTERVIEW_TYPES = [
-  { value: 'phone', label: 'Phone Screen' },
-  { value: 'video', label: 'Video Call' },
-  { value: 'onsite', label: 'On-site' },
-  { value: 'technical', label: 'Technical' },
-  { value: 'cultural', label: 'Cultural Fit' },
+  { value: 'video', label: 'Online Video' },
+  { value: 'onsite', label: 'Offline Face to Face' },
 ] as const
 
 export const RECOMMENDATION_OPTIONS = [
@@ -112,7 +109,7 @@ export const ALLOWED_RESUME_TYPES = [
   'application/pdf',
 ]
 
-export const CURRENCIES = ['USD', 'EUR', 'GBP', 'INR', 'CAD', 'AUD'] as const
+export const CURRENCIES = ['INR', 'USD', 'EUR', 'GBP', 'CAD', 'AUD'] as const
 
 // Indian Salary Structure
 // -----------------------------------------------------------------------
@@ -172,6 +169,40 @@ export const REAPPLY_RESTRICTION_OPTIONS = [
   { value: 3, label: '3 Months' },
   { value: 6, label: '6 Months' },
   { value: 12, label: '1 Year' },
+] as const
+
+export const LOCATION_SUGGESTIONS = [
+  'Ahmedabad',
+  'Bangalore',
+  'Chennai',
+  'Delhi',
+  'Hyderabad',
+  'Kolkata',
+  'Mumbai',
+  'Pune',
+  'Noida',
+  'Gurugram',
+  'Jaipur',
+  'Lucknow',
+  'Chandigarh',
+  'Indore',
+  'Nagpur',
+  'Coimbatore',
+  'Kochi',
+  'Thiruvananthapuram',
+  'Visakhapatnam',
+  'Bhopal',
+  'Surat',
+  'Vadodara',
+  'Remote',
+  'New York',
+  'San Francisco',
+  'London',
+  'Berlin',
+  'Singapore',
+  'Dubai',
+  'Toronto',
+  'Sydney',
 ] as const
 
 export const OFFER_TEMPLATE_VARIABLES = [

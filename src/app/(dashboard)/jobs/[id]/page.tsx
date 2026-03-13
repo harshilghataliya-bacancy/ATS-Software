@@ -10,6 +10,7 @@ import { useUser, useRole } from '@/lib/hooks/use-user'
 import { getAssignableRecruiters } from '../actions'
 import { createClient } from '@/lib/supabase/client'
 import { getJobById, updateJob, getScorecardCriteria, upsertScorecardCriteria } from '@/lib/services/jobs'
+import { moveJobCandidatesToDefaultBank } from '@/lib/services/candidate-banks'
 import {
   EMPLOYMENT_TYPES, CURRENCIES, JOB_STATUS_CONFIG, EXPERIENCE_LEVELS,
   REMOTE_POLICIES, JOB_PRIORITIES, JOB_EDUCATION_LEVELS,
@@ -24,7 +25,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Skeleton } from '@/components/ui/skeleton'
 import { useToast } from '@/hooks/use-toast'
 import { BulkResumeUploadDialog } from '@/components/bulk-upload/bulk-resume-upload-dialog'
-import { Upload } from 'lucide-react'
+import {
+  Upload, UserPlus, ArrowLeft, X, Briefcase, FileText,
+} from 'lucide-react'
 
 interface Recruiter {
   id: string
@@ -97,7 +100,7 @@ export default function JobDetailPage() {
         requirements: data.requirements ?? '',
         salary_min: data.salary_min,
         salary_max: data.salary_max,
-        salary_currency: data.salary_currency ?? 'USD',
+        salary_currency: data.salary_currency ?? 'INR',
         status: data.status,
         experience_level: data.experience_level ?? undefined,
         num_openings: data.num_openings ?? 1,
@@ -176,6 +179,11 @@ export default function JobDetailPage() {
     } else {
       setJob(updated)
 
+      // When job is closed or archived, move all its candidates back to Default Bank
+      if (data.status === 'closed' || data.status === 'archived') {
+        await moveJobCandidatesToDefaultBank(supabase, params.id as string, organization.id)
+      }
+
       const validCriteria = criteria.filter((c) => c.name.trim())
       await upsertScorecardCriteria(supabase, params.id as string, organization.id, validCriteria)
 
@@ -209,42 +217,57 @@ export default function JobDetailPage() {
   const statusConfig = JOB_STATUS_CONFIG[job.status as keyof typeof JOB_STATUS_CONFIG]
 
   return (
-    <div>
-      {/* Top bar */}
-      <div className="mb-6">
-        <button
-          onClick={() => router.back()}
-          className="inline-flex items-center gap-1 text-sm text-gray-500 hover:text-gray-900 mb-3 transition-colors"
-        >
-          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" /></svg>
-          Back
-        </button>
-        <div className="flex items-center justify-between">
-          <div>
-            <div className="flex items-center gap-3">
-              <h1 className="text-2xl font-bold text-gray-900">{job.title as string}</h1>
-              <Badge variant={statusConfig?.variant ?? 'secondary'} className={statusConfig?.className}>
-                {statusConfig?.label ?? (job.status as string)}
-              </Badge>
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => router.back()}
+            className="p-1.5 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors"
+          >
+            <ArrowLeft className="w-4 h-4" />
+          </button>
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-blue-500 to-indigo-600 text-white flex items-center justify-center shrink-0">
+              <Briefcase className="w-4 h-4" />
             </div>
-            <p className="text-gray-500 mt-1">{canManageJobs ? 'Edit job details' : 'View job details'}</p>
+            <div>
+              <div className="flex items-center gap-2.5">
+                <h1 className="text-lg font-semibold text-gray-900">{job.title as string}</h1>
+                <Badge variant={statusConfig?.variant ?? 'secondary'} className={statusConfig?.className}>
+                  {statusConfig?.label ?? (job.status as string)}
+                </Badge>
+              </div>
+              <p className="text-xs text-gray-400 mt-0.5">{canManageJobs ? 'Edit job details' : 'View job details'}</p>
+            </div>
           </div>
-          <div className="flex gap-2">
-            {canManageJobs && (
-              <Button variant="outline" onClick={() => setBulkUploadOpen(true)}>
-                <Upload className="h-4 w-4 mr-2" />
+        </div>
+        <div className="flex items-center gap-2">
+          {canManageJobs && (
+            <>
+              <Link href={`/candidates/new?jobId=${params.id}`}>
+                <Button variant="outline" size="sm" className="gap-1.5">
+                  <UserPlus className="w-3.5 h-3.5" />
+                  Add Candidate
+                </Button>
+              </Link>
+              <Button variant="outline" size="sm" onClick={() => setBulkUploadOpen(true)} className="gap-1.5">
+                <Upload className="w-3.5 h-3.5" />
                 Bulk Upload
               </Button>
-            )}
-            <Link href={`/jobs/${params.id}/applications`}>
-              <Button variant="outline">Applications</Button>
-            </Link>
-          </div>
+            </>
+          )}
+          <Link href={`/jobs/${params.id}/applications`}>
+            <Button variant="outline" size="sm" className="gap-1.5">
+              <FileText className="w-3.5 h-3.5" />
+              Applications
+            </Button>
+          </Link>
         </div>
       </div>
 
       <form onSubmit={handleSubmit(onSubmit)}>
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
           {/* ===== LEFT COLUMN (2/3) ===== */}
           <div className="lg:col-span-2 space-y-6">
             {/* Basic Info */}
@@ -356,15 +379,15 @@ export default function JobDetailPage() {
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="requirements">Requirements</Label>
-                  <Textarea id="requirements" rows={9} {...register('requirements')} disabled={!canManageJobs} />
+                  <Textarea id="requirements" rows={12} {...register('requirements')} disabled={!canManageJobs} />
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="nice_to_have">Nice to Have</Label>
-                  <Textarea id="nice_to_have" rows={5} {...register('nice_to_have')} disabled={!canManageJobs} placeholder="Preferred but not required qualifications..." />
+                  <Textarea id="nice_to_have" rows={8} {...register('nice_to_have')} disabled={!canManageJobs} placeholder="Preferred but not required qualifications..." />
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="benefits">Benefits & Perks</Label>
-                  <Textarea id="benefits" rows={5} {...register('benefits')} disabled={!canManageJobs} placeholder="Health insurance, PTO, equity, etc." />
+                  <Textarea id="benefits" rows={8} {...register('benefits')} disabled={!canManageJobs} placeholder="Health insurance, PTO, equity, etc." />
                 </div>
               </CardContent>
             </Card>
@@ -471,21 +494,22 @@ export default function JobDetailPage() {
             {/* Compensation */}
             <Card>
               <CardHeader>
-                <CardTitle className="text-lg">Compensation</CardTitle>
+                <CardTitle className="text-lg">Compensation (Annual CTC)</CardTitle>
+                <p className="text-sm text-gray-500">Annual Cost to Company (CTC) range</p>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="space-y-2">
-                  <Label htmlFor="salary_min">Min Salary</Label>
-                  <Input id="salary_min" type="number" {...register('salary_min')} disabled={!canManageJobs} />
+                  <Label htmlFor="salary_min">Min Annual CTC</Label>
+                  <Input id="salary_min" type="number" placeholder="e.g. 800000" {...register('salary_min')} disabled={!canManageJobs} />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="salary_max">Max Salary</Label>
-                  <Input id="salary_max" type="number" {...register('salary_max')} disabled={!canManageJobs} />
+                  <Label htmlFor="salary_max">Max Annual CTC</Label>
+                  <Input id="salary_max" type="number" placeholder="e.g. 1200000" {...register('salary_max')} disabled={!canManageJobs} />
                 </div>
                 <div className="space-y-2">
                   <Label>Currency</Label>
                   <Select
-                    defaultValue={(job.salary_currency as string) ?? 'USD'}
+                    defaultValue={(job.salary_currency as string) ?? 'INR'}
                     onValueChange={(val) => setValue('salary_currency', val, { shouldDirty: true })}
                   >
                     <SelectTrigger><SelectValue /></SelectTrigger>
@@ -541,7 +565,7 @@ export default function JobDetailPage() {
                         className="text-red-500 hover:text-red-700 px-1.5 h-8"
                         onClick={() => setCriteria(criteria.filter((_, i) => i !== idx))}
                       >
-                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+                        <X className="w-4 h-4" />
                       </Button>
                     </div>
                     <Input
@@ -571,16 +595,16 @@ export default function JobDetailPage() {
         </div>
 
         {/* Action Buttons */}
-        <div className="flex gap-3 mt-6 pt-6 border-t">
+        <div className="flex items-center gap-3 pt-6 border-t border-gray-200">
           {canManageJobs && (
-            <Button type="submit" disabled={saving || !hasChanges}>
+            <Button type="submit" disabled={saving || !hasChanges} className="bg-blue-600 hover:bg-blue-700 text-white">
               {saving ? 'Saving...' : 'Save Changes'}
             </Button>
           )}
-          <button type="button" onClick={() => router.back()} className="inline-flex items-center gap-1 text-sm text-gray-500 hover:text-gray-900 transition-colors">
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" /></svg>
+          <Button type="button" variant="ghost" onClick={() => router.back()} className="text-gray-500 hover:text-gray-700 gap-1.5">
+            <ArrowLeft className="w-3.5 h-3.5" />
             Back
-          </button>
+          </Button>
         </div>
       </form>
 
@@ -590,6 +614,7 @@ export default function JobDetailPage() {
         jobId={params.id as string}
         jobTitle={job.title as string}
       />
+
     </div>
   )
 }

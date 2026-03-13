@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { INTERVIEW_TYPES } from '@/lib/constants'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import {
@@ -29,11 +30,6 @@ interface Member {
 const DURATION_PRESETS = [30, 45, 60, 90]
 
 const TYPE_ICONS: Record<string, React.ReactNode> = {
-  phone: (
-    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-      <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 6.75c0 8.284 6.716 15 15 15h2.25a2.25 2.25 0 002.25-2.25v-1.372c0-.516-.351-.966-.852-1.091l-4.423-1.106c-.44-.11-.902.055-1.173.417l-.97 1.293c-.282.376-.769.542-1.21.38a12.035 12.035 0 01-7.143-7.143c-.162-.441.004-.928.38-1.21l1.293-.97c.363-.271.527-.734.417-1.173L6.963 3.102a1.125 1.125 0 00-1.091-.852H4.5A2.25 2.25 0 002.25 4.5v2.25z" />
-    </svg>
-  ),
   video: (
     <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
       <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 10.5l4.72-4.72a.75.75 0 011.28.53v11.38a.75.75 0 01-1.28.53l-4.72-4.72M4.5 18.75h9a2.25 2.25 0 002.25-2.25v-9a2.25 2.25 0 00-2.25-2.25h-9A2.25 2.25 0 002.25 7.5v9a2.25 2.25 0 002.25 2.25z" />
@@ -42,16 +38,6 @@ const TYPE_ICONS: Record<string, React.ReactNode> = {
   onsite: (
     <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
       <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 21h19.5m-18-18v18m10.5-18v18m6-13.5V21M6.75 6.75h.75m-.75 3h.75m-.75 3h.75m3-6h.75m-.75 3h.75m-.75 3h.75M6.75 21v-3.375c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125V21M3 3h12m-.75 4.5H21m-3.75 3.75h.008v.008h-.008v-.008zm0 3h.008v.008h-.008v-.008zm0 3h.008v.008h-.008v-.008z" />
-    </svg>
-  ),
-  technical: (
-    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-      <path strokeLinecap="round" strokeLinejoin="round" d="M17.25 6.75L22.5 12l-5.25 5.25m-10.5 0L1.5 12l5.25-5.25m7.5-3l-4.5 16.5" />
-    </svg>
-  ),
-  cultural: (
-    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-      <path strokeLinecap="round" strokeLinejoin="round" d="M18 18.72a9.094 9.094 0 003.741-.479 3 3 0 00-4.682-2.72m.94 3.198l.001.031c0 .225-.012.447-.037.666A11.944 11.944 0 0112 21c-2.17 0-4.207-.576-5.963-1.584A6.062 6.062 0 016 18.719m12 0a5.971 5.971 0 00-.941-3.197m0 0A5.995 5.995 0 0012 12.75a5.995 5.995 0 00-5.058 2.772m0 0a3 3 0 00-4.681 2.72 8.986 8.986 0 003.74.477m.94-3.197a5.971 5.971 0 00-.94 3.197M15 6.75a3 3 0 11-6 0 3 3 0 016 0zm6 3a2.25 2.25 0 11-4.5 0 2.25 2.25 0 014.5 0zm-13.5 0a2.25 2.25 0 11-4.5 0 2.25 2.25 0 014.5 0z" />
     </svg>
   ),
 }
@@ -65,11 +51,13 @@ export function ScheduleInterviewDialog({
   jobTitle,
   onSuccess,
 }: ScheduleInterviewDialogProps) {
+  const [title, setTitle] = useState('')
   const [type, setType] = useState('video')
   const [date, setDate] = useState('')
   const [duration, setDuration] = useState(60)
   const [customDuration, setCustomDuration] = useState('')
   const [interviewerEmail, setInterviewerEmail] = useState('')
+  const [location, setLocation] = useState('')
   const [notes, setNotes] = useState('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -129,9 +117,19 @@ export function ScheduleInterviewDialog({
     }
   }
 
+  function getLocalNow() {
+    const now = new Date()
+    now.setMinutes(now.getMinutes() - now.getTimezoneOffset())
+    return now.toISOString().slice(0, 16)
+  }
+
   async function handleSchedule() {
+    if (!title.trim()) { setError('Interview name is required'); return }
     if (!date) { setError('Date and time is required'); return }
+    if (new Date(date) <= new Date()) { setError('Cannot schedule an interview in the past'); return }
+    if (type === 'onsite' && !location.trim()) { setError('Location is required for face to face interviews'); return }
     if (!interviewerEmail) { setError('Interviewer email is required'); return }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(interviewerEmail)) { setError('Please enter a valid email address'); return }
     setSaving(true)
     setError(null)
     try {
@@ -140,6 +138,7 @@ export function ScheduleInterviewDialog({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           application_id: applicationId,
+          title: title.trim(),
           interview_type: type,
           scheduled_at: new Date(date).toISOString(),
           duration_minutes: activeDuration,
@@ -147,6 +146,7 @@ export function ScheduleInterviewDialog({
           candidate_email: candidateEmail,
           candidate_name: candidateName,
           job_title: jobTitle,
+          location: type === 'onsite' ? location.trim() : undefined,
           notes: notes || undefined,
         }),
       })
@@ -166,11 +166,13 @@ export function ScheduleInterviewDialog({
   }
 
   function resetForm() {
+    setTitle('')
     setType('video')
     setDate('')
     setDuration(60)
     setCustomDuration('')
     setInterviewerEmail('')
+    setLocation('')
     setNotes('')
     setError(null)
     setShowSuggestions(false)
@@ -191,27 +193,33 @@ export function ScheduleInterviewDialog({
         )}
 
         <div className="space-y-5">
-          {/* Interview Type — icon grid */}
+          {/* Interview Name */}
+          <div className="space-y-2">
+            <Label>Interview Name <span className="text-red-500">*</span></Label>
+            <Input
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              placeholder="e.g. Technical Round 1, HR Screening"
+            />
+          </div>
+
+          {/* Interview Type — 2 options */}
           <div className="space-y-2">
             <Label>Interview Type</Label>
-            <div className="grid grid-cols-5 gap-1.5">
+            <div className="grid grid-cols-2 gap-2">
               {INTERVIEW_TYPES.map((t) => (
                 <button
                   key={t.value}
                   type="button"
                   onClick={() => setType(t.value)}
-                  className={`flex flex-col items-center gap-1.5 py-2.5 px-1 rounded-lg border text-[10px] font-medium transition-all ${
+                  className={`flex items-center justify-center gap-2 py-2.5 px-3 rounded-lg border text-sm font-medium transition-all ${
                     type === t.value
                       ? 'bg-blue-600 text-white border-blue-600'
                       : 'bg-white text-gray-500 border-gray-200 hover:border-gray-300 hover:text-gray-700'
                   }`}
                 >
-                  {TYPE_ICONS[t.value] ?? (
-                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M9.75 9.75l4.5 4.5m0-4.5l-4.5 4.5M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    </svg>
-                  )}
-                  <span>{t.label.split(' ')[0]}</span>
+                  {TYPE_ICONS[t.value] ?? null}
+                  <span>{t.label}</span>
                 </button>
               ))}
             </div>
@@ -224,6 +232,7 @@ export function ScheduleInterviewDialog({
               <input
                 type="datetime-local"
                 value={date}
+                min={getLocalNow()}
                 onChange={(e) => setDate(e.target.value)}
                 className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
               />
@@ -313,6 +322,18 @@ export function ScheduleInterviewDialog({
               )}
             </div>
           </div>
+
+          {/* Location — only for face to face */}
+          {type === 'onsite' && (
+            <div className="space-y-2">
+              <Label>Location <span className="text-red-500">*</span></Label>
+              <Input
+                value={location}
+                onChange={(e) => setLocation(e.target.value)}
+                placeholder="e.g. Office, Room 3B, Building A"
+              />
+            </div>
+          )}
 
           {/* Notes */}
           <div className="space-y-2">

@@ -112,6 +112,34 @@ export async function getCandidateById(
 }
 
 // ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+/** Prepend https:// if a URL-like string is missing a protocol */
+function normalizeUrl(url: string | null | undefined): string | null {
+  if (!url || typeof url !== 'string') return null
+  const trimmed = url.trim()
+  if (!trimmed) return null
+  if (/^https?:\/\//i.test(trimmed)) return trimmed
+  if (/^(www\.|linkedin\.com|github\.com|gitlab\.com|behance\.net|dribbble\.com)/i.test(trimmed)) {
+    return `https://${trimmed}`
+  }
+  return trimmed
+}
+
+/** Normalize linkedin_url and portfolio_url in a candidate data object */
+function normalizeUrls(data: Record<string, unknown>): Record<string, unknown> {
+  const result = { ...data }
+  if ('linkedin_url' in result) {
+    result.linkedin_url = normalizeUrl(result.linkedin_url as string)
+  }
+  if ('portfolio_url' in result) {
+    result.portfolio_url = normalizeUrl(result.portfolio_url as string)
+  }
+  return result
+}
+
+// ---------------------------------------------------------------------------
 // Mutations
 // ---------------------------------------------------------------------------
 
@@ -121,15 +149,37 @@ export async function createCandidate(
   data: Record<string, unknown>,
   userId: string
 ) {
+  const normalized = normalizeUrls(data)
+
+  // AT-28: Check for duplicate phone number in the same org
+  const phone = normalized.phone as string | null | undefined
+  if (phone) {
+    const { data: existing } = await supabase
+      .from('candidates')
+      .select('id')
+      .eq('organization_id', orgId)
+      .eq('phone', phone)
+      .is('deleted_at', null)
+      .maybeSingle()
+
+    if (existing) {
+      return { data: null, error: new Error('A candidate with this phone number already exists in your organization') }
+    }
+  }
+
   const { data: candidate, error } = await supabase
     .from('candidates')
     .insert({
-      ...data,
+      ...normalized,
       organization_id: orgId,
       created_by: userId,
     })
     .select()
     .single()
+
+  if (error?.message?.includes('candidates_org_email_unique')) {
+    return { data: null, error: new Error('A candidate with this email already exists in your organization') }
+  }
 
   return { data: candidate, error }
 }
@@ -140,9 +190,28 @@ export async function updateCandidate(
   orgId: string,
   data: Record<string, unknown>
 ) {
+  const normalized = normalizeUrls(data)
+
+  // AT-28: Check for duplicate phone number in the same org (exclude current candidate)
+  const phone = normalized.phone as string | null | undefined
+  if (phone) {
+    const { data: existing } = await supabase
+      .from('candidates')
+      .select('id')
+      .eq('organization_id', orgId)
+      .eq('phone', phone)
+      .neq('id', candidateId)
+      .is('deleted_at', null)
+      .maybeSingle()
+
+    if (existing) {
+      return { data: null, error: new Error('A candidate with this phone number already exists in your organization') }
+    }
+  }
+
   const { data: candidate, error } = await supabase
     .from('candidates')
-    .update({ ...data, updated_at: new Date().toISOString() })
+    .update({ ...normalized, updated_at: new Date().toISOString() })
     .eq('id', candidateId)
     .eq('organization_id', orgId)
     .is('deleted_at', null)

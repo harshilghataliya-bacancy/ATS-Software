@@ -32,6 +32,7 @@ export async function POST(request: NextRequest) {
   const body = await request.json()
   const {
     application_id,
+    title: interviewTitle,
     interview_type,
     scheduled_at,
     duration_minutes = 60,
@@ -39,6 +40,7 @@ export async function POST(request: NextRequest) {
     candidate_email,
     candidate_name,
     job_title,
+    location: interviewLocation,
     notes,
   } = body
 
@@ -49,14 +51,47 @@ export async function POST(request: NextRequest) {
     )
   }
 
-  // Get org name
+  if (!candidate_email) {
+    return NextResponse.json(
+      { error: 'Candidate email is required to schedule an interview. Please add an email to the candidate profile first.' },
+      { status: 400 }
+    )
+  }
+
+  // Reject past scheduled times (must check before creating anything)
+  if (new Date(scheduled_at) < new Date()) {
+    return NextResponse.json({ error: 'Cannot schedule an interview in the past' }, { status: 400 })
+  }
+
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+  if (interviewer_email && !emailRegex.test(interviewer_email)) {
+    return NextResponse.json({ error: 'Invalid interviewer email format' }, { status: 400 })
+  }
+  if (candidate_email && !emailRegex.test(candidate_email)) {
+    return NextResponse.json({ error: 'Invalid candidate email format' }, { status: 400 })
+  }
+
+  // Get org name and slug for public job URL
   const { data: org } = await supabase
     .from('organizations')
-    .select('name')
+    .select('name, slug')
     .eq('id', orgId)
     .single()
 
   const companyName = org?.name || 'Our Company'
+  const orgSlug = org?.slug || ''
+
+  // Get job_id from application for public job URL
+  const { data: appData } = await supabase
+    .from('applications')
+    .select('job_id')
+    .eq('id', application_id)
+    .single()
+
+  const appUrl = (process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000').replace(/\/+$/, '')
+  const publicJobUrl = orgSlug && appData?.job_id
+    ? `${appUrl}/careers/${orgSlug}/${appData.job_id}`
+    : null
 
   // Try to create Google Calendar event with Meet link
   let meetLink: string | null = null
@@ -65,18 +100,22 @@ export async function POST(request: NextRequest) {
   const tokenResult = await getValidAccessToken(supabase, user.id, orgId)
   if (tokenResult.accessToken) {
     try {
+      const isOnsite = interview_type === 'onsite'
       const attendees = [candidate_email, interviewer_email].filter(Boolean) as string[]
       const result = await createCalendarEvent(tokenResult.accessToken, {
-        summary: `Interview: ${candidate_name} - ${job_title}`,
+        summary: interviewTitle ? `${interviewTitle}: ${candidate_name} - ${job_title}` : `Interview: ${candidate_name} - ${job_title}`,
         description: [
           `Interview for ${job_title} at ${companyName}`,
           `Candidate: ${candidate_name}`,
           `Type: ${interview_type}`,
+          isOnsite && interviewLocation ? `Location: ${interviewLocation}` : '',
           notes ? `\nNotes: ${notes}` : '',
         ].filter(Boolean).join('\n'),
         startDateTime: scheduled_at,
         durationMinutes: duration_minutes,
         attendees,
+        location: isOnsite ? interviewLocation : undefined,
+        includeMeetLink: !isOnsite,
       })
       meetLink = result.meetLink
       calendarEventId = result.eventId
@@ -249,9 +288,11 @@ export async function POST(request: NextRequest) {
     orgId,
     {
       application_id,
+      title: interviewTitle || undefined,
       interview_type,
       scheduled_at,
       duration_minutes,
+      location: interviewLocation || undefined,
       meeting_link: meetLink || undefined,
       notes: notes || undefined,
       interviewer_email: interviewer_email || undefined,
@@ -278,16 +319,23 @@ export async function POST(request: NextRequest) {
   // Send emails via Gmail (best effort)
   const fromEmail = tokenResult.fromEmail || user.email!
   const scheduledDate = new Date(scheduled_at)
-  const dateStr = scheduledDate.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })
-  const timeStr = scheduledDate.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })
+  const dateStr = scheduledDate.toLocaleDateString('en-IN', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', timeZone: 'Asia/Kolkata' })
+  const timeStr = scheduledDate.toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit', hour12: true, timeZone: 'Asia/Kolkata' }) + ' IST'
   const meetInfo = meetLink ? `<p><strong>Meeting Link:</strong> <a href="${meetLink}">${meetLink}</a></p>` : ''
+  const locationInfo = interviewLocation ? `<p><strong>Location:</strong> ${interviewLocation}</p>` : ''
 
   if (tokenResult.accessToken && candidate_email) {
+    const jobUrlInfo = publicJobUrl
+      ? `<p><strong>Job Details:</strong> <a href="${publicJobUrl}">View Job Posting</a></p>`
+      : ''
+
     const candidateHtml = `
       <p>Dear ${candidate_name},</p>
       <p>You have been scheduled for an interview for the <strong>${job_title}</strong> position at <strong>${companyName}</strong>.</p>
       <p><strong>Date:</strong> ${dateStr}<br/><strong>Time:</strong> ${timeStr}<br/><strong>Duration:</strong> ${duration_minutes} minutes<br/><strong>Type:</strong> ${interview_type}</p>
+      ${locationInfo}
       ${meetInfo}
+      ${jobUrlInfo}
       ${notes ? `<p><strong>Notes:</strong> ${notes}</p>` : ''}
       <p>Best regards,<br/>${companyName}</p>
     `
@@ -323,6 +371,7 @@ export async function POST(request: NextRequest) {
           <p>You have been scheduled to interview <strong>${candidate_name}</strong> for the <strong>${job_title}</strong> position at <strong>${companyName}</strong>.</p>
           <h3>Interview Details</h3>
           <p><strong>Date:</strong> ${dateStr}<br/><strong>Time:</strong> ${timeStr}<br/><strong>Duration:</strong> ${duration_minutes} minutes<br/><strong>Type:</strong> ${interview_type}</p>
+          ${locationInfo}
           ${meetInfo}
           ${notes ? `<p><strong>Notes:</strong> ${notes}</p>` : ''}
           <h3>Candidate Details</h3>
@@ -347,10 +396,11 @@ export async function POST(request: NextRequest) {
     supabase,
     orgId,
     user.id,
-    'interview',
-    interview.id,
+    'application',
+    application_id,
     'interview_scheduled',
     {
+      interview_id: interview.id,
       candidate_name,
       job_title,
       interview_type,

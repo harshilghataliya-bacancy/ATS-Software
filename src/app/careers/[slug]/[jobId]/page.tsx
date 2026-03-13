@@ -68,11 +68,11 @@ export default async function JobDetailPage({ params }: Props) {
 
   const salaryRange =
     job.salary_min && job.salary_max
-      ? `${job.salary_currency ?? 'USD'} ${job.salary_min.toLocaleString()} - ${job.salary_max.toLocaleString()}`
+      ? `${job.salary_currency ?? 'INR'} ${job.salary_min.toLocaleString()} - ${job.salary_max.toLocaleString()}`
       : job.salary_min
-        ? `From ${job.salary_currency ?? 'USD'} ${job.salary_min.toLocaleString()}`
+        ? `From ${job.salary_currency ?? 'INR'} ${job.salary_min.toLocaleString()}`
         : job.salary_max
-          ? `Up to ${job.salary_currency ?? 'USD'} ${job.salary_max.toLocaleString()}`
+          ? `Up to ${job.salary_currency ?? 'INR'} ${job.salary_max.toLocaleString()}`
           : null
 
   const expLabel = job.experience_level ? EXPERIENCE_LABELS[job.experience_level] ?? job.experience_level : null

@@ -5,6 +5,7 @@ import { getOfferById, sendOffer } from '@/lib/services/offers'
 import { getActiveOfferTemplate, getOfferTemplateById } from '@/lib/services/offer-templates'
 import { getValidAccessToken, sendGmailEmail } from '@/lib/services/gmail'
 import { logEmail } from '@/lib/services/email'
+import { logActivity } from '@/lib/services/activity'
 import { substituteOfferVariables, formatSalary } from '@/lib/offer-template'
 import { DEFAULT_OFFER_TEMPLATE, EMPLOYMENT_TYPE_OPTIONS, WORK_TYPE_OPTIONS } from '@/lib/constants'
 import { renderToBuffer } from '@react-pdf/renderer'
@@ -123,15 +124,24 @@ export async function POST(
   let emailHtml = substituteOfferVariables(emailTemplate, templateVars)
 
   // Append Accept/Decline buttons
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
+  const appUrl = (process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000').replace(/\/+$/, '')
   const acceptUrl = `${appUrl}/offers/respond?token=${responseToken}&action=accept`
   const declineUrl = `${appUrl}/offers/respond?token=${responseToken}&action=decline`
 
   emailHtml += `
 <div style="margin-top:32px;padding-top:24px;border-top:1px solid #e5e7eb;text-align:center;">
   <p style="font-size:14px;color:#374151;margin-bottom:16px;">Please respond to this offer:</p>
-  <a href="${acceptUrl}" style="display:inline-block;padding:12px 32px;background-color:#16a34a;color:#ffffff;text-decoration:none;border-radius:6px;font-weight:600;font-size:14px;margin-right:12px;">Accept Offer</a>
-  <a href="${declineUrl}" style="display:inline-block;padding:12px 32px;background-color:#dc2626;color:#ffffff;text-decoration:none;border-radius:6px;font-weight:600;font-size:14px;">Decline Offer</a>
+  <table role="presentation" cellpadding="0" cellspacing="0" style="margin:0 auto;">
+    <tr>
+      <td style="padding-right:12px;">
+        <a href="${acceptUrl}" target="_blank" style="display:inline-block;padding:12px 32px;background-color:#16a34a;color:#ffffff;text-decoration:none;border-radius:6px;font-weight:600;font-size:14px;mso-padding-alt:0;text-underline-color:#16a34a;"><!--[if mso]><i style="letter-spacing:32px;mso-font-width:-100%;mso-text-raise:18pt;">&nbsp;</i><![endif]-->Accept Offer<!--[if mso]><i style="letter-spacing:32px;mso-font-width:-100%;">&nbsp;</i><![endif]--></a>
+      </td>
+      <td>
+        <a href="${declineUrl}" target="_blank" style="display:inline-block;padding:12px 32px;background-color:#dc2626;color:#ffffff;text-decoration:none;border-radius:6px;font-weight:600;font-size:14px;mso-padding-alt:0;text-underline-color:#dc2626;"><!--[if mso]><i style="letter-spacing:32px;mso-font-width:-100%;mso-text-raise:18pt;">&nbsp;</i><![endif]-->Decline Offer<!--[if mso]><i style="letter-spacing:32px;mso-font-width:-100%;">&nbsp;</i><![endif]--></a>
+      </td>
+    </tr>
+  </table>
+  <p style="font-size:11px;color:#9ca3af;margin-top:16px;">If the buttons above don&rsquo;t work, copy and paste this link to accept:<br/><a href="${acceptUrl}" style="color:#2563eb;word-break:break-all;">${acceptUrl}</a></p>
 </div>`
 
   const empLabel = EMPLOYMENT_TYPE_OPTIONS.find((e) => e.value === offer.employment_type)?.label || offer.employment_type || ''
@@ -200,6 +210,14 @@ export async function POST(
     if (sendError) {
       return NextResponse.json({ error: sendError.message }, { status: 500 })
     }
+
+    // Log activity against the application so it shows in the Activity tab
+    logActivity(supabase, orgId, user.id, 'application', offer.application_id, 'offer_sent', {
+      offer_id: id,
+      candidate_name: candidateName,
+      candidate_email: candidate.email,
+      job_title: job?.title,
+    }).catch(() => {})
 
     // Send email + log in background (fire-and-forget)
     const attachments = [{ filename: pdfFilename, content: new Uint8Array(pdfBuffer), contentType: 'application/pdf' }]

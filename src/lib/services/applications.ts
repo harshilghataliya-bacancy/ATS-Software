@@ -87,7 +87,7 @@ export async function getApplicationById(
       interviews(
         *,
         interview_panelists(*),
-        interview_feedback(id, overall_rating, recommendation)
+        interview_feedback(id, user_id, overall_rating, recommendation, strengths, weaknesses, notes, submitted_at, created_at, scorecard_ratings(id, criteria_id, rating, criteria:scorecard_criteria(name, weight)))
       ),
       feedback:interview_feedback(*),
       offer_letters(id, status, salary, salary_currency, sent_at, responded_at),

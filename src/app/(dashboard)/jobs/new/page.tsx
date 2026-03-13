@@ -19,7 +19,9 @@ import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Badge } from '@/components/ui/badge'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { LocationInput } from '@/components/ui/location-input'
 import { useToast } from '@/hooks/use-toast'
+import { ArrowLeft, Sparkles, Loader2, X } from 'lucide-react'
 import { getAssignableRecruiters } from '../actions'
 
 interface Recruiter {
@@ -59,14 +61,16 @@ export default function NewJobPage() {
   const [formKey, setFormKey] = useState(0)
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { register, handleSubmit, formState: { errors }, setValue, getValues } = useForm<CreateJobInput>({
+  const { register, handleSubmit, formState: { errors }, setValue, getValues, watch } = useForm<CreateJobInput>({
     resolver: zodResolver(createJobSchema) as any,
     defaultValues: {
       employment_type: 'full_time',
-      salary_currency: 'USD',
+      salary_currency: 'INR',
       remote_policy: 'on_site',
       priority: 'medium',
       num_openings: 1,
+      location: '',
+      skills: [],
     },
   })
 
@@ -150,6 +154,11 @@ export default function NewJobPage() {
     if (!organization || !user) return
     setSaving(true)
 
+    // Normalize optional deadline
+    if (!data.application_deadline) {
+      data.application_deadline = null as unknown as string
+    }
+
     const supabase = createClient()
     const { data: newJob, error: createError } = await createJob(supabase, organization.id, data, user.id)
 
@@ -178,14 +187,10 @@ export default function NewJobPage() {
   return (
     <div>
       <div className="mb-6">
-        <button
-          onClick={() => router.back()}
-          className="inline-flex items-center gap-1 text-sm text-gray-500 hover:text-gray-900 mb-3 transition-colors"
-        >
-          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" /></svg>
-          Back
-        </button>
-        <h1 className="text-2xl font-bold text-gray-900">Create New Job</h1>
+        <Button type="button" variant="ghost" size="sm" className="gap-1.5 text-gray-500 hover:text-gray-900 mb-3" onClick={() => router.back()}>
+          <ArrowLeft className="w-4 h-4" />Back
+        </Button>
+        <h1 className="text-xl font-semibold text-gray-900">Create New Job</h1>
         <p className="text-gray-500 mt-1">Fill in the details for your new job posting. All fields are required.</p>
       </div>
 
@@ -194,9 +199,7 @@ export default function NewJobPage() {
         <Card className="mb-6 border-blue-200 bg-gradient-to-r from-blue-50 to-indigo-50">
           <CardHeader className="pb-3">
             <CardTitle className="text-lg flex items-center gap-2">
-              <svg className="w-5 h-5 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.455 2.456L21.75 6l-1.036.259a3.375 3.375 0 00-2.455 2.456zM16.894 20.567L16.5 21.75l-.394-1.183a2.25 2.25 0 00-1.423-1.423L13.5 18.75l1.183-.394a2.25 2.25 0 001.423-1.423l.394-1.183.394 1.183a2.25 2.25 0 001.423 1.423l1.183.394-1.183.394a2.25 2.25 0 00-1.423 1.423z" />
-              </svg>
+              <Sparkles className="w-5 h-5 text-blue-600" />
               AI Job Description Generator
             </CardTitle>
             <p className="text-sm text-gray-600">Describe the role in 2-3 lines and let AI generate a complete job posting. You can review and edit everything before publishing.</p>
@@ -224,10 +227,7 @@ export default function NewJobPage() {
               >
                 {generating ? (
                   <span className="flex items-center gap-2">
-                    <svg className="w-4 h-4 animate-spin" viewBox="0 0 24 24" fill="none">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                    </svg>
+                    <Loader2 className="w-4 h-4 animate-spin" />
                     Generating...
                   </span>
                 ) : 'Generate'}
@@ -260,7 +260,7 @@ export default function NewJobPage() {
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="location">Location *</Label>
-                    <Input id="location" placeholder="Remote / New York" {...register('location')} />
+                    <LocationInput id="location" value={watch('location') ?? ''} onChange={(v) => setValue('location', v, { shouldValidate: true })} placeholder="Remote / New York" />
                     {errors.location && <p className="text-sm text-red-600">{errors.location.message}</p>}
                   </div>
                 </div>
@@ -269,7 +269,7 @@ export default function NewJobPage() {
                   <div className="space-y-2">
                     <Label>Employment Type *</Label>
                     <Select key={`et-${formKey}`} defaultValue={getValues('employment_type') || 'full_time'} onValueChange={(val) => setValue('employment_type', val as CreateJobInput['employment_type'])}>
-                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectTrigger><SelectValue placeholder="Select type" /></SelectTrigger>
                       <SelectContent>
                         {EMPLOYMENT_TYPES.map((t) => (
                           <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
@@ -281,7 +281,7 @@ export default function NewJobPage() {
                   <div className="space-y-2">
                     <Label>Remote Policy *</Label>
                     <Select key={`rp-${formKey}`} defaultValue={getValues('remote_policy') || 'on_site'} onValueChange={(val) => setValue('remote_policy', val as CreateJobInput['remote_policy'])}>
-                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectTrigger><SelectValue placeholder="Select policy" /></SelectTrigger>
                       <SelectContent>
                         {REMOTE_POLICIES.map((r) => (
                           <SelectItem key={r.value} value={r.value}>{r.label}</SelectItem>
@@ -293,7 +293,7 @@ export default function NewJobPage() {
                   <div className="space-y-2">
                     <Label>Experience Level *</Label>
                     <Select key={`el-${formKey}`} defaultValue={getValues('experience_level') || undefined} onValueChange={(val) => setValue('experience_level', val as CreateJobInput['experience_level'], { shouldValidate: true })}>
-                      <SelectTrigger><SelectValue placeholder="Select" /></SelectTrigger>
+                      <SelectTrigger><SelectValue placeholder="Select level" /></SelectTrigger>
                       <SelectContent>
                         {EXPERIENCE_LEVELS.map((l) => (
                           <SelectItem key={l.value} value={l.value}>{l.label}</SelectItem>
@@ -396,7 +396,7 @@ export default function NewJobPage() {
                 <div className="space-y-2">
                   <Label>Priority *</Label>
                   <Select key={`pr-${formKey}`} defaultValue={getValues('priority') || 'medium'} onValueChange={(val) => setValue('priority', val as CreateJobInput['priority'])}>
-                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectTrigger><SelectValue placeholder="Select priority" /></SelectTrigger>
                     <SelectContent>
                       {JOB_PRIORITIES.map((p) => (
                         <SelectItem key={p.value} value={p.value}>{p.label}</SelectItem>
@@ -411,7 +411,7 @@ export default function NewJobPage() {
                   {errors.num_openings && <p className="text-sm text-red-600">{errors.num_openings.message}</p>}
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="application_deadline">Application Deadline *</Label>
+                  <Label htmlFor="application_deadline">Application Deadline</Label>
                   <Input id="application_deadline" type="date" {...register('application_deadline')} />
                   {errors.application_deadline && <p className="text-sm text-red-600">{errors.application_deadline.message}</p>}
                 </div>
@@ -445,7 +445,7 @@ export default function NewJobPage() {
                 <div className="space-y-2">
                   <Label>Min Education *</Label>
                   <Select key={`edu-${formKey}`} defaultValue={getValues('education_level') || undefined} onValueChange={(val) => setValue('education_level', val as CreateJobInput['education_level'], { shouldValidate: true })}>
-                    <SelectTrigger><SelectValue placeholder="Select" /></SelectTrigger>
+                    <SelectTrigger><SelectValue placeholder="Select education" /></SelectTrigger>
                     <SelectContent>
                       {JOB_EDUCATION_LEVELS.map((e) => (
                         <SelectItem key={e.value} value={e.value}>{e.label}</SelectItem>
@@ -472,23 +472,24 @@ export default function NewJobPage() {
             {/* Compensation */}
             <Card>
               <CardHeader>
-                <CardTitle className="text-lg">Compensation</CardTitle>
+                <CardTitle className="text-lg">Compensation (Annual CTC)</CardTitle>
+                <p className="text-sm text-gray-500">Enter the annual Cost to Company (CTC) range for this role</p>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="space-y-2">
-                  <Label htmlFor="salary_min">Min Salary *</Label>
-                  <Input id="salary_min" type="number" placeholder="80000" {...register('salary_min')} />
+                  <Label htmlFor="salary_min">Min Annual CTC *</Label>
+                  <Input id="salary_min" type="number" placeholder="e.g. 800000" {...register('salary_min')} />
                   {errors.salary_min && <p className="text-sm text-red-600">{errors.salary_min.message}</p>}
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="salary_max">Max Salary *</Label>
-                  <Input id="salary_max" type="number" placeholder="120000" {...register('salary_max')} />
+                  <Label htmlFor="salary_max">Max Annual CTC *</Label>
+                  <Input id="salary_max" type="number" placeholder="e.g. 1200000" {...register('salary_max')} />
                   {errors.salary_max && <p className="text-sm text-red-600">{errors.salary_max.message}</p>}
                 </div>
                 <div className="space-y-2">
                   <Label>Currency *</Label>
-                  <Select key={`cur-${formKey}`} defaultValue={getValues('salary_currency') || 'USD'} onValueChange={(val) => setValue('salary_currency', val)}>
-                    <SelectTrigger><SelectValue /></SelectTrigger>
+                  <Select key={`cur-${formKey}`} defaultValue={getValues('salary_currency') || 'INR'} onValueChange={(val) => setValue('salary_currency', val)}>
+                    <SelectTrigger><SelectValue placeholder="Select currency" /></SelectTrigger>
                     <SelectContent>
                       {CURRENCIES.map((c) => (
                         <SelectItem key={c} value={c}>{c}</SelectItem>
@@ -541,7 +542,7 @@ export default function NewJobPage() {
                         className="text-red-500 hover:text-red-700 px-1.5 h-8"
                         onClick={() => setCriteria(criteria.filter((_, i) => i !== idx))}
                       >
-                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+                        <X className="w-4 h-4" />
                       </Button>
                     </div>
                     <Input

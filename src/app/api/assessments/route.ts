@@ -7,6 +7,7 @@ import {
 } from '@/lib/services/assessments'
 import { getValidAccessToken, sendGmailEmail } from '@/lib/services/gmail'
 import { moveApplication } from '@/lib/services/applications'
+import { logActivity } from '@/lib/services/activity'
 
 export async function GET(request: NextRequest) {
   const supabase = await createClient()
@@ -97,6 +98,15 @@ export async function POST(request: NextRequest) {
   )
 
   if (invError) return NextResponse.json({ error: invError.message }, { status: 500 })
+
+  // Log activity
+  const candidateName = `${candidate.first_name} ${candidate.last_name}`
+  const jobTitle = job?.title || 'Position'
+  logActivity(supabase, membership.organization_id, user.id, 'application', application_id as string, 'assessment_sent', {
+    assessment_name: assessment_name || 'Assessment',
+    candidate_name: candidateName,
+    job_title: jobTitle,
+  }).catch(() => {})
 
   // Get org name for email
   const { data: org } = await supabase

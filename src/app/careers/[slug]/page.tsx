@@ -94,7 +94,7 @@ export default async function CareersPage({ params }: Props) {
           <div className="space-y-4">
             <p className="text-sm font-medium text-gray-500">{jobs.length} open position{jobs.length !== 1 ? 's' : ''}</p>
             {jobs.map((job) => {
-              const salary = formatSalary(job.salary_min, job.salary_max, job.salary_currency ?? 'USD')
+              const salary = formatSalary(job.salary_min, job.salary_max, job.salary_currency ?? 'INR')
               const expLabel = job.experience_level ? EXPERIENCE_LABELS[job.experience_level] ?? job.experience_level : null
               const remoteLabel = job.remote_policy ? REMOTE_LABELS[job.remote_policy] ?? job.remote_policy : null
               const deadline = job.application_deadline

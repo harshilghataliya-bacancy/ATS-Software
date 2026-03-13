@@ -1,47 +1,47 @@
 import { z } from 'zod'
 
-const employmentTypeEnum = z.enum(['full_time', 'part_time', 'contract', 'internship'], { message: 'Please select employment type' })
+const employmentTypeEnum = z.enum(['full_time', 'part_time', 'contract', 'internship'], { message: 'Please select an employment type' })
 const jobStatusEnum = z.enum(['draft', 'published', 'closed', 'archived'], { message: 'Please select a status' })
-const experienceLevelEnum = z.enum(['entry', 'mid', 'senior', 'lead', 'director', 'vp', 'c_level'], { message: 'Please select experience level' })
-const remotePolicyEnum = z.enum(['on_site', 'hybrid', 'remote'], { message: 'Please select remote policy' })
-const priorityEnum = z.enum(['low', 'medium', 'high', 'urgent'], { message: 'Please select priority' })
-const jobEducationEnum = z.enum(['any', 'high_school', 'associate', 'bachelor', 'master', 'doctorate'], { message: 'Please select education level' })
+const experienceLevelEnum = z.enum(['entry', 'mid', 'senior', 'lead', 'director', 'vp', 'c_level'], { message: 'Please select an experience level' })
+const remotePolicyEnum = z.enum(['on_site', 'hybrid', 'remote'], { message: 'Please select a remote policy' })
+const priorityEnum = z.enum(['low', 'medium', 'high', 'urgent'], { message: 'Please select a priority' })
+const jobEducationEnum = z.enum(['any', 'high_school', 'associate', 'bachelor', 'master', 'doctorate'], { message: 'Please select an education level' })
 
 export const createJobSchema = z.object({
-  title: z.string().min(2, 'Title must be at least 2 characters'),
-  department: z.string().min(1, 'Department is required'),
-  location: z.string().min(1, 'Location is required'),
+  title: z.string({ message: 'Please enter a job title' }).min(2, 'Please enter at least 2 characters for the title'),
+  department: z.string({ message: 'Please enter a department' }).min(1, 'Please enter a department'),
+  location: z.string({ message: 'Please enter a location' }).min(1, 'Please enter a location'),
   employment_type: employmentTypeEnum,
-  description: z.string().min(10, 'Description must be at least 10 characters'),
-  requirements: z.string().min(10, 'Requirements must be at least 10 characters'),
+  description: z.string({ message: 'Please add a job description' }).min(10, 'Please add at least 10 characters for the description'),
+  requirements: z.string({ message: 'Please add job requirements' }).min(10, 'Please add at least 10 characters for the requirements'),
   salary_min: z.preprocess(
     (val) => (val === '' || val === undefined || val === null ? undefined : Number(val)),
-    z.number({ message: 'Min salary is required' }).positive('Must be positive')
+    z.number({ message: 'Please enter the minimum salary' }).positive('Salary must be a positive number')
   ),
   salary_max: z.preprocess(
     (val) => (val === '' || val === undefined || val === null ? undefined : Number(val)),
-    z.number({ message: 'Max salary is required' }).positive('Must be positive')
+    z.number({ message: 'Please enter the maximum salary' }).positive('Salary must be a positive number')
   ),
-  salary_currency: z.string().default('USD'),
+  salary_currency: z.string().default('INR'),
   status: jobStatusEnum.default('draft'),
   experience_level: experienceLevelEnum,
   num_openings: z.preprocess(
     (val) => (val === '' || val === undefined || val === null ? 1 : Number(val)),
-    z.number().int().min(1, 'Must be at least 1').default(1)
+    z.number().int().min(1, 'Please enter at least 1 opening').default(1)
   ),
-  application_deadline: z.string().min(1, 'Application deadline is required'),
+  application_deadline: z.string().optional().nullable().or(z.literal('')),
   remote_policy: remotePolicyEnum.default('on_site'),
-  skills: z.array(z.string()).min(1, 'At least one skill is required'),
-  benefits: z.string().min(1, 'Benefits is required'),
-  nice_to_have: z.string().min(1, 'Nice to have is required'),
+  skills: z.array(z.string(), { message: 'Please add at least one skill' }).min(1, 'Please add at least one skill'),
+  benefits: z.string({ message: 'Please add benefits & perks' }).min(1, 'Please add benefits & perks'),
+  nice_to_have: z.string({ message: 'Please add nice-to-have qualifications' }).min(1, 'Please add nice-to-have qualifications'),
   education_level: jobEducationEnum,
   experience_min: z.preprocess(
     (val) => (val === '' || val === undefined || val === null ? undefined : Number(val)),
-    z.number({ message: 'Min experience is required' }).min(0)
+    z.number({ message: 'Please enter minimum experience' }).min(0, 'Experience cannot be negative')
   ),
   experience_max: z.preprocess(
     (val) => (val === '' || val === undefined || val === null ? undefined : Number(val)),
-    z.number({ message: 'Max experience is required' }).min(0)
+    z.number({ message: 'Please enter maximum experience' }).min(0, 'Experience cannot be negative')
   ),
   priority: priorityEnum.default('medium'),
   assigned_to: z.string().uuid().nullable().optional(),
@@ -51,7 +51,7 @@ export type CreateJobInput = z.infer<typeof createJobSchema>
 
 // Update schema keeps everything optional so individual fields can be patched
 export const updateJobSchema = z.object({
-  title: z.string().min(2, 'Title must be at least 2 characters').optional(),
+  title: z.string().min(2, 'Please enter at least 2 characters for the title').optional(),
   department: z.string().min(1).optional(),
   location: z.string().min(1).optional(),
   employment_type: employmentTypeEnum.optional(),

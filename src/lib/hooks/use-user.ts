@@ -42,5 +42,6 @@ export function useRole() {
     canViewReports: role === 'admin' || role === 'recruiter',
     canViewAllInterviews: role !== 'interviewer',
     canSendWhatsApp: role !== null && role !== 'interviewer',
+    canAccessBanks: role === 'admin' || role === 'recruiter' || role === 'hiring_manager',
   }
 }

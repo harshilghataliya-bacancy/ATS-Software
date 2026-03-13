@@ -54,8 +54,8 @@ Return a JSON object with exactly these fields:
   "education_level": "One of: any, high_school, associate, bachelor, master, doctorate",
   "experience_min": number (minimum years of experience),
   "experience_max": number (maximum years of experience),
-  "salary_min": number or null (estimated minimum annual salary in USD, can be null if unclear),
-  "salary_max": number or null (estimated maximum annual salary in USD, can be null if unclear),
+  "salary_min": number or null (estimated minimum annual salary in INR, can be null if unclear),
+  "salary_max": number or null (estimated maximum annual salary in INR, can be null if unclear),
   "priority": "One of: low, medium, high, urgent. Default to medium."
 }
 

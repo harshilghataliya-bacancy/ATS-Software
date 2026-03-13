@@ -34,6 +34,7 @@ export function ScheduleInterviewDialog({
   jobTitle,
   onSuccess,
 }: ScheduleInterviewDialogProps) {
+  const [title, setTitle] = useState('')
   const [type, setType] = useState('video')
   const [date, setDate] = useState('')
   const [duration, setDuration] = useState(60)
@@ -43,9 +44,27 @@ export function ScheduleInterviewDialog({
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
+  function getLocalNow() {
+    const now = new Date()
+    now.setMinutes(now.getMinutes() - now.getTimezoneOffset())
+    return now.toISOString().slice(0, 16)
+  }
+
   async function handleSchedule() {
+    if (!title.trim()) {
+      setError('Interview name is required')
+      return
+    }
     if (!date) {
       setError('Date and time is required')
+      return
+    }
+    if (new Date(date) <= new Date()) {
+      setError('Cannot schedule an interview in the past')
+      return
+    }
+    if (type === 'onsite' && !location.trim()) {
+      setError('Location is required for face to face interviews')
       return
     }
 
@@ -58,10 +77,11 @@ export function ScheduleInterviewDialog({
       orgId,
       {
         application_id: applicationId,
+        title: title.trim(),
         interview_type: type,
         scheduled_at: new Date(date).toISOString(),
         duration_minutes: duration,
-        location: location || undefined,
+        location: type === 'onsite' ? location.trim() : (location || undefined),
         meeting_link: meetingLink || undefined,
         notes: notes || undefined,
         panelists: [{ user_id: userId, role: 'interviewer' }],
@@ -81,6 +101,7 @@ export function ScheduleInterviewDialog({
   }
 
   function resetForm() {
+    setTitle('')
     setType('video')
     setDate('')
     setDuration(60)
@@ -105,6 +126,11 @@ export function ScheduleInterviewDialog({
         )}
 
         <div className="space-y-4">
+          <div className="space-y-2">
+            <Label>Interview Name <span className="text-red-500">*</span></Label>
+            <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. Technical Round 1, HR Screening" />
+          </div>
+
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label>Type *</Label>
@@ -125,19 +151,15 @@ export function ScheduleInterviewDialog({
 
           <div className="space-y-2">
             <Label>Date & Time *</Label>
-            <Input type="datetime-local" value={date} onChange={(e) => setDate(e.target.value)} />
+            <Input type="datetime-local" value={date} min={getLocalNow()} onChange={(e) => setDate(e.target.value)} />
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
+          {type === 'onsite' && (
             <div className="space-y-2">
-              <Label>Location</Label>
-              <Input value={location} onChange={(e) => setLocation(e.target.value)} placeholder="Office, Room 3B" />
+              <Label>Location <span className="text-red-500">*</span></Label>
+              <Input value={location} onChange={(e) => setLocation(e.target.value)} placeholder="e.g. Office, Room 3B, Building A" />
             </div>
-            <div className="space-y-2">
-              <Label>Meeting Link</Label>
-              <Input value={meetingLink} onChange={(e) => setMeetingLink(e.target.value)} placeholder="https://meet.google.com/..." />
-            </div>
-          </div>
+          )}
 
           <div className="space-y-2">
             <Label>Notes</Label>

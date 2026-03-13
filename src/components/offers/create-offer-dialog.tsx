@@ -36,7 +36,7 @@ export function CreateOfferDialog({
 }: CreateOfferDialogProps) {
   const { organization } = useUser()
   const [salary, setSalary] = useState('')
-  const [currency, setCurrency] = useState('USD')
+  const [currency, setCurrency] = useState('INR')
   const [startDate, setStartDate] = useState('')
   const [expiryDate, setExpiryDate] = useState('')
   const [templateHtml, setTemplateHtml] = useState(DEFAULT_OFFER_TEMPLATE)
@@ -47,7 +47,7 @@ export function CreateOfferDialog({
   useEffect(() => {
     if (open) {
       setSalary('')
-      setCurrency('USD')
+      setCurrency('INR')
       setStartDate('')
       setExpiryDate('')
       setTemplateHtml(DEFAULT_OFFER_TEMPLATE)
@@ -165,6 +165,7 @@ export function CreateOfferDialog({
               <Input
                 type="date"
                 value={startDate}
+                min={new Date().toISOString().split('T')[0]}
                 onChange={(e) => setStartDate(e.target.value)}
               />
             </div>
@@ -173,6 +174,7 @@ export function CreateOfferDialog({
               <Input
                 type="date"
                 value={expiryDate}
+                min={new Date().toISOString().split('T')[0]}
                 onChange={(e) => setExpiryDate(e.target.value)}
               />
             </div>

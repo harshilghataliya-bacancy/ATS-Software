@@ -1,32 +1,49 @@
 'use client'
 
-import { useState, useRef } from 'react'
-import { useRouter } from 'next/navigation'
+import { useState, useRef, useEffect } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
-import { createCandidateSchema, type CreateCandidateInput } from '@/lib/validators/candidate'
+import { createCandidateSchema, type CreateCandidateInput, EDUCATION_LABELS, GENDER_OPTIONS, NOTICE_PERIOD_OPTIONS } from '@/lib/validators/candidate'
 import { useUser } from '@/lib/hooks/use-user'
 import { createClient } from '@/lib/supabase/client'
 import { createCandidate } from '@/lib/services/candidates'
-import { CANDIDATE_SOURCES, ALLOWED_RESUME_TYPES, MAX_FILE_SIZE } from '@/lib/constants'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { createApplication } from '@/lib/services/applications'
+import { getJobById } from '@/lib/services/jobs'
+import { CANDIDATE_SOURCES, ALLOWED_RESUME_TYPES, MAX_FILE_SIZE, CURRENCIES } from '@/lib/constants'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Checkbox } from '@/components/ui/checkbox'
+import { Separator } from '@/components/ui/separator'
+import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
+import { LocationInput } from '@/components/ui/location-input'
+import { useToast } from '@/hooks/use-toast'
+import { ArrowLeft, Upload, FileText, Check, Sparkles, X, UserPlus } from 'lucide-react'
 
 export default function NewCandidatePage() {
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const jobId = searchParams.get('jobId')
+  const { toast } = useToast()
   const { user, organization } = useUser()
-  const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [resumeFile, setResumeFile] = useState<File | null>(null)
   const [parsing, setParsing] = useState(false)
   const [parsed, setParsed] = useState(false)
+  const [jobTitle, setJobTitle] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    if (!jobId || !organization) return
+    const supabase = createClient()
+    getJobById(supabase, jobId, organization.id).then(({ data }) => {
+      if (data) setJobTitle(data.title as string)
+    })
+  }, [jobId, organization])
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const { register, handleSubmit, formState: { errors }, setValue, watch } = useForm<CreateCandidateInput>({
@@ -54,17 +71,16 @@ export default function NewCandidatePage() {
     const file = e.target.files?.[0]
     if (!file) return
     if (!ALLOWED_RESUME_TYPES.includes(file.type)) {
-      setError('Only PDF and Word documents are allowed')
+      toast({ variant: 'destructive', title: 'Invalid File', description: 'Only PDF and Word documents are allowed' })
       return
     }
     if (file.size > MAX_FILE_SIZE) {
-      setError('File size must be under 10MB')
+      toast({ variant: 'destructive', title: 'File Too Large', description: 'File size must be under 10MB' })
       return
     }
-    setError(null)
+
     setResumeFile(file)
 
-    // Auto-parse only PDFs (Word docs not supported by unpdf)
     if (file.type === 'application/pdf') {
       setParsing(true)
       setParsed(false)
@@ -87,6 +103,9 @@ export default function NewCandidatePage() {
             if (data.notice_period) setValue('notice_period', data.notice_period as CreateCandidateInput['notice_period'])
             if (data.current_salary) setValue('current_salary', data.current_salary)
             if (data.expected_salary) setValue('expected_salary', data.expected_salary)
+            if (data.skills && Array.isArray(data.skills) && data.skills.length > 0) {
+              setValue('tags', data.skills)
+            }
             setParsed(true)
           }
         }
@@ -101,13 +120,12 @@ export default function NewCandidatePage() {
   async function onSubmit(data: CreateCandidateInput) {
     if (!organization || !user) return
     setSaving(true)
-    setError(null)
 
     const supabase = createClient()
     const { data: candidate, error: createError } = await createCandidate(supabase, organization.id, data, user.id)
 
     if (createError) {
-      setError(createError.message)
+      toast({ variant: 'destructive', title: 'Error', description: createError.message })
       setSaving(false)
       return
     }
@@ -123,7 +141,6 @@ export default function NewCandidatePage() {
         const { data: { publicUrl } } = supabase.storage.from('resumes').getPublicUrl(filePath)
         await supabase.from('candidates').update({ resume_url: publicUrl }).eq('id', candidate.id)
 
-        // Trigger full parse in background to store resume_parsed_data
         fetch('/api/resumes/parse', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -132,180 +149,252 @@ export default function NewCandidatePage() {
       }
     }
 
+    if (candidate?.id && jobId) {
+      const { error: appError } = await createApplication(supabase, organization.id, {
+        candidate_id: candidate.id,
+        job_id: jobId,
+      })
+      if (appError) {
+        toast({ variant: 'destructive', title: 'Error', description: appError.message })
+        setSaving(false)
+        return
+      }
+      router.push(`/jobs/${jobId}/applications`)
+      return
+    }
+
     router.push('/candidates')
   }
 
   return (
-    <div className="max-w-3xl">
-      <div className="mb-6">
-        <button
-          onClick={() => router.back()}
-          className="inline-flex items-center gap-1 text-sm text-gray-500 hover:text-gray-900 mb-3 transition-colors"
-        >
-          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" />
-          </svg>
+    <div className="max-w-4xl mx-auto">
+      {/* Header */}
+      <div className="mb-8">
+        <Button type="button" variant="ghost" size="sm" className="gap-1.5 text-gray-500 hover:text-gray-900 mb-4" onClick={() => router.back()}>
+          <ArrowLeft className="w-4 h-4" />
           Back
-        </button>
-        <h1 className="text-2xl font-bold text-gray-900">Add Candidate</h1>
-        <p className="text-gray-500 mt-1">Upload a resume to auto-fill details, or fill in manually</p>
+        </Button>
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 text-white flex items-center justify-center shadow-sm shadow-blue-200">
+              <UserPlus className="w-5 h-5" />
+            </div>
+            <div>
+            <h1 className="text-xl font-semibold text-gray-900">New Candidate</h1>
+            {jobTitle ? (
+              <p className="text-sm text-gray-500 mt-1">
+                Adding to <span className="font-medium text-gray-700">{jobTitle}</span>
+              </p>
+            ) : (
+              <p className="text-sm text-gray-500 mt-1">Fill in candidate details or upload a resume to auto-fill</p>
+            )}
+            </div>
+          </div>
+        </div>
       </div>
 
-      {error && (
-        <div className="bg-red-50 text-red-700 text-sm p-3 rounded-md mb-4">{error}</div>
-      )}
+      {/* Resume Upload */}
+      <div className="bg-white rounded-xl border border-gray-200 p-6 mb-8">
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept=".pdf,.doc,.docx"
+          onChange={handleFileChange}
+          className="hidden"
+        />
 
-      {/* ── Resume Upload (first, prominent) ── */}
-      <Card className="mb-6 border-2 border-dashed border-gray-200 bg-gray-50/50">
-        <CardContent className="pt-6 pb-6">
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept=".pdf,.doc,.docx"
-            onChange={handleFileChange}
-            className="hidden"
-          />
+        {parsing ? (
+          <div className="flex items-center gap-4">
+            <div className="w-10 h-10 rounded-lg bg-gray-100 flex items-center justify-center animate-pulse">
+              <Sparkles className="w-5 h-5 text-gray-600" />
+            </div>
+            <div className="flex-1">
+              <p className="text-sm font-medium text-gray-900">Parsing resume with AI...</p>
+              <p className="text-xs text-gray-400 mt-0.5">Extracting candidate details automatically</p>
+              <div className="flex gap-2 mt-3">
+                <Skeleton className="h-2.5 w-24 rounded-full" />
+                <Skeleton className="h-2.5 w-16 rounded-full" />
+                <Skeleton className="h-2.5 w-20 rounded-full" />
+              </div>
+            </div>
+          </div>
+        ) : resumeFile ? (
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${parsed ? 'bg-emerald-50' : 'bg-gray-100'}`}>
+                {parsed ? (
+                  <Check className="w-5 h-5 text-emerald-600" />
+                ) : (
+                  <FileText className="w-5 h-5 text-gray-500" />
+                )}
+              </div>
+              <div>
+                <p className="text-sm font-medium text-gray-900">{resumeFile.name}</p>
+                <p className="text-xs text-gray-400">
+                  {parsed && 'Fields auto-filled from resume'}
+                </p>
+              </div>
+            </div>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => fileInputRef.current?.click()}
+              className="text-xs"
+            >
+              Change file
+            </Button>
+          </div>
+        ) : (
           <div
-            className="flex flex-col items-center text-center cursor-pointer"
+            className="flex items-center gap-4 cursor-pointer group"
             onClick={() => fileInputRef.current?.click()}
           >
-            {parsing ? (
-              <div className="w-full space-y-2">
-                <div className="w-10 h-10 rounded-full bg-indigo-100 flex items-center justify-center mx-auto mb-3 animate-pulse">
-                  <svg className="w-5 h-5 text-indigo-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z" />
-                  </svg>
-                </div>
-                <p className="text-sm font-medium text-indigo-700">Parsing resume with AI…</p>
-                <p className="text-xs text-gray-400">Extracting candidate details</p>
-                <div className="space-y-2 mt-3 text-left">
-                  <Skeleton className="h-3 w-3/4 mx-auto" />
-                  <Skeleton className="h-3 w-1/2 mx-auto" />
-                  <Skeleton className="h-3 w-2/3 mx-auto" />
-                </div>
-              </div>
-            ) : resumeFile ? (
-              <div className="flex items-center gap-3">
-                <div className={`w-10 h-10 rounded-full flex items-center justify-center ${parsed ? 'bg-green-100' : 'bg-blue-100'}`}>
-                  {parsed ? (
-                    <svg className="w-5 h-5 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    </svg>
-                  ) : (
-                    <svg className="w-5 h-5 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
-                    </svg>
-                  )}
-                </div>
-                <div className="text-left">
-                  <p className="text-sm font-semibold text-gray-900">{resumeFile.name}</p>
-                  <p className="text-xs text-gray-500">
-                    {parsed ? '✓ Details auto-filled from resume · ' : ''}
-                    <span className="text-indigo-600 hover:underline cursor-pointer" onClick={(e) => { e.stopPropagation(); fileInputRef.current?.click() }}>
-                      Change file
-                    </span>
-                  </p>
-                </div>
-              </div>
-            ) : (
-              <>
-                <div className="w-12 h-12 rounded-full bg-indigo-50 flex items-center justify-center mb-3">
-                  <svg className="w-6 h-6 text-indigo-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" />
-                  </svg>
-                </div>
-                <p className="text-sm font-semibold text-gray-700 mb-1">Upload Resume to Auto-Fill</p>
-                <p className="text-xs text-gray-400 mb-3">PDF, DOC, DOCX · up to 10MB</p>
-                <Button type="button" size="sm" variant="outline" className="pointer-events-none">
-                  Choose File
-                </Button>
-              </>
-            )}
+            <div className="w-10 h-10 rounded-lg bg-gray-100 group-hover:bg-gray-200 flex items-center justify-center transition-colors">
+              <Upload className="w-5 h-5 text-gray-500" />
+            </div>
+            <div className="flex-1">
+              <p className="text-sm font-medium text-gray-900 group-hover:text-gray-700">Upload Resume</p>
+              <p className="text-xs text-gray-400">PDF up to 10MB &mdash; AI will auto-fill fields</p>
+            </div>
+            <Button type="button" variant="outline" size="sm" className="pointer-events-none text-xs">
+              Browse
+            </Button>
           </div>
-        </CardContent>
-      </Card>
+        )}
+      </div>
 
-      <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-lg">Personal Info</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="first_name">First Name *</Label>
-                <Input id="first_name" placeholder="John" {...register('first_name')} />
-                {errors.first_name && <p className="text-sm text-red-600">{errors.first_name.message}</p>}
+      {/* Form */}
+      <form onSubmit={handleSubmit(onSubmit, () => {
+        toast({ variant: 'destructive', title: 'Validation Error', description: 'Please fix the highlighted fields before submitting' })
+      })}>
+        <div className="bg-white rounded-xl border border-gray-200 divide-y divide-gray-100">
+
+          {/* Section 1: Personal Information */}
+          <div className="p-6">
+            <h2 className="text-sm font-semibold text-gray-900 uppercase tracking-wide mb-5">Personal Information</h2>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-5">
+              <div className="space-y-1.5">
+                <Label htmlFor="first_name" className="text-xs font-medium text-gray-600">First Name <span className="text-red-500">*</span></Label>
+                <Input id="first_name" placeholder="John" {...register('first_name')} className="h-9" />
+                {errors.first_name && <p className="text-xs text-red-500">{errors.first_name.message}</p>}
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="last_name">Last Name *</Label>
-                <Input id="last_name" placeholder="Doe" {...register('last_name')} />
-                {errors.last_name && <p className="text-sm text-red-600">{errors.last_name.message}</p>}
+              <div className="space-y-1.5">
+                <Label htmlFor="last_name" className="text-xs font-medium text-gray-600">Last Name <span className="text-red-500">*</span></Label>
+                <Input id="last_name" placeholder="Doe" {...register('last_name')} className="h-9" />
+                {errors.last_name && <p className="text-xs text-red-500">{errors.last_name.message}</p>}
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="email" className="text-xs font-medium text-gray-600">Email <span className="text-red-500">*</span></Label>
+                <Input id="email" type="email" placeholder="john@example.com" {...register('email')} className="h-9" />
+                {errors.email && <p className="text-xs text-red-500">{errors.email.message}</p>}
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="phone" className="text-xs font-medium text-gray-600">Phone <span className="text-red-500">*</span></Label>
+                <Input id="phone" type="tel" placeholder="+91 98765 43210" {...register('phone')} className="h-9" />
+                {errors.phone && <p className="text-xs text-red-500">{errors.phone.message}</p>}
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="location" className="text-xs font-medium text-gray-600">Location</Label>
+                <LocationInput id="location" value={watch('location') ?? ''} onChange={(v) => setValue('location', v)} placeholder="Mumbai, India" className="h-9" />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="date_of_birth" className="text-xs font-medium text-gray-600">Date of Birth</Label>
+                <Input id="date_of_birth" type="date" max={new Date().toISOString().split('T')[0]} {...register('date_of_birth')} className="h-9" />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs font-medium text-gray-600">Gender</Label>
+                <Select onValueChange={(val) => setValue('gender', val)}>
+                  <SelectTrigger className="h-9"><SelectValue placeholder="Select" /></SelectTrigger>
+                  <SelectContent>
+                    {GENDER_OPTIONS.map((g) => (
+                      <SelectItem key={g.value} value={g.value}>{g.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
             </div>
+          </div>
 
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="email">Email *</Label>
-                <Input id="email" type="email" placeholder="john@example.com" {...register('email')} />
-                {errors.email && <p className="text-sm text-red-600">{errors.email.message}</p>}
+          {/* Section 2: Professional Details */}
+          <div className="p-6">
+            <h2 className="text-sm font-semibold text-gray-900 uppercase tracking-wide mb-5">Professional Details</h2>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-5">
+              <div className="space-y-1.5">
+                <Label htmlFor="current_company" className="text-xs font-medium text-gray-600">Current Company</Label>
+                <Input id="current_company" placeholder="Acme Inc." {...register('current_company')} className="h-9" />
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="phone">Phone *</Label>
-                <Input id="phone" placeholder="+1 555 123 4567" {...register('phone')} />
-                {errors.phone && <p className="text-sm text-red-600">{errors.phone.message}</p>}
+              <div className="space-y-1.5">
+                <Label htmlFor="current_title" className="text-xs font-medium text-gray-600">Current Title</Label>
+                <Input id="current_title" placeholder="Senior Engineer" {...register('current_title')} className="h-9" />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="experience_years" className="text-xs font-medium text-gray-600">Years of Experience</Label>
+                <Input id="experience_years" type="number" min={0} placeholder="5" {...register('experience_years', { valueAsNumber: true })} className="h-9" />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs font-medium text-gray-600">Education</Label>
+                <Select onValueChange={(val) => setValue('education', val as CreateCandidateInput['education'])}>
+                  <SelectTrigger className="h-9"><SelectValue placeholder="Select" /></SelectTrigger>
+                  <SelectContent>
+                    {Object.entries(EDUCATION_LABELS).map(([value, label]) => (
+                      <SelectItem key={value} value={value}>{label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs font-medium text-gray-600">Notice Period</Label>
+                <Select onValueChange={(val) => setValue('notice_period', val)}>
+                  <SelectTrigger className="h-9"><SelectValue placeholder="Select" /></SelectTrigger>
+                  <SelectContent>
+                    {NOTICE_PERIOD_OPTIONS.map((n) => (
+                      <SelectItem key={n.value} value={n.value}>{n.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="linkedin_url" className="text-xs font-medium text-gray-600">LinkedIn URL</Label>
+                <Input id="linkedin_url" placeholder="https://linkedin.com/in/..." {...register('linkedin_url')} className="h-9" />
+                {errors.linkedin_url && <p className="text-xs text-red-500">{errors.linkedin_url.message}</p>}
+              </div>
+              <div className="space-y-1.5 sm:col-span-2">
+                <Label htmlFor="portfolio_url" className="text-xs font-medium text-gray-600">Portfolio / Website</Label>
+                <Input id="portfolio_url" placeholder="https://..." {...register('portfolio_url')} className="h-9" />
+                {errors.portfolio_url && <p className="text-xs text-red-500">{errors.portfolio_url.message}</p>}
               </div>
             </div>
+          </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="location">Location</Label>
-              <Input id="location" placeholder="New York, NY" {...register('location')} />
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-lg">Professional Info</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="current_company">Current Company</Label>
-                <Input id="current_company" placeholder="Acme Inc." {...register('current_company')} />
+          {/* Section 3: Compensation */}
+          <div className="p-6">
+            <h2 className="text-sm font-semibold text-gray-900 uppercase tracking-wide mb-5">Compensation</h2>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-5">
+              <div className="space-y-1.5">
+                <Label htmlFor="current_salary" className="text-xs font-medium text-gray-600">Current Salary ({CURRENCIES[0]})</Label>
+                <Input id="current_salary" type="number" min={0} placeholder="0" onKeyDown={(e) => { if (e.key === '-' || e.key === 'e') e.preventDefault() }} {...register('current_salary', { valueAsNumber: true })} className="h-9" />
+                {errors.current_salary && <p className="text-xs text-red-500">{errors.current_salary.message}</p>}
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="current_title">Current Title</Label>
-                <Input id="current_title" placeholder="Senior Engineer" {...register('current_title')} />
+              <div className="space-y-1.5">
+                <Label htmlFor="expected_salary" className="text-xs font-medium text-gray-600">Expected Salary ({CURRENCIES[0]})</Label>
+                <Input id="expected_salary" type="number" min={0} placeholder="0" onKeyDown={(e) => { if (e.key === '-' || e.key === 'e') e.preventDefault() }} {...register('expected_salary', { valueAsNumber: true })} className="h-9" />
+                {errors.expected_salary && <p className="text-xs text-red-500">{errors.expected_salary.message}</p>}
               </div>
             </div>
+          </div>
 
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="linkedin_url">LinkedIn URL</Label>
-                <Input id="linkedin_url" placeholder="https://linkedin.com/in/..." {...register('linkedin_url')} />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="portfolio_url">Portfolio URL</Label>
-                <Input id="portfolio_url" placeholder="https://..." {...register('portfolio_url')} />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-lg">Source & Tags</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label>Source</Label>
+          {/* Section 4: Source & Tags */}
+          <div className="p-6">
+            <h2 className="text-sm font-semibold text-gray-900 uppercase tracking-wide mb-5">Source & Tags</h2>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-5">
+              <div className="space-y-1.5">
+                <Label className="text-xs font-medium text-gray-600">Source</Label>
                 <Select
                   defaultValue="direct"
                   onValueChange={(val) => setValue('source', val as CreateCandidateInput['source'])}
                 >
-                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     {CANDIDATE_SOURCES.map((s) => (
                       <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>
@@ -313,68 +402,86 @@ export default function NewCandidatePage() {
                   </SelectContent>
                 </Select>
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="source_details">Source Details</Label>
-                <Input id="source_details" placeholder="Referred by..." {...register('source_details')} />
+              <div className="space-y-1.5">
+                <Label htmlFor="source_details" className="text-xs font-medium text-gray-600">Source Details</Label>
+                <Input id="source_details" placeholder="Referred by..." {...register('source_details')} className="h-9" />
               </div>
-            </div>
-
-            <div className="space-y-2">
-              <Label>Tags</Label>
-              <div className="flex gap-2">
-                <Input
-                  placeholder="Add tag (press Enter)"
-                  value={tagInput}
-                  onChange={(e) => setTagInput(e.target.value)}
-                  onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addTag() } }}
-                />
-                <Button type="button" variant="outline" onClick={addTag}>Add</Button>
-              </div>
-              {tags.length > 0 && (
-                <div className="flex flex-wrap gap-1.5 mt-2">
-                  {tags.map((tag) => (
-                    <span key={tag} className="inline-flex items-center gap-1 text-xs bg-indigo-50 text-indigo-700 px-2 py-1 rounded">
-                      {tag}
-                      <button type="button" onClick={() => removeTag(tag)} className="hover:text-red-600">&times;</button>
-                    </span>
-                  ))}
+              <div className="space-y-1.5 sm:col-span-2">
+                <Label className="text-xs font-medium text-gray-600">Tags / Skills</Label>
+                <div className="flex gap-2">
+                  <Input
+                    placeholder="Type a tag and press Enter"
+                    value={tagInput}
+                    onChange={(e) => setTagInput(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addTag() } }}
+                    className="h-9"
+                  />
+                  <Button type="button" variant="outline" size="sm" onClick={addTag} className="h-9 px-4">
+                    Add
+                  </Button>
                 </div>
-              )}
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="notes">Notes</Label>
-              <Textarea id="notes" rows={3} placeholder="Any additional notes..." {...register('notes')} />
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex items-start gap-3">
-              <Checkbox
-                id="gdpr_consent"
-                checked={gdprConsent}
-                onCheckedChange={(checked) => { if (checked === true) setValue('gdpr_consent', true) }}
-              />
-              <div>
-                <Label htmlFor="gdpr_consent" className="text-sm font-medium cursor-pointer">GDPR Consent *</Label>
-                <p className="text-xs text-gray-500 mt-0.5">
-                  Candidate has given consent to store and process their personal data.
-                </p>
+                {tags.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5 mt-2.5">
+                    {tags.map((tag) => (
+                      <Badge key={tag} variant="secondary" className="text-xs font-normal gap-1 pl-2.5 pr-1.5 py-1 bg-gray-100 text-gray-700 hover:bg-gray-100 border-0">
+                        {tag}
+                        <button type="button" onClick={() => removeTag(tag)} className="ml-0.5 hover:text-red-600 transition-colors">
+                          <X className="w-3 h-3" />
+                        </button>
+                      </Badge>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
-            {errors.gdpr_consent && (
-              <p className="text-sm text-red-600 mt-2">{errors.gdpr_consent.message}</p>
-            )}
-          </CardContent>
-        </Card>
+          </div>
 
-        <div className="flex gap-3">
-          <Button type="submit" disabled={saving || parsing}>
-            {saving ? 'Adding...' : 'Add Candidate'}
+          {/* Section 5: Additional Notes & Cover Letter */}
+          <div className="p-6">
+            <h2 className="text-sm font-semibold text-gray-900 uppercase tracking-wide mb-5">Additional</h2>
+            <div className="space-y-5">
+              <div className="space-y-1.5">
+                <Label htmlFor="cover_letter" className="text-xs font-medium text-gray-600">Cover Letter</Label>
+                <Textarea id="cover_letter" rows={3} placeholder="Candidate's cover letter or summary..." {...register('cover_letter')} />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="notes" className="text-xs font-medium text-gray-600">Internal Notes</Label>
+                <Textarea id="notes" rows={2} placeholder="Any private notes about this candidate..." {...register('notes')} />
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* GDPR Consent */}
+        <div className="bg-white rounded-xl border border-gray-200 mt-6 p-6">
+          <div className="flex items-start gap-3">
+            <Checkbox
+              id="gdpr_consent"
+              checked={gdprConsent}
+              onCheckedChange={(checked) => { if (checked === true) setValue('gdpr_consent', true) }}
+              className="mt-0.5"
+            />
+            <div>
+              <Label htmlFor="gdpr_consent" className="text-sm font-medium text-gray-900 cursor-pointer">
+                Data Processing Consent <span className="text-red-500">*</span>
+              </Label>
+              <p className="text-xs text-gray-400 mt-0.5">
+                Candidate has given consent to store and process their personal data in accordance with GDPR.
+              </p>
+            </div>
+          </div>
+          {errors.gdpr_consent && (
+            <p className="text-xs text-red-500 mt-2 ml-7">{errors.gdpr_consent.message}</p>
+          )}
+        </div>
+
+        {/* Actions */}
+        <Separator className="my-6" />
+        <div className="flex items-center gap-3 pb-8">
+          <Button type="submit" disabled={saving || parsing} className="h-9 px-6">
+            {saving ? 'Saving...' : 'Add Candidate'}
           </Button>
-          <Button type="button" variant="outline" onClick={() => router.back()}>
+          <Button type="button" variant="outline" onClick={() => router.back()} className="h-9 px-6">
             Cancel
           </Button>
         </div>

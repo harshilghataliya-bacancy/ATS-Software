@@ -13,8 +13,10 @@ import {
 } from '@/lib/services/reports'
 import { getJobs } from '@/lib/services/jobs'
 import { Card, CardContent } from '@/components/ui/card'
+import { Button } from '@/components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Skeleton } from '@/components/ui/skeleton'
+import { CheckCircle2, Clock, Mail, Users, Download, BarChart3 } from 'lucide-react'
 
 const ReportCharts = dynamic(() => import('./report-charts'), {
   loading: () => (
@@ -83,11 +85,7 @@ const KPI_CONFIG = [
     key: 'total_hires',
     label: 'Total Hires',
     sub: 'All-time completed hires',
-    icon: (
-      <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-        <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-      </svg>
-    ),
+    icon: <CheckCircle2 className="w-5 h-5" />,
     bg: 'bg-emerald-50',
     iconColor: 'text-emerald-600',
     accent: 'border-l-emerald-500',
@@ -97,11 +95,7 @@ const KPI_CONFIG = [
     label: 'Avg Time-to-Hire',
     sub: 'From application to hire',
     suffix: 'days',
-    icon: (
-      <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-        <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
-      </svg>
-    ),
+    icon: <Clock className="w-5 h-5" />,
     bg: 'bg-blue-50',
     iconColor: 'text-blue-600',
     accent: 'border-l-blue-500',
@@ -111,11 +105,7 @@ const KPI_CONFIG = [
     label: 'Offer Acceptance',
     sub: '',
     suffix: '%',
-    icon: (
-      <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-        <path strokeLinecap="round" strokeLinejoin="round" d="M21.75 6.75v10.5a2.25 2.25 0 01-2.25 2.25h-15a2.25 2.25 0 01-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25m19.5 0v.243a2.25 2.25 0 01-1.07 1.916l-7.5 4.615a2.25 2.25 0 01-2.36 0L3.32 8.91a2.25 2.25 0 01-1.07-1.916V6.75" />
-      </svg>
-    ),
+    icon: <Mail className="w-5 h-5" />,
     bg: 'bg-purple-50',
     iconColor: 'text-purple-600',
     accent: 'border-l-purple-500',
@@ -124,11 +114,7 @@ const KPI_CONFIG = [
     key: 'active_pipeline',
     label: 'Active Pipeline',
     sub: '',
-    icon: (
-      <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-        <path strokeLinecap="round" strokeLinejoin="round" d="M15 19.128a9.38 9.38 0 002.625.372 9.337 9.337 0 004.121-.952 4.125 4.125 0 00-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 018.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0111.964-3.07M12 6.375a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zm8.25 2.25a2.625 2.625 0 11-5.25 0 2.625 2.625 0 015.25 0z" />
-      </svg>
-    ),
+    icon: <Users className="w-5 h-5" />,
     bg: 'bg-amber-50',
     iconColor: 'text-amber-600',
     accent: 'border-l-amber-500',
@@ -242,26 +228,120 @@ export default function ReportsPage() {
     active_pipeline: `${stats?.open_jobs ?? 0} open jobs`,
   }
 
+  function exportCsv() {
+    const rows: string[][] = []
+
+    // KPI Summary
+    rows.push(['--- KPI Summary ---'])
+    rows.push(['Metric', 'Value'])
+    rows.push(['Total Hires', String(kpiValues.total_hires)])
+    rows.push(['Avg Time-to-Hire (days)', String(kpiValues.avg_days)])
+    rows.push(['Offer Acceptance (%)', String(kpiValues.acceptance_pct)])
+    rows.push(['Active Pipeline', String(kpiValues.active_pipeline)])
+    rows.push(['Open Jobs', String(stats?.open_jobs ?? 0)])
+    rows.push(['Interviews This Week', String(stats?.interviews_this_week ?? 0)])
+    rows.push(['Pending Offers', String(stats?.pending_offers ?? 0)])
+    rows.push([])
+
+    // Pipeline Conversion
+    if (pipeline.length > 0) {
+      rows.push(['--- Pipeline Conversion ---'])
+      rows.push(['Stage', 'Current Count', 'Total Reached', 'Conversion Rate (%)'])
+      for (const s of pipeline) {
+        rows.push([s.stage_name, String(s.current_count), String(s.total_reached), String(s.conversion_rate)])
+      }
+      rows.push([])
+    }
+
+    // Hiring Velocity
+    if (velocity.length > 0) {
+      rows.push(['--- Hiring Velocity ---'])
+      rows.push(['Month', 'Hires'])
+      for (const v of velocity) {
+        rows.push([v.month, String(v.hires)])
+      }
+      rows.push([])
+    }
+
+    // Time-to-Hire by Department
+    if (timeToHire?.breakdown && timeToHire.breakdown.length > 0) {
+      rows.push(['--- Time-to-Hire by Department ---'])
+      rows.push(['Department', 'Avg Days', 'Total Hires'])
+      for (const d of timeToHire.breakdown) {
+        rows.push([d.department, String(d.average_days), String(d.total_hires)])
+      }
+      rows.push([])
+    }
+
+    // Offer Acceptance
+    if (offerRate) {
+      rows.push(['--- Offer Acceptance ---'])
+      rows.push(['Total Sent', 'Accepted', 'Declined', 'Acceptance Rate (%)'])
+      rows.push([String(offerRate.total_sent), String(offerRate.accepted), String(offerRate.declined), String(offerRate.acceptance_rate_pct)])
+      rows.push([])
+    }
+
+    // Job Status Breakdown
+    if (jobStatusData.length > 0) {
+      rows.push(['--- Job Status Breakdown ---'])
+      rows.push(['Job Title', 'Active', 'Hired', 'Rejected'])
+      for (const j of jobStatusData) {
+        rows.push([j.job_title, String(j.active), String(j.hired), String(j.rejected)])
+      }
+    }
+
+    // Build CSV string with proper escaping
+    const csvContent = rows
+      .map((row) => row.map((cell) => {
+        if (cell.includes(',') || cell.includes('"') || cell.includes('\n')) {
+          return `"${cell.replace(/"/g, '""')}"`
+        }
+        return cell
+      }).join(','))
+      .join('\n')
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `hireflow-report-${new Date().toISOString().split('T')[0]}.csv`
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    URL.revokeObjectURL(url)
+  }
+
   return (
     <div className="space-y-6">
       {/* Header */}
       <div className="flex items-end justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Reports</h1>
-          <p className="text-gray-500 mt-1">Hiring analytics and metrics</p>
+        <div className="flex items-center gap-3">
+          <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-violet-500 to-purple-600 text-white flex items-center justify-center shadow-sm shadow-violet-200">
+            <BarChart3 className="w-5 h-5" />
+          </div>
+          <div>
+            <h1 className="text-xl font-semibold text-gray-900">Reports</h1>
+            <p className="text-sm text-gray-400 mt-0.5">Hiring analytics and metrics</p>
+          </div>
         </div>
-        <div className="w-64">
-          <Select value={selectedJobId} onValueChange={setSelectedJobId}>
-            <SelectTrigger className="bg-white">
-              <SelectValue placeholder="Filter by job" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Jobs</SelectItem>
-              {jobs.map((j) => (
-                <SelectItem key={j.id} value={j.id}>{j.title}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm" className="h-9 gap-1.5" onClick={exportCsv}>
+            <Download className="w-3.5 h-3.5" />
+            Export CSV
+          </Button>
+          <div className="w-56">
+            <Select value={selectedJobId} onValueChange={setSelectedJobId}>
+              <SelectTrigger className="h-9 bg-white border-gray-200 text-sm">
+                <SelectValue placeholder="Filter by job" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Jobs</SelectItem>
+                {jobs.map((j) => (
+                  <SelectItem key={j.id} value={j.id}>{j.title}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
         </div>
       </div>
 
