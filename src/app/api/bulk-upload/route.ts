@@ -3,6 +3,7 @@ import JSZip from 'jszip'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { parseResumeFromBytes } from '@/lib/services/resume-parser'
+import { checkReapplyRestriction } from '@/lib/services/applications'
 
 export const maxDuration = 300
 
@@ -302,6 +303,13 @@ async function processPdf(
   if (existingApp) {
     candidateIdsForDeepParse.push(candidateId)
     return { filename, status: 'skipped', candidateId, candidateName, error: 'Already has active application for this job' }
+  }
+
+  // Reapply restriction check
+  const reapplyCheck = await checkReapplyRestriction(adminClient, candidateId, orgId)
+  if (!reapplyCheck.allowed) {
+    candidateIdsForDeepParse.push(candidateId)
+    return { filename, status: 'skipped', candidateId, candidateName, error: reapplyCheck.message }
   }
 
   // Create application

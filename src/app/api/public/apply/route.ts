@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { checkReapplyRestriction } from '@/lib/services/applications'
 
 /** Prepend https:// if a URL-like string is missing a protocol */
 function normalizeUrl(url: string | null | undefined): string | null {
@@ -156,38 +157,10 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: `You already have an active application for "${jobTitle}". You can only apply to one job at a time.` }, { status: 409 })
   }
 
-  // 4b. Reapply restriction check — block if a declined offer exists within restriction window
-  const { data: orgSettings } = await supabase
-    .from('organizations')
-    .select('offer_reapply_restriction_months')
-    .eq('id', orgId)
-    .single()
-
-  const restrictionMonths = orgSettings?.offer_reapply_restriction_months ?? 6
-  if (restrictionMonths > 0) {
-    const cutoffDate = new Date()
-    cutoffDate.setMonth(cutoffDate.getMonth() - restrictionMonths)
-
-    const { data: declinedOffer } = await supabase
-      .from('offer_letters')
-      .select('id, responded_at')
-      .eq('candidate_id', candidateId)
-      .eq('organization_id', orgId)
-      .eq('status', 'declined')
-      .gte('responded_at', cutoffDate.toISOString())
-      .is('deleted_at', null)
-      .order('responded_at', { ascending: false })
-      .limit(1)
-      .maybeSingle()
-
-    if (declinedOffer?.responded_at) {
-      const eligibleDate = new Date(declinedOffer.responded_at)
-      eligibleDate.setMonth(eligibleDate.getMonth() + restrictionMonths)
-      const formattedDate = eligibleDate.toLocaleDateString('en-US', { dateStyle: 'long' })
-      return NextResponse.json({
-        error: `You previously declined an offer for this position. You can reapply after ${formattedDate}.`,
-      }, { status: 409 })
-    }
+  // 4b. Reapply restriction check — block if rejected or declined offer within restriction window
+  const reapplyCheck = await checkReapplyRestriction(supabase, candidateId, orgId)
+  if (!reapplyCheck.allowed) {
+    return NextResponse.json({ error: reapplyCheck.message }, { status: 409 })
   }
 
   // 5. Create application

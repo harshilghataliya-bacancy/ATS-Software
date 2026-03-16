@@ -146,6 +146,12 @@ export async function createApplication(
     }
   }
 
+  // Reapply restriction check
+  const reapplyCheck = await checkReapplyRestriction(supabase, data.candidate_id, orgId)
+  if (!reapplyCheck.allowed) {
+    return { data: null, error: new Error(reapplyCheck.message) }
+  }
+
   const { data: application, error } = await supabase
     .from('applications')
     .insert({
@@ -223,6 +229,84 @@ export async function moveApplication(
   })
 
   return { data: updated, error: null }
+}
+
+// ---------------------------------------------------------------------------
+// Reapply Restriction Check
+// ---------------------------------------------------------------------------
+
+/**
+ * Check if a candidate is blocked from applying based on the org's reapply restriction.
+ * Checks both rejected applications and declined offers within the restriction window.
+ * Returns { allowed: true } or { allowed: false, message: string, eligibleDate: string }
+ */
+export async function checkReapplyRestriction(
+  supabase: SupabaseClient,
+  candidateId: string,
+  orgId: string
+): Promise<{ allowed: true } | { allowed: false; message: string; eligibleDate: string }> {
+  // Get org restriction setting
+  const { data: orgSettings } = await supabase
+    .from('organizations')
+    .select('offer_reapply_restriction_months')
+    .eq('id', orgId)
+    .single()
+
+  const restrictionMonths = orgSettings?.offer_reapply_restriction_months ?? 6
+  if (restrictionMonths === 0) return { allowed: true }
+
+  const cutoffDate = new Date()
+  cutoffDate.setMonth(cutoffDate.getMonth() - restrictionMonths)
+
+  // Check for rejected applications within restriction window
+  const { data: rejectedApp } = await supabase
+    .from('applications')
+    .select('id, updated_at')
+    .eq('candidate_id', candidateId)
+    .eq('organization_id', orgId)
+    .eq('status', 'rejected')
+    .is('deleted_at', null)
+    .gte('updated_at', cutoffDate.toISOString())
+    .order('updated_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+
+  if (rejectedApp?.updated_at) {
+    const eligibleDate = new Date(rejectedApp.updated_at)
+    eligibleDate.setMonth(eligibleDate.getMonth() + restrictionMonths)
+    const formatted = eligibleDate.toLocaleDateString('en-US', { dateStyle: 'long' })
+    return {
+      allowed: false,
+      message: `This candidate was previously rejected. They can reapply after ${formatted}.`,
+      eligibleDate: formatted,
+    }
+  }
+
+  // Check for declined offers within restriction window
+  const { data: declinedOffer } = await supabase
+    .from('offer_letters')
+    .select('id, responded_at')
+    .eq('candidate_id', candidateId)
+    .eq('organization_id', orgId)
+    .eq('status', 'declined')
+    .is('deleted_at', null)
+    .gte('responded_at', cutoffDate.toISOString())
+    .order('responded_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+
+  if (declinedOffer?.responded_at) {
+    const eligibleDate = new Date(declinedOffer.responded_at)
+    eligibleDate.setMonth(eligibleDate.getMonth() + restrictionMonths)
+    const formatted = eligibleDate.toLocaleDateString('en-US', { dateStyle: 'long' })
+    return {
+      allowed: false,
+      message: `This candidate previously declined an offer. They can reapply after ${formatted}.`,
+      eligibleDate: formatted,
+    }
+  }
+
+  return { allowed: true }
 }
 
 export async function rejectApplication(
