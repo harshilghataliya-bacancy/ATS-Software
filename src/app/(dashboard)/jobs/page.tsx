@@ -53,6 +53,7 @@ interface Job {
   experience_min: number | null
   experience_max: number | null
   assigned_to: string | null
+  active_candidate_count?: number
 }
 
 // Status → left border accent color
@@ -167,11 +168,12 @@ export default function JobsPage() {
 
   function downloadCSV() {
     if (jobs.length === 0) return
-    const headers = ['Title', 'Department', 'Location', 'Employment Type', 'Status', 'Priority', 'Openings', 'Applicants', 'Deadline', 'Assigned Recruiter', 'Created At']
+    const headers = ['Title', 'Department', 'Location', 'Employment Type', 'Status', 'Priority', 'Openings', 'Applicants', 'Active Candidates', 'Deadline', 'Assigned Recruiter', 'Created At']
     const rows = jobs.map((job) => [
       job.title, job.department || '', job.location || '',
       employmentLabel(job.employment_type), job.status, job.priority || '',
       String(job.num_openings || 1), String(job.application_count),
+      String(job.active_candidate_count ?? 0),
       job.application_deadline || '',
       job.assigned_to ? (recruiterNames[job.assigned_to] || '') : '',
       new Date(job.created_at).toLocaleDateString(),
@@ -574,7 +576,8 @@ export default function JobsPage() {
                     <TableHead className="text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Status</TableHead>
                     <TableHead className="text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Priority</TableHead>
                     <TableHead className="text-[11px] font-semibold text-gray-500 uppercase tracking-wider text-center">Open</TableHead>
-                    <TableHead className="text-[11px] font-semibold text-gray-500 uppercase tracking-wider text-center">Apps</TableHead>
+                    <TableHead className="text-[11px] font-semibold text-gray-500 uppercase tracking-wider text-center">Applications</TableHead>
+                    <TableHead className="text-[11px] font-semibold text-gray-500 uppercase tracking-wider text-center">Active</TableHead>
                     <TableHead className="text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Deadline</TableHead>
                     <TableHead className="text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Recruiter</TableHead>
                     <TableHead className="text-[11px] font-semibold text-gray-500 uppercase tracking-wider text-right pr-5">Actions</TableHead>
@@ -646,6 +649,15 @@ export default function JobsPage() {
                             job.application_count > 0 ? 'text-blue-600' : 'text-gray-400'
                           }`}>
                             {job.application_count}
+                          </span>
+                        </TableCell>
+
+                        {/* Active Candidates */}
+                        <TableCell className="text-center py-3.5">
+                          <span className={`text-[13px] font-bold ${
+                            (job.active_candidate_count ?? 0) > 0 ? 'text-emerald-600' : 'text-gray-400'
+                          }`}>
+                            {job.active_candidate_count ?? 0}
                           </span>
                         </TableCell>
 

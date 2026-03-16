@@ -44,7 +44,7 @@ export const createJobSchema = z.object({
     z.number({ message: 'Please enter maximum experience' }).min(0, 'Experience cannot be negative')
   ),
   priority: priorityEnum.default('medium'),
-  assigned_to: z.string().uuid().nullable().optional(),
+  assigned_to: z.string({ message: 'Please assign a recruiter' }).uuid('Please assign a recruiter'),
 })
 
 export type CreateJobInput = z.infer<typeof createJobSchema>

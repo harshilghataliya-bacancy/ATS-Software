@@ -2,14 +2,16 @@
 
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
-  Legend, AreaChart, Area,
+  Legend, AreaChart, Area, PieChart, Pie, Cell,
 } from 'recharts'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Filter, Briefcase, TrendingUp, Clock } from 'lucide-react'
+import { Filter, Briefcase, TrendingUp, Clock, Globe } from 'lucide-react'
 
 const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
 
 const STATUS_COLORS = { active: '#3b82f6', hired: '#22c55e', rejected: '#ef4444' }
+
+const SOURCE_COLORS = ['#818cf8', '#f59e0b', '#10b981', '#ec4899', '#06b6d4', '#8b5cf6', '#f97316', '#6366f1']
 
 interface PipelineStage {
   stage_name: string
@@ -38,25 +40,37 @@ interface JobStatusData {
   rejected: number
 }
 
+interface SourceData {
+  source: string
+  total: number
+  hired: number
+  rejected: number
+  active: number
+  hire_rate: number
+}
+
 interface ReportChartsProps {
   pipeline: PipelineStage[]
   jobStatusData: JobStatusData[]
   velocity: VelocityPoint[]
   timeToHire: TimeToHireData | null
+  sourceData: SourceData[]
   selectedJobTitle?: string
 }
 
-export default function ReportCharts({ pipeline, jobStatusData, velocity, timeToHire, selectedJobTitle }: ReportChartsProps) {
+// Custom label for funnel drop-off
+
+export default function ReportCharts({ pipeline, jobStatusData, velocity, timeToHire, sourceData, selectedJobTitle }: ReportChartsProps) {
   return (
     <>
       {/* Charts Row 1 */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Pipeline Funnel */}
+        {/* Pipeline Funnel with Drop-off */}
         <Card className="shadow-sm hover:shadow-md transition-shadow">
           <CardHeader className="pb-2">
             <CardTitle className="text-base font-semibold">Pipeline Funnel</CardTitle>
             <CardDescription className="text-xs">
-              Candidates reached vs currently at each stage
+              Candidates currently at each stage
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -66,21 +80,29 @@ export default function ReportCharts({ pipeline, jobStatusData, velocity, timeTo
                 <p className="text-sm text-gray-400">No pipeline data yet</p>
               </div>
             ) : (
-              <ResponsiveContainer width="100%" height={Math.max(280, pipeline.length * 48)}>
-                <BarChart data={pipeline} layout="vertical" margin={{ left: 10, right: 20, top: 5, bottom: 5 }}>
-                  <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#f0f0f0" />
-                  <XAxis type="number" tick={{ fontSize: 11 }} allowDecimals={false} />
-                  <YAxis dataKey="stage_name" type="category" width={90} tick={{ fontSize: 11 }} />
-                  <Tooltip
-                    contentStyle={{ borderRadius: 8, fontSize: 12, border: '1px solid #e5e7eb' }}
-                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                    formatter={(value: any, name: any) => [value, name]}
-                  />
-                  <Legend wrapperStyle={{ fontSize: 11 }} />
-                  <Bar dataKey="total_reached" fill="#818cf8" name="Total Reached" radius={[0, 4, 4, 0]} />
-                  <Bar dataKey="current_count" fill="#c7d2fe" name="Currently In" radius={[0, 4, 4, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
+              <>
+                <ResponsiveContainer width="100%" height={Math.max(280, pipeline.length * 48)}>
+                  <BarChart data={pipeline} layout="vertical" margin={{ left: 10, right: 20, top: 5, bottom: 5 }}>
+                    <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#f0f0f0" />
+                    <XAxis type="number" tick={{ fontSize: 11 }} allowDecimals={false} />
+                    <YAxis dataKey="stage_name" type="category" width={90} tick={{ fontSize: 11 }} />
+                    <Tooltip
+                      contentStyle={{ borderRadius: 8, fontSize: 12, border: '1px solid #e5e7eb' }}
+                      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                      formatter={(value: any, name: any) => [value, name]}
+                    />
+                    <Bar dataKey="current_count" fill="#818cf8" name="Currently In" radius={[0, 4, 4, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+                {/* Stage counts */}
+                <div className="flex flex-wrap gap-x-6 gap-y-1 mt-3 px-1 text-xs text-gray-500">
+                  {pipeline.map((s) => (
+                    <span key={s.stage_name}>
+                      {s.stage_name}: <span className="font-semibold text-gray-700">{s.current_count}</span>
+                    </span>
+                  ))}
+                </div>
+              </>
             )}
           </CardContent>
         </Card>
@@ -226,6 +248,87 @@ export default function ReportCharts({ pipeline, jobStatusData, velocity, timeTo
           </CardContent>
         </Card>
       </div>
+
+      {/* Charts Row 3 — Source Effectiveness */}
+      {sourceData.length > 0 && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {/* Source Pie Chart */}
+          <Card className="shadow-sm hover:shadow-md transition-shadow">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-base font-semibold">Source Distribution</CardTitle>
+              <CardDescription className="text-xs">
+                Where your candidates come from
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <ResponsiveContainer width="100%" height={300}>
+                <PieChart>
+                  <Pie
+                    data={sourceData}
+                    dataKey="total"
+                    nameKey="source"
+                    cx="50%"
+                    cy="50%"
+                    outerRadius={100}
+                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                    label={({ source, total }: any) => `${source} (${total})`}
+                    labelLine={{ strokeWidth: 1 }}
+                  >
+                    {sourceData.map((_, i) => (
+                      <Cell key={i} fill={SOURCE_COLORS[i % SOURCE_COLORS.length]} />
+                    ))}
+                  </Pie>
+                  <Tooltip
+                    contentStyle={{ borderRadius: 8, fontSize: 12, border: '1px solid #e5e7eb' }}
+                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                    formatter={(value: any, _: any, entry: any) => {
+                      const d = entry.payload
+                      return [`Total: ${d.total} | Hired: ${d.hired} | Hire Rate: ${d.hire_rate}%`, d.source]
+                    }}
+                  />
+                </PieChart>
+              </ResponsiveContainer>
+            </CardContent>
+          </Card>
+
+          {/* Source Effectiveness Bar Chart */}
+          <Card className="shadow-sm hover:shadow-md transition-shadow">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-base font-semibold">Source Effectiveness</CardTitle>
+              <CardDescription className="text-xs">
+                Hire rate and volume by source
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {sourceData.every((s) => s.total === 0) ? (
+                <div className="flex flex-col items-center justify-center py-12 text-gray-300">
+                  <Globe className="w-10 h-10 mb-2" />
+                  <p className="text-sm text-gray-400">No source data yet</p>
+                </div>
+              ) : (
+                <ResponsiveContainer width="100%" height={300}>
+                  <BarChart data={sourceData} margin={{ top: 5, right: 20, left: -10, bottom: 5 }}>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" />
+                    <XAxis
+                      dataKey="source"
+                      tick={{ fontSize: 11 }}
+                      tickFormatter={(v: string) => v.length > 12 ? v.slice(0, 10) + '...' : v}
+                    />
+                    <YAxis tick={{ fontSize: 11 }} allowDecimals={false} />
+                    <Tooltip
+                      contentStyle={{ borderRadius: 8, fontSize: 12, border: '1px solid #e5e7eb' }}
+                    />
+                    <Legend wrapperStyle={{ fontSize: 11 }} />
+                    <Bar dataKey="active" stackId="a" fill={STATUS_COLORS.active} name="Active" />
+                    <Bar dataKey="hired" stackId="a" fill={STATUS_COLORS.hired} name="Hired" />
+                    <Bar dataKey="rejected" stackId="a" fill={STATUS_COLORS.rejected} name="Rejected" radius={[4, 4, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+      )}
     </>
   )
 }

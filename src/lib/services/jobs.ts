@@ -39,16 +39,9 @@ export async function getJobs(
 
   let query = supabase
     .from('jobs')
-    .select(
-      `
-      *,
-      applications:applications!left(count)
-    `,
-      { count: 'exact' }
-    )
+    .select('*', { count: 'exact' })
     .eq('organization_id', orgId)
     .is('deleted_at', null)
-    .is('applications.deleted_at', null)
     .order('created_at', { ascending: false })
     .range(from, to)
 
@@ -86,12 +79,45 @@ export async function getJobs(
     return { data: null, error }
   }
 
-  // Flatten the application count from the nested aggregation
-  const jobs = data?.map((job) => ({
-    ...job,
-    application_count: job.applications?.[0]?.count ?? 0,
-    applications: undefined,
-  }))
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const jobs = data as any[]
+
+  // Fetch application counts and active counts per job (excluding soft-deleted)
+  if (jobs && jobs.length > 0) {
+    const jobIds = jobs.map((j: { id: string }) => j.id)
+
+    // All non-deleted applications per job
+    const { data: allApps } = await supabase
+      .from('applications')
+      .select('job_id')
+      .in('job_id', jobIds)
+      .eq('organization_id', orgId)
+      .is('deleted_at', null)
+
+    const appCounts: Record<string, number> = {}
+    allApps?.forEach((a: { job_id: string }) => {
+      appCounts[a.job_id] = (appCounts[a.job_id] || 0) + 1
+    })
+
+    // Active applications per job
+    const { data: activeApps } = await supabase
+      .from('applications')
+      .select('job_id')
+      .in('job_id', jobIds)
+      .eq('organization_id', orgId)
+      .eq('status', 'active')
+      .is('deleted_at', null)
+
+    const activeCounts: Record<string, number> = {}
+    activeApps?.forEach((a: { job_id: string }) => {
+      activeCounts[a.job_id] = (activeCounts[a.job_id] || 0) + 1
+    })
+
+    jobs.forEach((job: { id: string; application_count?: number; active_candidate_count?: number }) => {
+      job.application_count = appCounts[job.id] || 0
+      job.active_candidate_count = activeCounts[job.id] || 0
+    })
+  }
 
   return { data: jobs, error: null, count }
 }

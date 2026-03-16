@@ -115,7 +115,7 @@ export async function ensureDefaultBank(supabase: SupabaseClient, orgId: string)
     .insert({
       organization_id: orgId,
       name: 'Default Bank',
-      description: 'All non-rejected candidates across all sources',
+      description: 'Rejected candidates and candidates from closed/archived jobs',
       is_default: true,
     })
     .select()
@@ -185,12 +185,22 @@ export async function getDefaultBankCandidates(
 
   const { data, error } = await query
 
-  // Filter out candidates where ALL applications are rejected (client-side)
+  // Only show candidates who are rejected OR whose job is closed/archived
+  // Exclude hired candidates and candidates with active applications on open jobs
   const filtered = data?.filter((c) => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const apps = (c as any).applications || []
-    if (apps.length === 0) return true
-    return apps.some((a: { status: string }) => a.status !== 'rejected')
+    if (apps.length === 0) return false
+    // Exclude if any application is hired
+    const hasHired = apps.some((a: { status: string }) => a.status === 'hired')
+    if (hasHired) return false
+    // Exclude if any application is active on an open job
+    const hasActiveOnOpenJob = apps.some((a: { status: string; job?: { status?: string } }) => {
+      const jobStatus = a.job?.status
+      const isJobOpen = jobStatus !== 'closed' && jobStatus !== 'archived'
+      return a.status === 'active' && isJobOpen
+    })
+    return !hasActiveOnOpenJob
   }) ?? []
 
   return { data: filtered, error, count: filtered.length }

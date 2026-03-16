@@ -179,9 +179,15 @@ export default function JobDetailPage() {
     } else {
       setJob(updated)
 
-      // When job is closed or archived, move all its candidates back to Default Bank
+      // When job is closed or archived, reject all active candidates and send emails
       if (data.status === 'closed' || data.status === 'archived') {
         await moveJobCandidatesToDefaultBank(supabase, params.id as string, organization.id)
+        // Reject all active applications and send rejection emails
+        fetch('/api/applications/reject-by-job', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ jobId: params.id }),
+        }).catch((err) => console.error('[Auto reject on job close]', err))
       }
 
       const validCriteria = criteria.filter((c) => c.name.trim())

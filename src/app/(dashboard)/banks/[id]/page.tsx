@@ -352,6 +352,7 @@ export default function BankDetailPage() {
               <th className="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider">Source</th>
               <th className="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider">Exp</th>
               <th className="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider">Applications</th>
+              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider">Reason</th>
               <th className="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider">Tags</th>
             </tr>
           </thead>
@@ -359,12 +360,12 @@ export default function BankDetailPage() {
             {loading && candidates.length === 0 ? (
               Array.from({ length: 5 }).map((_, i) => (
                 <tr key={i}>
-                  <td colSpan={8} className="px-4 py-3"><Skeleton className="h-8 w-full" /></td>
+                  <td colSpan={9} className="px-4 py-3"><Skeleton className="h-8 w-full" /></td>
                 </tr>
               ))
             ) : candidates.length === 0 ? (
               <tr>
-                <td colSpan={8} className="px-4 py-16 text-center">
+                <td colSpan={9} className="px-4 py-16 text-center">
                   <Users className="w-8 h-8 text-gray-200 mx-auto mb-2" />
                   <p className="text-sm text-gray-400">
                     {search || sourceFilter || locationFilter ? 'No candidates match your filters' : 'No candidates in this bank'}
@@ -374,7 +375,15 @@ export default function BankDetailPage() {
             ) : (
               candidates.map((c) => {
                 const apps = c.applications || []
-                const activeApps = apps.filter((a: AnyData) => a.status === 'active')
+                // Determine reason for being in the bank
+                const hasRejected = apps.some((a: AnyData) => a.status === 'rejected')
+                const hasJobClosed = apps.some((a: AnyData) => {
+                  const js = a.job?.status
+                  return js === 'closed' || js === 'archived'
+                })
+                const reasons: { label: string; color: string }[] = []
+                if (hasRejected) reasons.push({ label: 'Rejected', color: 'bg-red-50 text-red-600' })
+                if (hasJobClosed) reasons.push({ label: 'Job Closed', color: 'bg-amber-50 text-amber-600' })
                 return (
                   <tr key={c.id} className={`hover:bg-gray-50/50 transition-colors ${selected.has(c.id) ? 'bg-blue-50/40' : ''}`}>
                     <td className="px-4 py-3">
@@ -413,16 +422,24 @@ export default function BankDetailPage() {
                     <td className="px-4 py-3">
                       {apps.length > 0 ? (
                         <div className="space-y-0.5">
-                          {activeApps.slice(0, 2).map((a: AnyData) => (
-                            <p key={a.id} className="text-[11px] text-gray-500 truncate max-w-[160px]">
-                              {a.job?.title || 'Unknown Job'}
-                              <span className={`ml-1 text-[10px] px-1 py-0.5 rounded ${
-                                a.status === 'active' ? 'bg-emerald-50 text-emerald-600' :
-                                a.status === 'hired' ? 'bg-blue-50 text-blue-600' :
-                                'bg-gray-50 text-gray-400'
-                              }`}>{a.status}</span>
-                            </p>
-                          ))}
+                          {apps.slice(0, 2).map((a: AnyData) => {
+                            const jobStatus = a.job?.status
+                            const isJobClosed = jobStatus === 'closed' || jobStatus === 'archived'
+                            return (
+                              <p key={a.id} className="text-[11px] text-gray-500 truncate max-w-[200px]">
+                                {a.job?.title || 'Unknown Job'}
+                                <span className={`ml-1 text-[10px] px-1 py-0.5 rounded ${
+                                  a.status === 'active' ? 'bg-emerald-50 text-emerald-600' :
+                                  a.status === 'hired' ? 'bg-blue-50 text-blue-600' :
+                                  a.status === 'rejected' ? 'bg-red-50 text-red-500' :
+                                  'bg-gray-50 text-gray-400'
+                                }`}>{a.status}</span>
+                                {isJobClosed && (
+                                  <span className="ml-1 text-[10px] px-1 py-0.5 rounded bg-amber-50 text-amber-600">{jobStatus}</span>
+                                )}
+                              </p>
+                            )
+                          })}
                           {apps.length > 2 && (
                             <p className="text-[10px] text-gray-300">+{apps.length - 2} more</p>
                           )}
@@ -430,6 +447,16 @@ export default function BankDetailPage() {
                       ) : (
                         <span className="text-[11px] text-gray-300">No applications</span>
                       )}
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="flex flex-wrap gap-1">
+                        {reasons.map((r) => (
+                          <span key={r.label} className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full ${r.color}`}>
+                            {r.label}
+                          </span>
+                        ))}
+                        {reasons.length === 0 && <span className="text-gray-300 text-[11px]">-</span>}
+                      </div>
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex flex-wrap gap-1">

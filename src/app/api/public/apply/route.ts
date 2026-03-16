@@ -140,18 +140,20 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Unable to process application. Please try again later.' }, { status: 500 })
   }
 
-  // 4. Check for duplicate
+  // 4. Check for duplicate — one candidate can only have one active application
   const { data: existingApp } = await supabase
     .from('applications')
-    .select('id')
+    .select('id, job:jobs(title)')
     .eq('candidate_id', candidateId)
-    .eq('job_id', jobId)
     .eq('organization_id', orgId)
     .eq('status', 'active')
+    .limit(1)
     .maybeSingle()
 
   if (existingApp) {
-    return NextResponse.json({ error: 'You have already applied for this position.' }, { status: 409 })
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const jobTitle = (existingApp.job as any)?.title ?? 'another position'
+    return NextResponse.json({ error: `You already have an active application for "${jobTitle}". You can only apply to one job at a time.` }, { status: 409 })
   }
 
   // 4b. Reapply restriction check — block if a declined offer exists within restriction window
@@ -170,7 +172,6 @@ export async function POST(request: NextRequest) {
       .from('offer_letters')
       .select('id, responded_at')
       .eq('candidate_id', candidateId)
-      .eq('job_id', jobId)
       .eq('organization_id', orgId)
       .eq('status', 'declined')
       .gte('responded_at', cutoffDate.toISOString())

@@ -10,13 +10,16 @@ import {
   getPipelineConversion,
   getOfferAcceptanceRate,
   getHiringVelocity,
+  getSourceBreakdown,
 } from '@/lib/services/reports'
 import { getJobs } from '@/lib/services/jobs'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Skeleton } from '@/components/ui/skeleton'
-import { CheckCircle2, Clock, Mail, Users, Download, BarChart3 } from 'lucide-react'
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
+import { CheckCircle2, Clock, Mail, Users, BarChart3, CalendarDays, FileSpreadsheet } from 'lucide-react'
+import * as XLSX from 'xlsx'
 
 const ReportCharts = dynamic(() => import('./report-charts'), {
   loading: () => (
@@ -29,6 +32,18 @@ const ReportCharts = dynamic(() => import('./report-charts'), {
         <Skeleton className="h-[400px] rounded-xl" />
         <Skeleton className="h-[400px] rounded-xl" />
       </div>
+    </div>
+  ),
+  ssr: false,
+})
+
+const RecruiterPerformance = dynamic(() => import('./recruiter-performance'), {
+  loading: () => (
+    <div className="space-y-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        {[1, 2, 3, 4].map((i) => <Skeleton key={i} className="h-[110px] rounded-xl" />)}
+      </div>
+      <Skeleton className="h-[380px] rounded-xl" />
     </div>
   ),
   ssr: false,
@@ -80,6 +95,68 @@ interface JobStatusData {
   rejected: number
 }
 
+interface SourceData {
+  source: string
+  total: number
+  hired: number
+  rejected: number
+  active: number
+  hire_rate: number
+}
+
+// Date range presets
+const DATE_PRESETS: { label: string; value: string; getRange: () => { from: string; to: string } | undefined }[] = [
+  { label: 'All Time', value: 'all', getRange: () => undefined },
+  {
+    label: 'This Month',
+    value: 'this_month',
+    getRange: () => {
+      const now = new Date()
+      const from = new Date(now.getFullYear(), now.getMonth(), 1)
+      return { from: from.toISOString(), to: now.toISOString() }
+    },
+  },
+  {
+    label: 'Last 3 Months',
+    value: 'last_3m',
+    getRange: () => {
+      const now = new Date()
+      const from = new Date(now)
+      from.setMonth(from.getMonth() - 3)
+      return { from: from.toISOString(), to: now.toISOString() }
+    },
+  },
+  {
+    label: 'Last 6 Months',
+    value: 'last_6m',
+    getRange: () => {
+      const now = new Date()
+      const from = new Date(now)
+      from.setMonth(from.getMonth() - 6)
+      return { from: from.toISOString(), to: now.toISOString() }
+    },
+  },
+  {
+    label: 'This Year',
+    value: 'this_year',
+    getRange: () => {
+      const now = new Date()
+      const from = new Date(now.getFullYear(), 0, 1)
+      return { from: from.toISOString(), to: now.toISOString() }
+    },
+  },
+  {
+    label: 'Last Year',
+    value: 'last_year',
+    getRange: () => {
+      const now = new Date()
+      const from = new Date(now.getFullYear() - 1, 0, 1)
+      const to = new Date(now.getFullYear() - 1, 11, 31, 23, 59, 59)
+      return { from: from.toISOString(), to: to.toISOString() }
+    },
+  },
+]
+
 const KPI_CONFIG = [
   {
     key: 'total_hires',
@@ -125,6 +202,7 @@ export default function ReportsPage() {
   const { organization, isLoading: userLoading } = useUser()
   const { canViewReports } = useRole()
   const [loading, setLoading] = useState(true)
+  const [activeTab, setActiveTab] = useState('overview')
 
   const [stats, setStats] = useState<Stats | null>(null)
   const [pipeline, setPipeline] = useState<PipelineStage[]>([])
@@ -134,26 +212,32 @@ export default function ReportsPage() {
   const [jobs, setJobs] = useState<JobOption[]>([])
   const [jobStatusData, setJobStatusData] = useState<JobStatusData[]>([])
   const [selectedJobId, setSelectedJobId] = useState<string>('all')
+  const [datePreset, setDatePreset] = useState<string>('all')
+  const [sourceData, setSourceData] = useState<SourceData[]>([])
 
   const loadReports = useCallback(async () => {
     if (!organization) return
     setLoading(true)
     const supabase = createClient()
+    const dateRange = DATE_PRESETS.find((p) => p.value === datePreset)?.getRange()
+    const jobFilter = selectedJobId !== 'all' ? selectedJobId : undefined
 
-    const [statsRes, pipelineRes, tthRes, offerRes, velRes, jobsRes, appsRes] =
+    const [statsRes, pipelineRes, tthRes, offerRes, velRes, jobsRes, sourceRes, appsRes] =
       await Promise.all([
-        getDashboardStats(supabase, organization.id),
-        getPipelineConversion(supabase, organization.id, selectedJobId !== 'all' ? selectedJobId : undefined),
-        getTimeToHire(supabase, organization.id),
-        getOfferAcceptanceRate(supabase, organization.id),
-        getHiringVelocity(supabase, organization.id),
+        getDashboardStats(supabase, organization.id, jobFilter),
+        getPipelineConversion(supabase, organization.id, jobFilter, dateRange),
+        getTimeToHire(supabase, organization.id, dateRange, jobFilter),
+        getOfferAcceptanceRate(supabase, organization.id, dateRange, jobFilter),
+        getHiringVelocity(supabase, organization.id, 6, dateRange, jobFilter),
         getJobs(supabase, organization.id, { limit: 100 }),
+        getSourceBreakdown(supabase, organization.id, dateRange, jobFilter),
         (() => {
           let q = supabase
             .from('applications')
             .select('status, job:jobs(title)')
             .eq('organization_id', organization.id)
-          if (selectedJobId !== 'all') q = q.eq('job_id', selectedJobId)
+          if (jobFilter) q = q.eq('job_id', jobFilter)
+          if (dateRange) q = q.gte('created_at', dateRange.from).lte('created_at', dateRange.to)
           return q
         })(),
       ])
@@ -164,6 +248,7 @@ export default function ReportsPage() {
     if (offerRes.data) setOfferRate(offerRes.data)
     if (velRes.data) setVelocity(velRes.data)
     if (jobsRes.data) setJobs(jobsRes.data.map((j: Record<string, unknown>) => ({ id: j.id as string, title: j.title as string })))
+    if (sourceRes.data) setSourceData(sourceRes.data)
 
     // Build job status data
     if (appsRes.data) {
@@ -185,7 +270,7 @@ export default function ReportsPage() {
     }
 
     setLoading(false)
-  }, [organization, selectedJobId])
+  }, [organization, selectedJobId, datePreset])
 
   useEffect(() => {
     if (organization) loadReports()
@@ -228,83 +313,109 @@ export default function ReportsPage() {
     active_pipeline: `${stats?.open_jobs ?? 0} open jobs`,
   }
 
-  function exportCsv() {
-    const rows: string[][] = []
+  function exportExcel() {
+    if (activeTab !== 'overview') return
 
-    // KPI Summary
-    rows.push(['--- KPI Summary ---'])
-    rows.push(['Metric', 'Value'])
-    rows.push(['Total Hires', String(kpiValues.total_hires)])
-    rows.push(['Avg Time-to-Hire (days)', String(kpiValues.avg_days)])
-    rows.push(['Offer Acceptance (%)', String(kpiValues.acceptance_pct)])
-    rows.push(['Active Pipeline', String(kpiValues.active_pipeline)])
-    rows.push(['Open Jobs', String(stats?.open_jobs ?? 0)])
-    rows.push(['Interviews This Week', String(stats?.interviews_this_week ?? 0)])
-    rows.push(['Pending Offers', String(stats?.pending_offers ?? 0)])
-    rows.push([])
+    const selectedDate = DATE_PRESETS.find((p) => p.value === datePreset)?.label ?? 'All Time'
+    const selectedJob = selectedJobId !== 'all' ? jobs.find((j) => j.id === selectedJobId)?.title ?? '' : 'All Jobs'
 
-    // Pipeline Conversion
-    if (pipeline.length > 0) {
-      rows.push(['--- Pipeline Conversion ---'])
-      rows.push(['Stage', 'Current Count', 'Total Reached', 'Conversion Rate (%)'])
-      for (const s of pipeline) {
-        rows.push([s.stage_name, String(s.current_count), String(s.total_reached), String(s.conversion_rate)])
-      }
-      rows.push([])
-    }
+    const wb = XLSX.utils.book_new()
 
-    // Hiring Velocity
-    if (velocity.length > 0) {
-      rows.push(['--- Hiring Velocity ---'])
-      rows.push(['Month', 'Hires'])
-      for (const v of velocity) {
-        rows.push([v.month, String(v.hires)])
-      }
-      rows.push([])
-    }
+    // Sheet 1: KPI Summary
+    const kpiData = [
+      ['HireFlow - Overview Report'],
+      ['Generated', new Date().toLocaleDateString()],
+      ['Date Range', selectedDate],
+      ['Job Filter', selectedJob],
+      [],
+      ['Metric', 'Value'],
+      ['Total Hires', kpiValues.total_hires],
+      ['Avg Time-to-Hire (days)', kpiValues.avg_days],
+      ['Offer Acceptance (%)', kpiValues.acceptance_pct],
+      ['Active Pipeline', kpiValues.active_pipeline],
+      ['Open Jobs', stats?.open_jobs ?? 0],
+      ['Interviews This Week', stats?.interviews_this_week ?? 0],
+      ['Pending Offers', stats?.pending_offers ?? 0],
+      ['Offers Sent', offerRate?.total_sent ?? 0],
+      ['Offers Accepted', offerRate?.accepted ?? 0],
+      ['Offers Declined', offerRate?.declined ?? 0],
+    ]
+    const wsKpi = XLSX.utils.aoa_to_sheet(kpiData)
+    wsKpi['!cols'] = [{ wch: 25 }, { wch: 15 }]
+    XLSX.utils.book_append_sheet(wb, wsKpi, 'KPI Summary')
 
-    // Time-to-Hire by Department
-    if (timeToHire?.breakdown && timeToHire.breakdown.length > 0) {
-      rows.push(['--- Time-to-Hire by Department ---'])
-      rows.push(['Department', 'Avg Days', 'Total Hires'])
-      for (const d of timeToHire.breakdown) {
-        rows.push([d.department, String(d.average_days), String(d.total_hires)])
-      }
-      rows.push([])
-    }
-
-    // Offer Acceptance
-    if (offerRate) {
-      rows.push(['--- Offer Acceptance ---'])
-      rows.push(['Total Sent', 'Accepted', 'Declined', 'Acceptance Rate (%)'])
-      rows.push([String(offerRate.total_sent), String(offerRate.accepted), String(offerRate.declined), String(offerRate.acceptance_rate_pct)])
-      rows.push([])
-    }
-
-    // Job Status Breakdown
+    // Sheet 2: Job Status
     if (jobStatusData.length > 0) {
-      rows.push(['--- Job Status Breakdown ---'])
-      rows.push(['Job Title', 'Active', 'Hired', 'Rejected'])
-      for (const j of jobStatusData) {
-        rows.push([j.job_title, String(j.active), String(j.hired), String(j.rejected)])
-      }
+      const jobData = [
+        ['Job Title', 'Active', 'Hired', 'Rejected', 'Total'],
+        ...jobStatusData.map((j) => [j.job_title, j.active, j.hired, j.rejected, j.active + j.hired + j.rejected]),
+      ]
+      const wsJobs = XLSX.utils.aoa_to_sheet(jobData)
+      wsJobs['!cols'] = [{ wch: 30 }, { wch: 10 }, { wch: 10 }, { wch: 10 }, { wch: 10 }]
+      XLSX.utils.book_append_sheet(wb, wsJobs, 'Job Status')
     }
 
-    // Build CSV string with proper escaping
-    const csvContent = rows
-      .map((row) => row.map((cell) => {
-        if (cell.includes(',') || cell.includes('"') || cell.includes('\n')) {
-          return `"${cell.replace(/"/g, '""')}"`
-        }
-        return cell
-      }).join(','))
-      .join('\n')
+    // Sheet 3: Pipeline Conversion
+    if (pipeline.length > 0) {
+      const pipeData = [
+        ['Stage', 'Current Count', 'Total Reached', 'Conversion Rate (%)'],
+        ...pipeline.map((s) => [s.stage_name, s.current_count, s.total_reached, s.conversion_rate]),
+      ]
+      const wsPipe = XLSX.utils.aoa_to_sheet(pipeData)
+      wsPipe['!cols'] = [{ wch: 15 }, { wch: 15 }, { wch: 15 }, { wch: 20 }]
+      XLSX.utils.book_append_sheet(wb, wsPipe, 'Pipeline')
+    }
 
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
+    // Sheet 4: Source Effectiveness
+    if (sourceData.length > 0) {
+      const srcData = [
+        ['Source', 'Total', 'Hired', 'Rejected', 'Active', 'Hire Rate (%)'],
+        ...sourceData.map((s) => [s.source, s.total, s.hired, s.rejected, s.active, s.hire_rate]),
+      ]
+      const wsSrc = XLSX.utils.aoa_to_sheet(srcData)
+      wsSrc['!cols'] = [{ wch: 20 }, { wch: 10 }, { wch: 10 }, { wch: 10 }, { wch: 10 }, { wch: 15 }]
+      XLSX.utils.book_append_sheet(wb, wsSrc, 'Source Effectiveness')
+    }
+
+    // Sheet 5: Hiring Velocity
+    if (velocity.length > 0) {
+      const velData = [
+        ['Month', 'Hires'],
+        ...velocity.map((v) => [v.month, v.hires]),
+      ]
+      const wsVel = XLSX.utils.aoa_to_sheet(velData)
+      wsVel['!cols'] = [{ wch: 15 }, { wch: 10 }]
+      XLSX.utils.book_append_sheet(wb, wsVel, 'Hiring Velocity')
+    }
+
+    // Sheet 6: Time-to-Hire
+    if (timeToHire?.breakdown && timeToHire.breakdown.length > 0) {
+      const tthData = [
+        ['Department', 'Avg Days', 'Total Hires'],
+        ...timeToHire.breakdown.map((d) => [d.department, d.average_days, d.total_hires]),
+      ]
+      const wsTth = XLSX.utils.aoa_to_sheet(tthData)
+      wsTth['!cols'] = [{ wch: 20 }, { wch: 12 }, { wch: 12 }]
+      XLSX.utils.book_append_sheet(wb, wsTth, 'Time-to-Hire')
+    }
+
+    // Offer Acceptance sheet
+    if (offerRate) {
+      const offerData = [
+        ['Total Sent', 'Accepted', 'Declined', 'Acceptance Rate (%)'],
+        [offerRate.total_sent, offerRate.accepted, offerRate.declined, offerRate.acceptance_rate_pct],
+      ]
+      const wsOffer = XLSX.utils.aoa_to_sheet(offerData)
+      wsOffer['!cols'] = [{ wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 20 }]
+      XLSX.utils.book_append_sheet(wb, wsOffer, 'Offer Acceptance')
+    }
+
+    const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' })
+    const blob = new Blob([wbout], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
     const url = URL.createObjectURL(blob)
     const link = document.createElement('a')
     link.href = url
-    link.download = `hireflow-report-${new Date().toISOString().split('T')[0]}.csv`
+    link.download = `hireflow-overview-report-${new Date().toISOString().split('T')[0]}.xlsx`
     document.body.appendChild(link)
     link.click()
     document.body.removeChild(link)
@@ -325,59 +436,95 @@ export default function ReportsPage() {
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" className="h-9 gap-1.5" onClick={exportCsv}>
-            <Download className="w-3.5 h-3.5" />
-            Export CSV
-          </Button>
-          <div className="w-56">
-            <Select value={selectedJobId} onValueChange={setSelectedJobId}>
-              <SelectTrigger className="h-9 bg-white border-gray-200 text-sm">
-                <SelectValue placeholder="Filter by job" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Jobs</SelectItem>
-                {jobs.map((j) => (
-                  <SelectItem key={j.id} value={j.id}>{j.title}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+          {activeTab === 'overview' && (
+            <Button variant="outline" size="sm" className="h-9 gap-1.5" onClick={exportExcel}>
+              <FileSpreadsheet className="w-3.5 h-3.5" />
+              Export Report
+            </Button>
+          )}
+          {activeTab === 'overview' && (
+            <>
+              <div className="w-44">
+                <Select value={datePreset} onValueChange={setDatePreset}>
+                  <SelectTrigger className="h-9 bg-white border-gray-200 text-sm">
+                    <CalendarDays className="w-3.5 h-3.5 mr-1.5 text-gray-400" />
+                    <SelectValue placeholder="Date range" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {DATE_PRESETS.map((p) => (
+                      <SelectItem key={p.value} value={p.value}>{p.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="w-56">
+                <Select value={selectedJobId} onValueChange={setSelectedJobId}>
+                  <SelectTrigger className="h-9 bg-white border-gray-200 text-sm">
+                    <SelectValue placeholder="Filter by job" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Jobs</SelectItem>
+                    {jobs.map((j) => (
+                      <SelectItem key={j.id} value={j.id}>{j.title}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </>
+          )}
         </div>
       </div>
 
-      {/* KPI Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        {KPI_CONFIG.map((kpi) => (
-          <Card key={kpi.key} className={`border-l-4 ${kpi.accent} shadow-sm hover:shadow-md transition-shadow`}>
-            <CardContent className="p-5">
-              <div className="flex items-start justify-between">
-                <div>
-                  <p className="text-sm font-medium text-gray-500">{kpi.label}</p>
-                  <p className="text-3xl font-bold text-gray-900 mt-1">
-                    {kpiValues[kpi.key]}
-                    {'suffix' in kpi && kpi.suffix && (
-                      <span className="text-base font-normal text-gray-400 ml-1">{kpi.suffix}</span>
-                    )}
-                  </p>
-                  <p className="text-xs text-gray-400 mt-1">{kpiSubs[kpi.key]}</p>
-                </div>
-                <div className={`p-2.5 rounded-lg ${kpi.bg} ${kpi.iconColor}`}>
-                  {kpi.icon}
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
+      {/* Tabs */}
+      <Tabs value={activeTab} onValueChange={setActiveTab}>
+        <TabsList>
+          <TabsTrigger value="overview">Overview</TabsTrigger>
+          <TabsTrigger value="recruiter">Recruiter Performance</TabsTrigger>
+        </TabsList>
 
-      {/* Charts */}
-      <ReportCharts
-        pipeline={pipeline}
-        jobStatusData={jobStatusData}
-        velocity={velocity}
-        timeToHire={timeToHire}
-        selectedJobTitle={selectedJobId !== 'all' ? jobs.find((j) => j.id === selectedJobId)?.title : undefined}
-      />
+        <TabsContent value="overview">
+          <div className="space-y-6">
+            {/* KPI Cards */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+              {KPI_CONFIG.map((kpi) => (
+                <Card key={kpi.key} className={`border-l-4 ${kpi.accent} shadow-sm hover:shadow-md transition-shadow`}>
+                  <CardContent className="p-5">
+                    <div className="flex items-start justify-between">
+                      <div>
+                        <p className="text-sm font-medium text-gray-500">{kpi.label}</p>
+                        <p className="text-3xl font-bold text-gray-900 mt-1">
+                          {kpiValues[kpi.key]}
+                          {'suffix' in kpi && kpi.suffix && (
+                            <span className="text-base font-normal text-gray-400 ml-1">{kpi.suffix}</span>
+                          )}
+                        </p>
+                        <p className="text-xs text-gray-400 mt-1">{kpiSubs[kpi.key]}</p>
+                      </div>
+                      <div className={`p-2.5 rounded-lg ${kpi.bg} ${kpi.iconColor}`}>
+                        {kpi.icon}
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+
+            {/* Charts */}
+            <ReportCharts
+              pipeline={pipeline}
+              jobStatusData={jobStatusData}
+              velocity={velocity}
+              timeToHire={timeToHire}
+              sourceData={sourceData}
+              selectedJobTitle={selectedJobId !== 'all' ? jobs.find((j) => j.id === selectedJobId)?.title : undefined}
+            />
+          </div>
+        </TabsContent>
+
+        <TabsContent value="recruiter">
+          <RecruiterPerformance />
+        </TabsContent>
+      </Tabs>
     </div>
   )
 }

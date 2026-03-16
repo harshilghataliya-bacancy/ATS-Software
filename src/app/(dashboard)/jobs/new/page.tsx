@@ -61,7 +61,7 @@ export default function NewJobPage() {
   const [formKey, setFormKey] = useState(0)
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { register, handleSubmit, formState: { errors }, setValue, getValues, watch } = useForm<CreateJobInput>({
+  const { register, handleSubmit, formState: { errors }, setValue, getValues, watch, clearErrors } = useForm<CreateJobInput>({
     resolver: zodResolver(createJobSchema) as any,
     defaultValues: {
       employment_type: 'full_time',
@@ -415,22 +415,22 @@ export default function NewJobPage() {
                   <Input id="application_deadline" type="date" {...register('application_deadline')} />
                   {errors.application_deadline && <p className="text-sm text-red-600">{errors.application_deadline.message}</p>}
                 </div>
-                {isAdmin && recruiters.length > 0 && (
+                {recruiters.length > 0 && (
                   <div className="space-y-2">
-                    <Label>Assign Recruiter</Label>
+                    <Label>Assign Recruiter <span className="text-red-500">*</span></Label>
                     <Select
                       key={`ar-${formKey}`}
-                      defaultValue={getValues('assigned_to') ?? '__unassigned'}
-                      onValueChange={(val) => setValue('assigned_to', val === '__unassigned' ? null : val)}
+                      defaultValue={getValues('assigned_to') ?? undefined}
+                      onValueChange={(val) => { setValue('assigned_to', val); clearErrors('assigned_to') }}
                     >
-                      <SelectTrigger><SelectValue placeholder="Unassigned" /></SelectTrigger>
+                      <SelectTrigger><SelectValue placeholder="Select a recruiter" /></SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="__unassigned">Unassigned</SelectItem>
                         {recruiters.map((r) => (
                           <SelectItem key={r.id} value={r.id}>{r.full_name} ({r.role})</SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
+                    {errors.assigned_to && <p className="text-sm text-red-600">{errors.assigned_to.message}</p>}
                   </div>
                 )}
               </CardContent>

@@ -182,7 +182,7 @@ async function processPdf(
   // Parse resume via GPT-4o (may fail — that's OK, we still create the candidate)
   const { data: parsed } = await parseResumeFromBytes(bytesForParse)
 
-  const email = parsed?.email?.toLowerCase().trim() || ''
+  const email = parsed?.email?.toLowerCase().trim() || null
   const firstName = parsed?.first_name || filename.replace(/\.pdf$/i, '').replace(/[_-]/g, ' ')
   const lastName = parsed?.last_name || ''
   const candidateName = `${firstName} ${lastName}`.trim()
@@ -244,14 +244,29 @@ async function processPdf(
       .single()
 
     if (insertError || !newCandidate) {
-      if (insertError?.message?.includes('candidates_org_email_unique')) {
-        return { filename, status: 'skipped', candidateName, error: 'A candidate with this email already exists' }
-      }
-      return { filename, status: 'failed', error: insertError?.message || 'Failed to create candidate' }
-    }
+      if (insertError?.message?.includes('candidates_org_email_unique') && email != null) {
+        // Race condition: another parallel request created this candidate first — look it up and continue
+        const { data: raceCandidate } = await adminClient
+          .from('candidates')
+          .select('id')
+          .eq('organization_id', orgId)
+          .eq('email', email)
+          .is('deleted_at', null)
+          .single()
 
-    candidateId = newCandidate.id
-    resultStatus = 'created'
+        if (raceCandidate) {
+          candidateId = raceCandidate.id
+          resultStatus = 'updated'
+        } else {
+          return { filename, status: 'failed', candidateName, error: 'Failed to resolve candidate after conflict' }
+        }
+      } else {
+        return { filename, status: 'failed', error: insertError?.message || 'Failed to create candidate' }
+      }
+    } else {
+      candidateId = newCandidate.id
+      resultStatus = 'created'
+    }
   }
 
   // Upload PDF to storage
