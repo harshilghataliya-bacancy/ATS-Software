@@ -266,6 +266,23 @@ function HeaderBar({
   )
 }
 
+function FooterBar({
+  address, footerText, dividerColor,
+}: {
+  address?: string; footerText?: string; dividerColor: string
+}) {
+  if (!address && !footerText) return null
+  return (
+    <View style={{ marginHorizontal: -48, marginTop: 'auto' }}>
+      <View style={{ height: 2, backgroundColor: dividerColor }} />
+      <View style={{ paddingHorizontal: 30, paddingVertical: 8, alignItems: 'center' as const }}>
+        {address ? <Text style={{ fontSize: 7.5, color: '#6b7280', textAlign: 'center' as const }}>{address}</Text> : null}
+        {footerText ? <Text style={{ fontSize: 7.5, color: '#9ca3af', textAlign: 'center' as const, marginTop: address ? 2 : 0 }}>{footerText}</Text> : null}
+      </View>
+    </View>
+  )
+}
+
 // ---------------------------------------------------------------------------
 // Main Component
 // ---------------------------------------------------------------------------
@@ -344,6 +361,9 @@ export function OfferPDFDocument(props: OfferPDFProps) {
   // Determine which section is last so the dual signature block goes there
   const lastSection = hasTerms ? 'terms' : hasSalaryBreakdown ? 'salary' : showAcceptanceSection ? 'acceptance' : 'body'
 
+  // Footer text
+  const footerText = props.footerText || undefined
+
   // Shared header/footer props
   const headerProps = {
     logoUrl:      templateLogoUrl,
@@ -353,9 +373,13 @@ export function OfferPDFDocument(props: OfferPDFProps) {
     website:      companyWebsite,
     dividerColor,
   }
+  const footerProps = {
+    address: companyAddress,
+    footerText,
+    dividerColor,
+  }
   // unused — kept for type safety
   void primaryColor
-  void companyAddress
   void referenceNumber
 
   // ── Page wrapper: each section lives in its own <Page> ──────────────────
@@ -367,6 +391,7 @@ export function OfferPDFDocument(props: OfferPDFProps) {
     <Page size="A4" style={s.page}>
       <HeaderBar {...headerProps} />
       {children}
+      <FooterBar {...footerProps} />
     </Page>
   )
 
