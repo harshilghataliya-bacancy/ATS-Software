@@ -14,7 +14,7 @@ import {
 import {
   LayoutDashboard, Briefcase, CalendarClock, FileText, Landmark,
   BarChart3, Mail, FileSignature, Building2, Users, LogOut,
-  ChevronsLeft, ChevronsRight,
+  ChevronsLeft, ChevronsRight, Calculator,
 } from 'lucide-react'
 
 const mainNav = [
@@ -34,6 +34,7 @@ const secondaryNav = [
 const settingsNav = [
   { href: '/settings/organization', label: 'Organization', icon: Building2 },
   { href: '/settings/members', label: 'Members', icon: Users },
+  { href: '/settings/salary-structures', label: 'Salary Structures', icon: Calculator },
 ]
 
 function NavItem({ href, label, icon: Icon, active, collapsed }: { href: string; label: string; icon: React.ComponentType<{ className?: string }>; active: boolean; collapsed: boolean }) {
@@ -71,7 +72,7 @@ function NavItem({ href, label, icon: Icon, active, collapsed }: { href: string;
 export function Sidebar() {
   const pathname = usePathname()
   const { user, organization } = useUser()
-  const { role, canManageMembers, canViewReports, canAccessBanks, isInterviewer } = useRole()
+  const { role, canManageMembers, canViewReports, canAccessBanks, isInterviewer, isAdmin } = useRole()
   const [collapsed, setCollapsed] = useState(false)
 
   const roleBadge: Record<string, { label: string; color: string }> = {
@@ -153,7 +154,12 @@ export function Sidebar() {
                   Templates
                 </p>
               )}
-              {secondaryNav.map((item) => (
+              {secondaryNav
+                .filter((item) => {
+                  if (item.href === '/settings/offer-templates' && !isAdmin) return false
+                  return true
+                })
+                .map((item) => (
                 <NavItem
                   key={item.href}
                   {...item}

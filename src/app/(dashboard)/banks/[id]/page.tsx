@@ -11,17 +11,21 @@ import {
   getBankCandidates,
   getBanks,
 } from '@/lib/services/candidate-banks'
-import { CANDIDATE_SOURCES, ITEMS_PER_PAGE } from '@/lib/constants'
+import { createCandidate } from '@/lib/services/candidates'
+import { CANDIDATE_SOURCES, ITEMS_PER_PAGE, ALLOWED_RESUME_TYPES, MAX_FILE_SIZE } from '@/lib/constants'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Textarea } from '@/components/ui/textarea'
 import { Skeleton } from '@/components/ui/skeleton'
+import { Badge } from '@/components/ui/badge'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import {
   Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogDescription,
 } from '@/components/ui/dialog'
 import {
   ArrowLeft, Search, MapPin, ArrowRightLeft, X, ChevronLeft, ChevronRight,
-  Landmark, FolderOpen, Users, UserPlus,
+  Landmark, FolderOpen, Users, UserPlus, Upload,
 } from 'lucide-react'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -34,7 +38,7 @@ export default function BankDetailPage() {
   const params = useParams()
   const router = useRouter()
   const bankId = params.id as string
-  const { organization, isLoading: userLoading } = useUser()
+  const { user, organization, isLoading: userLoading } = useUser()
   const { canAccessBanks, isInterviewer } = useRole()
 
   const [bank, setBank] = useState<AnyData | null>(null)
@@ -64,12 +68,22 @@ export default function BankDetailPage() {
 
   // Add candidate dialog
   const [addOpen, setAddOpen] = useState(false)
-  const [addSearch, setAddSearch] = useState('')
-  const [addResults, setAddResults] = useState<AnyData[]>([])
-  const [addSearching, setAddSearching] = useState(false)
-  const [addSelected, setAddSelected] = useState<Set<string>>(new Set())
   const [adding, setAdding] = useState(false)
-  const addSearchTimeout = useRef<NodeJS.Timeout>()
+
+  // New candidate form
+  const [newCand, setNewCand] = useState({
+    first_name: '', last_name: '', email: '', phone: '',
+    location: '', current_company: '', current_title: '',
+    linkedin_url: '', portfolio_url: '', source: 'direct',
+    source_details: '', notes: '', experience_years: '',
+  })
+  const [newTags, setNewTags] = useState<string[]>([])
+  const [tagInput, setTagInput] = useState('')
+  const [resumeFile, setResumeFile] = useState<File | null>(null)
+  const [parsing, setParsing] = useState(false)
+  const [parsed, setParsed] = useState(false)
+  const [newError, setNewError] = useState<string | null>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     if (!userLoading && (isInterviewer || !canAccessBanks)) {
@@ -196,63 +210,135 @@ export default function BankDetailPage() {
     setRemoving(false)
   }
 
-  // Add candidate search
-  function handleAddSearchChange(value: string) {
-    setAddSearch(value)
-    if (addSearchTimeout.current) clearTimeout(addSearchTimeout.current)
-    if (!value.trim()) { setAddResults([]); return }
-    addSearchTimeout.current = setTimeout(async () => {
-      if (!organization) return
-      setAddSearching(true)
-      const supabase = createClient()
-      const { data } = await supabase
-        .from('candidates')
-        .select('id, first_name, last_name, email, current_title, current_company')
-        .eq('organization_id', organization.id)
-        .is('deleted_at', null)
-        .or(`first_name.ilike.%${value}%,last_name.ilike.%${value}%,email.ilike.%${value}%`)
-        .order('created_at', { ascending: false })
-        .limit(20)
-      setAddResults(data || [])
-      setAddSearching(false)
-    }, 300)
+  // New candidate form helpers
+  function resetNewForm() {
+    setNewCand({ first_name: '', last_name: '', email: '', phone: '', location: '', current_company: '', current_title: '', linkedin_url: '', portfolio_url: '', source: 'direct', source_details: '', notes: '', experience_years: '' })
+    setNewTags([])
+    setTagInput('')
+    setResumeFile(null)
+    setParsing(false)
+    setParsed(false)
+    setNewError(null)
   }
 
-  function toggleAddSelect(id: string) {
-    setAddSelected((prev) => {
-      const next = new Set(prev)
-      if (next.has(id)) next.delete(id)
-      else next.add(id)
-      return next
-    })
+  async function handleResumeChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    if (!ALLOWED_RESUME_TYPES.includes(file.type)) { setNewError('Only PDF and Word documents are allowed'); return }
+    if (file.size > MAX_FILE_SIZE) { setNewError('File size must be under 10MB'); return }
+    setNewError(null)
+    setResumeFile(file)
+
+    if (file.type === 'application/pdf') {
+      setParsing(true)
+      setParsed(false)
+      try {
+        const formData = new FormData()
+        formData.append('file', file)
+        const res = await fetch('/api/public/parse-resume', { method: 'POST', body: formData })
+        if (res.ok) {
+          const { data } = await res.json()
+          if (data) {
+            setNewCand((prev) => ({
+              ...prev,
+              first_name: data.first_name || prev.first_name,
+              last_name: data.last_name || prev.last_name,
+              email: data.email || prev.email,
+              phone: data.phone || prev.phone,
+              current_title: data.current_title || prev.current_title,
+              current_company: data.current_company || prev.current_company,
+              location: data.location || prev.location,
+              linkedin_url: data.linkedin_url || prev.linkedin_url,
+              experience_years: data.experience_years ? String(data.experience_years) : prev.experience_years,
+            }))
+            if (data.skills && Array.isArray(data.skills)) setNewTags(data.skills)
+            setParsed(true)
+          }
+        }
+      } catch { /* ignore */ } finally { setParsing(false) }
+    }
   }
 
-  async function handleAddCandidates() {
-    if (addSelected.size === 0 || !bank) return
+  async function handleCreateNewCandidate() {
+    if (!organization || !user || !bank) return
+    if (!newCand.first_name.trim() || !newCand.last_name.trim() || !newCand.email.trim()) {
+      setNewError('First name, last name, and email are required')
+      return
+    }
     setAdding(true)
-    setError(null)
-    try {
-      const res = await fetch('/api/banks', {
+    setNewError(null)
+
+    const supabase = createClient()
+
+    // Check if candidate with this email already exists
+    const { data: existing } = await supabase
+      .from('candidates')
+      .select('id, first_name, last_name')
+      .eq('organization_id', organization.id)
+      .eq('email', newCand.email.trim())
+      .is('deleted_at', null)
+      .maybeSingle()
+
+    if (existing) {
+      setNewError(`A candidate with this email already exists: ${existing.first_name} ${existing.last_name}`)
+      setAdding(false)
+      return
+    }
+
+    // Create candidate
+    const payload: AnyData = {
+      first_name: newCand.first_name.trim(),
+      last_name: newCand.last_name.trim(),
+      email: newCand.email.trim(),
+      phone: newCand.phone.trim() || undefined,
+      location: newCand.location.trim() || undefined,
+      current_company: newCand.current_company.trim() || undefined,
+      current_title: newCand.current_title.trim() || undefined,
+      linkedin_url: newCand.linkedin_url.trim() || undefined,
+      portfolio_url: newCand.portfolio_url.trim() || undefined,
+      source: newCand.source,
+      source_details: newCand.source_details.trim() || undefined,
+      notes: newCand.notes.trim() || undefined,
+      experience_years: newCand.experience_years ? parseFloat(newCand.experience_years) : undefined,
+      tags: newTags.length > 0 ? newTags : undefined,
+      gdpr_consent: true,
+    }
+
+    const { data: candidate, error: createErr } = await createCandidate(supabase, organization.id, payload, user.id)
+    if (createErr) {
+      setNewError(createErr.message)
+      setAdding(false)
+      return
+    }
+
+    // Upload resume
+    if (candidate?.id && resumeFile) {
+      const ext = resumeFile.name.split('.').pop()
+      const path = `${organization.id}/${candidate.id}/resume.${ext}`
+      const { error: upErr } = await supabase.storage.from('resumes').upload(path, resumeFile, { upsert: true })
+      if (!upErr) {
+        const { data: { publicUrl } } = supabase.storage.from('resumes').getPublicUrl(path)
+        await supabase.from('candidates').update({ resume_url: publicUrl }).eq('id', candidate.id)
+        fetch('/api/resumes/parse', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ candidate_id: candidate.id }),
+        }).catch(() => {})
+      }
+    }
+
+    // Add to bank (for custom banks)
+    if (candidate?.id && !bank.is_default) {
+      await fetch('/api/banks', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          action: 'add_candidates',
-          bankId: bankId,
-          candidateIds: Array.from(addSelected),
-        }),
+        body: JSON.stringify({ action: 'add_candidates', bankId, candidateIds: [candidate.id] }),
       })
-      const data = await res.json()
-      if (!res.ok) setError(data.error)
-      else {
-        setAddOpen(false)
-        setAddSearch('')
-        setAddResults([])
-        setAddSelected(new Set())
-        await loadCandidates()
-      }
-    } catch {
-      setError('Failed to add candidates')
     }
+
+    setAddOpen(false)
+    resetNewForm()
+    await loadCandidates()
     setAdding(false)
   }
 
@@ -332,12 +418,10 @@ export default function BankDetailPage() {
           </div>
         </div>
         <div className="flex items-center gap-2">
-          {!bank.is_default && (
-            <Button size="sm" onClick={() => { setAddOpen(true); setAddSearch(''); setAddResults([]); setAddSelected(new Set()) }} className="h-8 gap-1.5 text-xs bg-blue-600 hover:bg-blue-700 text-white">
-              <UserPlus className="w-3.5 h-3.5" />
-              Add Candidate
-            </Button>
-          )}
+          <Button size="sm" onClick={() => { setAddOpen(true); resetNewForm() }} className="h-8 gap-1.5 text-xs bg-blue-600 hover:bg-blue-700 text-white">
+            <UserPlus className="w-3.5 h-3.5" />
+            Add Candidate
+          </Button>
           <div className="flex items-center gap-1.5 text-sm text-gray-500 bg-gray-50 px-3 py-1.5 rounded-lg">
             <Users className="w-3.5 h-3.5" />
             {totalCount} candidate{totalCount !== 1 ? 's' : ''}
@@ -574,74 +658,167 @@ export default function BankDetailPage() {
       )}
 
       {/* Add Candidate Dialog */}
-      <Dialog open={addOpen} onOpenChange={setAddOpen}>
-        <DialogContent className="sm:max-w-lg">
+      <Dialog open={addOpen} onOpenChange={(o) => { setAddOpen(o); if (!o) resetNewForm() }}>
+        <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Add Candidates to {bank.name}</DialogTitle>
-            <DialogDescription>Search for candidates to add to this bank</DialogDescription>
+            <DialogTitle>Add Candidate to {bank.name}</DialogTitle>
+            <DialogDescription>Create a new candidate and add them to this bank</DialogDescription>
           </DialogHeader>
-          <div className="space-y-3">
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-              <Input
-                placeholder="Search by name or email..."
-                value={addSearch}
-                onChange={(e) => handleAddSearchChange(e.target.value)}
-                className="pl-9"
-                autoFocus
-              />
-            </div>
-            <div className="max-h-[300px] overflow-y-auto border rounded-lg divide-y divide-gray-50">
-              {addSearching ? (
-                <div className="px-4 py-8 text-center text-sm text-gray-400">Searching...</div>
-              ) : addResults.length === 0 ? (
-                <div className="px-4 py-8 text-center text-sm text-gray-400">
-                  {addSearch ? 'No candidates found' : 'Type to search candidates'}
-                </div>
-              ) : (
-                addResults.map((c) => {
-                  const alreadyInBank = candidates.some((bc) => bc.id === c.id)
-                  return (
-                    <label
-                      key={c.id}
-                      className={`flex items-center gap-3 px-4 py-2.5 cursor-pointer hover:bg-gray-50 transition-colors ${
-                        alreadyInBank ? 'opacity-50' : ''
-                      }`}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={addSelected.has(c.id)}
-                        disabled={alreadyInBank}
-                        onChange={() => toggleAddSelect(c.id)}
-                        className="rounded border-gray-300"
-                      />
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium text-gray-900 truncate">
-                          {c.first_name} {c.last_name}
-                          {alreadyInBank && <span className="text-[10px] ml-1.5 text-gray-400">(already in bank)</span>}
-                        </p>
-                        <p className="text-[11px] text-gray-400 truncate">
-                          {c.email}
-                          {c.current_title && ` · ${c.current_title}`}
-                          {c.current_company && ` at ${c.current_company}`}
-                        </p>
+
+            <div className="space-y-5">
+              {newError && <div className="bg-red-50 text-red-700 text-sm p-2.5 rounded-md">{newError}</div>}
+
+              {/* Resume Upload */}
+              <div>
+                <input ref={fileInputRef} type="file" accept=".pdf,.doc,.docx" onChange={handleResumeChange} className="hidden" />
+                <div
+                  className="flex flex-col items-center text-center p-4 border-2 border-dashed border-gray-200 rounded-lg bg-gray-50/50 cursor-pointer hover:border-gray-300 transition-colors"
+                  onClick={() => fileInputRef.current?.click()}
+                >
+                  {parsing ? (
+                    <div className="w-full space-y-2">
+                      <div className="w-10 h-10 rounded-full bg-indigo-100 flex items-center justify-center mx-auto mb-2 animate-pulse">
+                        <Upload className="w-5 h-5 text-indigo-600" />
                       </div>
-                    </label>
-                  )
-                })
-              )}
+                      <p className="text-sm font-medium text-indigo-700">Parsing resume with AI...</p>
+                      <Skeleton className="h-3 w-1/2 mx-auto" />
+                    </div>
+                  ) : resumeFile ? (
+                    <div className="flex items-center gap-3">
+                      <div className={`w-10 h-10 rounded-full flex items-center justify-center ${parsed ? 'bg-green-100' : 'bg-blue-100'}`}>
+                        {parsed ? (
+                          <svg className="w-5 h-5 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                        ) : (
+                          <Upload className="w-5 h-5 text-blue-600" />
+                        )}
+                      </div>
+                      <div className="text-left">
+                        <p className="text-sm font-semibold text-gray-900">{resumeFile.name}</p>
+                        <p className="text-xs text-gray-500">{parsed ? 'Details auto-filled from resume' : 'Uploaded'}</p>
+                      </div>
+                    </div>
+                  ) : (
+                    <>
+                      <Upload className="w-8 h-8 text-indigo-400 mb-2" />
+                      <p className="text-sm font-semibold text-gray-700">Upload Resume to Auto-Fill</p>
+                      <p className="text-xs text-gray-400">PDF, DOC, DOCX - up to 10MB</p>
+                    </>
+                  )}
+                </div>
+              </div>
+
+              {/* Personal Info */}
+              <div className="space-y-3">
+                <h3 className="text-sm font-semibold text-gray-700">Personal Info</h3>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <Label>First Name <span className="text-red-500">*</span></Label>
+                    <Input value={newCand.first_name} onChange={(e) => setNewCand({ ...newCand, first_name: e.target.value })} placeholder="John" />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label>Last Name <span className="text-red-500">*</span></Label>
+                    <Input value={newCand.last_name} onChange={(e) => setNewCand({ ...newCand, last_name: e.target.value })} placeholder="Doe" />
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <Label>Email <span className="text-red-500">*</span></Label>
+                    <Input type="email" value={newCand.email} onChange={(e) => setNewCand({ ...newCand, email: e.target.value })} placeholder="john@example.com" />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label>Phone</Label>
+                    <Input type="tel" value={newCand.phone} onChange={(e) => setNewCand({ ...newCand, phone: e.target.value })} placeholder="+91 98765 43210" />
+                  </div>
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Location</Label>
+                  <Input value={newCand.location} onChange={(e) => setNewCand({ ...newCand, location: e.target.value })} placeholder="Mumbai, India" />
+                </div>
+              </div>
+
+              {/* Professional Info */}
+              <div className="space-y-3">
+                <h3 className="text-sm font-semibold text-gray-700">Professional Info</h3>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <Label>Current Company</Label>
+                    <Input value={newCand.current_company} onChange={(e) => setNewCand({ ...newCand, current_company: e.target.value })} placeholder="Acme Inc." />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label>Current Title</Label>
+                    <Input value={newCand.current_title} onChange={(e) => setNewCand({ ...newCand, current_title: e.target.value })} placeholder="Senior Engineer" />
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <Label>Experience (years)</Label>
+                    <Input type="number" value={newCand.experience_years} onChange={(e) => setNewCand({ ...newCand, experience_years: e.target.value })} placeholder="5" />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label>LinkedIn URL</Label>
+                    <Input value={newCand.linkedin_url} onChange={(e) => setNewCand({ ...newCand, linkedin_url: e.target.value })} placeholder="https://linkedin.com/in/..." />
+                  </div>
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Portfolio URL</Label>
+                  <Input value={newCand.portfolio_url} onChange={(e) => setNewCand({ ...newCand, portfolio_url: e.target.value })} placeholder="https://..." />
+                </div>
+              </div>
+
+              {/* Source & Tags */}
+              <div className="space-y-3">
+                <h3 className="text-sm font-semibold text-gray-700">Source & Tags</h3>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <Label>Source</Label>
+                    <Select value={newCand.source} onValueChange={(v) => setNewCand({ ...newCand, source: v })}>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        {CANDIDATE_SOURCES.map((s) => (
+                          <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label>Source Details</Label>
+                    <Input value={newCand.source_details} onChange={(e) => setNewCand({ ...newCand, source_details: e.target.value })} placeholder="Referred by..." />
+                  </div>
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Tags</Label>
+                  <div className="flex gap-2">
+                    <Input
+                      placeholder="Add tag (press Enter)"
+                      value={tagInput}
+                      onChange={(e) => setTagInput(e.target.value)}
+                      onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); const t = tagInput.trim(); if (t && !newTags.includes(t)) { setNewTags([...newTags, t]); setTagInput('') } } }}
+                    />
+                    <Button type="button" variant="outline" size="sm" onClick={() => { const t = tagInput.trim(); if (t && !newTags.includes(t)) { setNewTags([...newTags, t]); setTagInput('') } }}>Add</Button>
+                  </div>
+                  {newTags.length > 0 && (
+                    <div className="flex flex-wrap gap-1.5 mt-1">
+                      {newTags.map((tag) => (
+                        <Badge key={tag} variant="secondary" className="gap-1 cursor-pointer" onClick={() => setNewTags(newTags.filter((t) => t !== tag))}>
+                          {tag} <span className="text-xs">&times;</span>
+                        </Badge>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Notes</Label>
+                  <Textarea rows={2} value={newCand.notes} onChange={(e) => setNewCand({ ...newCand, notes: e.target.value })} placeholder="Any additional notes..." />
+                </div>
+              </div>
+
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setAddOpen(false)}>Cancel</Button>
+                <Button onClick={handleCreateNewCandidate} disabled={adding || parsing} className="bg-blue-600 hover:bg-blue-700 text-white">
+                  {adding ? 'Adding...' : 'Add Candidate'}
+                </Button>
+              </DialogFooter>
             </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setAddOpen(false)}>Cancel</Button>
-            <Button
-              onClick={handleAddCandidates}
-              disabled={adding || addSelected.size === 0}
-              className="bg-blue-600 hover:bg-blue-700 text-white"
-            >
-              {adding ? 'Adding...' : `Add ${addSelected.size > 0 ? addSelected.size : ''} Candidate${addSelected.size !== 1 ? 's' : ''}`}
-            </Button>
-          </DialogFooter>
         </DialogContent>
       </Dialog>
 

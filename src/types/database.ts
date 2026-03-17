@@ -255,6 +255,31 @@ export interface SalaryComponent {
   section?: string
 }
 
+// Salary Structure types (admin-configurable)
+export type SalaryComponentCalcType = 'percentage_of_ctc' | 'percentage_of_basic' | 'fixed'
+export type SalaryComponentSection = 'earnings' | 'deduction' | 'employer'
+
+export interface SalaryStructureComponent {
+  name: string
+  type: SalaryComponentCalcType
+  value: number
+  section: SalaryComponentSection
+  is_balancing?: boolean
+}
+
+export interface SalaryStructure {
+  id: string
+  organization_id: string
+  name: string
+  description: string | null
+  is_default: boolean
+  components: SalaryStructureComponent[]
+  created_by: string | null
+  created_at: string
+  updated_at: string
+  deleted_at: string | null
+}
+
 export interface BonusComponent {
   name: string
   amount: number
@@ -287,6 +312,7 @@ export interface OfferLetter {
   work_type: string | null
   business_unit: string | null
   offer_template_id: string | null
+  salary_structure_id: string | null
   response_token: string | null
   created_by: string
   created_at: string

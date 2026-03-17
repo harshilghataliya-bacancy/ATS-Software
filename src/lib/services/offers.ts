@@ -43,6 +43,7 @@ interface OfferData {
   work_type?: string
   business_unit?: string
   offer_template_id?: string | null
+  salary_structure_id?: string | null
 }
 
 // ---------------------------------------------------------------------------
