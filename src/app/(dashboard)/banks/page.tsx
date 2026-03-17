@@ -23,7 +23,7 @@ type AnyData = Record<string, any>
 export default function BanksPage() {
   const router = useRouter()
   const { organization, isLoading: userLoading } = useUser()
-  const { canAccessBanks, isInterviewer } = useRole()
+  const { canAccessBanks, isInterviewer, isAdmin } = useRole()
 
   const [banks, setBanks] = useState<AnyData[]>([])
   const [loading, setLoading] = useState(true)
@@ -157,8 +157,8 @@ export default function BanksPage() {
                   : 'border-gray-200 hover:border-gray-300'
               }`}
             >
-              {/* Delete button */}
-              {!bank.is_default && (
+              {/* Delete button — admin only */}
+              {!bank.is_default && isAdmin && (
                 <button
                   onClick={(e) => { e.stopPropagation(); setDeleteBank(bank) }}
                   className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 p-1.5 rounded-lg hover:bg-red-50 text-gray-300 hover:text-red-500 transition-all"

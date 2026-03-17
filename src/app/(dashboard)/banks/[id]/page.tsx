@@ -21,7 +21,7 @@ import {
 } from '@/components/ui/dialog'
 import {
   ArrowLeft, Search, MapPin, ArrowRightLeft, X, ChevronLeft, ChevronRight,
-  Landmark, FolderOpen, Users,
+  Landmark, FolderOpen, Users, UserPlus,
 } from 'lucide-react'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -61,6 +61,15 @@ export default function BankDetailPage() {
 
   // Remove dialog (for custom banks)
   const [removing, setRemoving] = useState(false)
+
+  // Add candidate dialog
+  const [addOpen, setAddOpen] = useState(false)
+  const [addSearch, setAddSearch] = useState('')
+  const [addResults, setAddResults] = useState<AnyData[]>([])
+  const [addSearching, setAddSearching] = useState(false)
+  const [addSelected, setAddSelected] = useState<Set<string>>(new Set())
+  const [adding, setAdding] = useState(false)
+  const addSearchTimeout = useRef<NodeJS.Timeout>()
 
   useEffect(() => {
     if (!userLoading && (isInterviewer || !canAccessBanks)) {
@@ -187,6 +196,66 @@ export default function BankDetailPage() {
     setRemoving(false)
   }
 
+  // Add candidate search
+  function handleAddSearchChange(value: string) {
+    setAddSearch(value)
+    if (addSearchTimeout.current) clearTimeout(addSearchTimeout.current)
+    if (!value.trim()) { setAddResults([]); return }
+    addSearchTimeout.current = setTimeout(async () => {
+      if (!organization) return
+      setAddSearching(true)
+      const supabase = createClient()
+      const { data } = await supabase
+        .from('candidates')
+        .select('id, first_name, last_name, email, current_title, current_company')
+        .eq('organization_id', organization.id)
+        .is('deleted_at', null)
+        .or(`first_name.ilike.%${value}%,last_name.ilike.%${value}%,email.ilike.%${value}%`)
+        .order('created_at', { ascending: false })
+        .limit(20)
+      setAddResults(data || [])
+      setAddSearching(false)
+    }, 300)
+  }
+
+  function toggleAddSelect(id: string) {
+    setAddSelected((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  async function handleAddCandidates() {
+    if (addSelected.size === 0 || !bank) return
+    setAdding(true)
+    setError(null)
+    try {
+      const res = await fetch('/api/banks', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'add_candidates',
+          bankId: bankId,
+          candidateIds: Array.from(addSelected),
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok) setError(data.error)
+      else {
+        setAddOpen(false)
+        setAddSearch('')
+        setAddResults([])
+        setAddSelected(new Set())
+        await loadCandidates()
+      }
+    } catch {
+      setError('Failed to add candidates')
+    }
+    setAdding(false)
+  }
+
   function toggleSelect(id: string) {
     setSelected((prev) => {
       const next = new Set(prev)
@@ -262,9 +331,17 @@ export default function BankDetailPage() {
             </div>
           </div>
         </div>
-        <div className="flex items-center gap-1.5 text-sm text-gray-500 bg-gray-50 px-3 py-1.5 rounded-lg">
-          <Users className="w-3.5 h-3.5" />
-          {totalCount} candidate{totalCount !== 1 ? 's' : ''}
+        <div className="flex items-center gap-2">
+          {!bank.is_default && (
+            <Button size="sm" onClick={() => { setAddOpen(true); setAddSearch(''); setAddResults([]); setAddSelected(new Set()) }} className="h-8 gap-1.5 text-xs bg-blue-600 hover:bg-blue-700 text-white">
+              <UserPlus className="w-3.5 h-3.5" />
+              Add Candidate
+            </Button>
+          )}
+          <div className="flex items-center gap-1.5 text-sm text-gray-500 bg-gray-50 px-3 py-1.5 rounded-lg">
+            <Users className="w-3.5 h-3.5" />
+            {totalCount} candidate{totalCount !== 1 ? 's' : ''}
+          </div>
         </div>
       </div>
 
@@ -495,6 +572,78 @@ export default function BankDetailPage() {
           )}
         </div>
       )}
+
+      {/* Add Candidate Dialog */}
+      <Dialog open={addOpen} onOpenChange={setAddOpen}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Add Candidates to {bank.name}</DialogTitle>
+            <DialogDescription>Search for candidates to add to this bank</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+              <Input
+                placeholder="Search by name or email..."
+                value={addSearch}
+                onChange={(e) => handleAddSearchChange(e.target.value)}
+                className="pl-9"
+                autoFocus
+              />
+            </div>
+            <div className="max-h-[300px] overflow-y-auto border rounded-lg divide-y divide-gray-50">
+              {addSearching ? (
+                <div className="px-4 py-8 text-center text-sm text-gray-400">Searching...</div>
+              ) : addResults.length === 0 ? (
+                <div className="px-4 py-8 text-center text-sm text-gray-400">
+                  {addSearch ? 'No candidates found' : 'Type to search candidates'}
+                </div>
+              ) : (
+                addResults.map((c) => {
+                  const alreadyInBank = candidates.some((bc) => bc.id === c.id)
+                  return (
+                    <label
+                      key={c.id}
+                      className={`flex items-center gap-3 px-4 py-2.5 cursor-pointer hover:bg-gray-50 transition-colors ${
+                        alreadyInBank ? 'opacity-50' : ''
+                      }`}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={addSelected.has(c.id)}
+                        disabled={alreadyInBank}
+                        onChange={() => toggleAddSelect(c.id)}
+                        className="rounded border-gray-300"
+                      />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-gray-900 truncate">
+                          {c.first_name} {c.last_name}
+                          {alreadyInBank && <span className="text-[10px] ml-1.5 text-gray-400">(already in bank)</span>}
+                        </p>
+                        <p className="text-[11px] text-gray-400 truncate">
+                          {c.email}
+                          {c.current_title && ` · ${c.current_title}`}
+                          {c.current_company && ` at ${c.current_company}`}
+                        </p>
+                      </div>
+                    </label>
+                  )
+                })
+              )}
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setAddOpen(false)}>Cancel</Button>
+            <Button
+              onClick={handleAddCandidates}
+              disabled={adding || addSelected.size === 0}
+              className="bg-blue-600 hover:bg-blue-700 text-white"
+            >
+              {adding ? 'Adding...' : `Add ${addSelected.size > 0 ? addSelected.size : ''} Candidate${addSelected.size !== 1 ? 's' : ''}`}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Move to Bank Dialog */}
       <Dialog open={moveOpen} onOpenChange={setMoveOpen}>
