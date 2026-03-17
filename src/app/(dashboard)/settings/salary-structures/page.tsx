@@ -32,7 +32,7 @@ function emptyComponent(): SalaryStructureComponent {
 }
 
 export default function SalaryStructuresPage() {
-  const { organization, user } = useUser()
+  const { organization } = useUser()
   const { isAdmin } = useRole()
   const [structures, setStructures] = useState<SalaryStructure[]>([])
   const [loading, setLoading] = useState(true)
