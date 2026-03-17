@@ -25,6 +25,37 @@ interface PipelineStageInput {
 }
 
 // ---------------------------------------------------------------------------
+// Job Recruiters (multi-recruiter assignment)
+// ---------------------------------------------------------------------------
+
+export async function syncJobRecruiters(
+  supabase: SupabaseClient,
+  jobId: string,
+  userIds: string[]
+) {
+  // Delete existing assignments
+  await supabase.from('job_recruiters').delete().eq('job_id', jobId)
+
+  if (userIds.length === 0) return { error: null }
+
+  const { error } = await supabase.from('job_recruiters').insert(
+    userIds.map((uid) => ({ job_id: jobId, user_id: uid }))
+  )
+  return { error }
+}
+
+export async function getJobRecruiters(
+  supabase: SupabaseClient,
+  jobId: string
+): Promise<string[]> {
+  const { data } = await supabase
+    .from('job_recruiters')
+    .select('user_id')
+    .eq('job_id', jobId)
+  return data?.map((r: { user_id: string }) => r.user_id) ?? []
+}
+
+// ---------------------------------------------------------------------------
 // Queries
 // ---------------------------------------------------------------------------
 
@@ -70,7 +101,18 @@ export async function getJobs(
   }
 
   if (assigned_to) {
-    query = query.eq('assigned_to', assigned_to)
+    // Check both jobs.assigned_to and job_recruiters junction table
+    const { data: recruiterJobs } = await supabase
+      .from('job_recruiters')
+      .select('job_id')
+      .eq('user_id', assigned_to)
+    const junctionJobIds = (recruiterJobs || []).map((r: { job_id: string }) => r.job_id)
+    // Combine: jobs where assigned_to matches OR job is in junction table
+    if (junctionJobIds.length > 0) {
+      query = query.or(`assigned_to.eq.${assigned_to},id.in.(${junctionJobIds.join(',')})`)
+    } else {
+      query = query.eq('assigned_to', assigned_to)
+    }
   }
 
   const { data, error, count } = await query
@@ -154,15 +196,30 @@ export async function createJob(
   data: Record<string, unknown>,
   userId: string
 ) {
+  // Extract recruiter_ids before inserting (not a column on jobs table)
+  const recruiterIds = (data.recruiter_ids as string[] | undefined) ?? []
+  const jobData = { ...data }
+  delete jobData.recruiter_ids
+
+  // Set assigned_to to first recruiter if provided (backward compat)
+  if (recruiterIds.length > 0 && !jobData.assigned_to) {
+    jobData.assigned_to = recruiterIds[0]
+  }
+
   const { data: job, error: jobError } = await supabase
     .from('jobs')
     .insert({
-      ...data,
+      ...jobData,
       organization_id: orgId,
       created_by: userId,
     })
     .select()
     .single()
+
+  // Sync job_recruiters junction table
+  if (job && recruiterIds.length > 0) {
+    await syncJobRecruiters(supabase, job.id, recruiterIds)
+  }
 
   // Pipeline stages are auto-created by DB trigger (create_default_pipeline_stages)
   return { data: job, error: jobError }
@@ -174,14 +231,29 @@ export async function updateJob(
   orgId: string,
   data: Record<string, unknown>
 ) {
+  // Extract recruiter_ids before updating (not a column on jobs table)
+  const recruiterIds = data.recruiter_ids as string[] | undefined
+  const jobData = { ...data }
+  delete jobData.recruiter_ids
+
+  // Set assigned_to to first recruiter only if not explicitly provided
+  if (recruiterIds && recruiterIds.length > 0 && !jobData.assigned_to) {
+    jobData.assigned_to = recruiterIds[0]
+  }
+
   const { data: job, error } = await supabase
     .from('jobs')
-    .update({ ...data, updated_at: new Date().toISOString() })
+    .update({ ...jobData, updated_at: new Date().toISOString() })
     .eq('id', jobId)
     .eq('organization_id', orgId)
     .is('deleted_at', null)
     .select()
     .single()
+
+  // Sync job_recruiters if recruiter_ids was provided
+  if (job && recruiterIds !== undefined) {
+    await syncJobRecruiters(supabase, jobId, recruiterIds)
+  }
 
   return { data: job, error }
 }

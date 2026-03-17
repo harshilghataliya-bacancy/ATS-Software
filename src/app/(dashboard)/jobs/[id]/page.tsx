@@ -9,7 +9,7 @@ import { updateJobSchema, type UpdateJobInput } from '@/lib/validators/job'
 import { useUser, useRole } from '@/lib/hooks/use-user'
 import { getAssignableRecruiters } from '../actions'
 import { createClient } from '@/lib/supabase/client'
-import { getJobById, updateJob, getScorecardCriteria, upsertScorecardCriteria } from '@/lib/services/jobs'
+import { getJobById, updateJob, getScorecardCriteria, upsertScorecardCriteria, getJobRecruiters } from '@/lib/services/jobs'
 import { moveJobCandidatesToDefaultBank } from '@/lib/services/candidate-banks'
 import {
   EMPLOYMENT_TYPES, CURRENCIES, JOB_STATUS_CONFIG, EXPERIENCE_LEVELS,
@@ -50,11 +50,14 @@ export default function JobDetailPage() {
   const [criteriaLoaded, setCriteriaLoaded] = useState(false)
   const [skills, setSkills] = useState<string[]>([])
   const [skillInput, setSkillInput] = useState('')
+  const [selectedRecruiterIds, setSelectedRecruiterIds] = useState<string[]>([])
+  const [jobOwnerId, setJobOwnerId] = useState<string | null>(null)
   const [hasChanges, setHasChanges] = useState(false)
   const [bulkUploadOpen, setBulkUploadOpen] = useState(false)
 
   const initialCriteriaRef = useRef<string>('')
   const initialSkillsRef = useRef<string>('')
+  const initialRecruiterIdsRef = useRef<string>('')
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const { register, handleSubmit, formState: { errors, isDirty }, setValue, reset } = useForm<UpdateJobInput>({
@@ -64,8 +67,10 @@ export default function JobDetailPage() {
   useEffect(() => {
     const criteriaDirty = JSON.stringify(criteria) !== initialCriteriaRef.current
     const skillsDirty = JSON.stringify(skills) !== initialSkillsRef.current
-    setHasChanges(isDirty || criteriaDirty || skillsDirty)
-  }, [isDirty, criteria, skills])
+    const recruitersDirty = JSON.stringify(selectedRecruiterIds) !== initialRecruiterIdsRef.current
+    const ownerDirty = jobOwnerId !== (job?.assigned_to as string | null)
+    setHasChanges(isDirty || criteriaDirty || skillsDirty || recruitersDirty || ownerDirty)
+  }, [isDirty, criteria, skills, selectedRecruiterIds, jobOwnerId, job])
 
   useEffect(() => {
     if (organization && isAdmin) {
@@ -116,6 +121,12 @@ export default function JobDetailPage() {
         assigned_to: data.assigned_to ?? null,
       })
 
+      // Load job recruiters
+      const recruiterIds = await getJobRecruiters(supabase, params.id as string)
+      setSelectedRecruiterIds(recruiterIds)
+      setJobOwnerId((data.assigned_to as string) ?? (recruiterIds.length > 0 ? recruiterIds[0] : null))
+      initialRecruiterIdsRef.current = JSON.stringify(recruiterIds)
+
       if (!criteriaLoaded) {
         const { data: criteriaData } = await getScorecardCriteria(supabase, params.id as string, organization.id)
         if (criteriaData && criteriaData.length > 0) {
@@ -157,7 +168,7 @@ export default function JobDetailPage() {
 
     const supabase = createClient()
 
-    const updateData: Record<string, unknown> = { ...data }
+    const updateData: Record<string, unknown> = { ...data, recruiter_ids: selectedRecruiterIds, assigned_to: jobOwnerId }
     if (updateData.application_deadline === '' || updateData.application_deadline === undefined) {
       updateData.application_deadline = null
     }
@@ -195,6 +206,7 @@ export default function JobDetailPage() {
 
       initialCriteriaRef.current = JSON.stringify(criteria)
       initialSkillsRef.current = JSON.stringify(skills)
+      initialRecruiterIdsRef.current = JSON.stringify(selectedRecruiterIds)
 
       reset(data)
       setHasChanges(false)
@@ -445,20 +457,94 @@ export default function JobDetailPage() {
                   <Input id="application_deadline" type="date" {...register('application_deadline')} disabled={!canManageJobs} />
                 </div>
                 {isAdmin && recruiters.length > 0 && (
-                  <div className="space-y-2">
-                    <Label>Assign Recruiter</Label>
-                    <Select
-                      defaultValue={(job.assigned_to as string) ?? '__unassigned'}
-                      onValueChange={(val) => setValue('assigned_to', val === '__unassigned' ? null : val, { shouldDirty: true })}
-                    >
-                      <SelectTrigger><SelectValue placeholder="Unassigned" /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="__unassigned">Unassigned</SelectItem>
-                        {recruiters.map((r) => (
-                          <SelectItem key={r.id} value={r.id}>{r.full_name} ({r.role})</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                  <div className="space-y-3">
+                    <Label>Assigned Recruiters</Label>
+                    <div className="space-y-1 rounded-lg border border-gray-200 p-2 max-h-56 overflow-y-auto">
+                      {recruiters.map((r) => {
+                        const checked = selectedRecruiterIds.includes(r.id)
+                        const isOwner = r.id === jobOwnerId
+                        return (
+                          <div key={r.id} className={`flex items-center gap-2 rounded-lg px-2 py-1.5 transition-all ${
+                            checked
+                              ? isOwner
+                                ? 'bg-emerald-50/80 ring-1 ring-emerald-200'
+                                : 'bg-blue-50/50 ring-1 ring-blue-100'
+                              : 'hover:bg-gray-50'
+                          }`}>
+                            <input
+                              type="checkbox"
+                              checked={checked}
+                              className="rounded border-gray-300 text-blue-600 focus:ring-blue-500 shrink-0"
+                              onChange={() => {
+                                let updated: string[]
+                                if (checked) {
+                                  updated = selectedRecruiterIds.filter((id) => id !== r.id)
+                                  if (r.id === jobOwnerId) {
+                                    setJobOwnerId(updated.length > 0 ? updated[0] : null)
+                                  }
+                                } else {
+                                  updated = [...selectedRecruiterIds, r.id]
+                                  if (!jobOwnerId) setJobOwnerId(r.id)
+                                }
+                                setSelectedRecruiterIds(updated)
+                              }}
+                            />
+                            <span className={`text-sm flex-1 ${isOwner ? 'text-emerald-700 font-semibold' : checked ? 'text-gray-800' : 'text-gray-600'}`}>
+                              {r.full_name}
+                            </span>
+                            <span className="text-[11px] text-gray-400">{r.role}</span>
+                            {checked && (
+                              <button
+                                type="button"
+                                title={isOwner ? 'Job Owner' : 'Set as Owner'}
+                                className={`w-6 h-6 flex items-center justify-center rounded-full transition-all shrink-0 ${
+                                  isOwner
+                                    ? 'bg-emerald-100 text-emerald-600 ring-1 ring-emerald-300'
+                                    : 'text-gray-300 hover:text-amber-500 hover:bg-amber-50'
+                                }`}
+                                onClick={() => setJobOwnerId(r.id)}
+                              >
+                                <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill={isOwner ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth={isOwner ? 0 : 2}>
+                                  <path d="M12 2l3.09 6.26L22 9.27l-5 4.87L18.18 22 12 18.27 5.82 22 7 14.14l-5-4.87 6.91-1.01L12 2z" />
+                                </svg>
+                              </button>
+                            )}
+                          </div>
+                        )
+                      })}
+                    </div>
+                    {/* Selected badges */}
+                    {selectedRecruiterIds.length > 0 && (
+                      <div className="flex flex-wrap gap-1.5">
+                        {selectedRecruiterIds.map((id) => {
+                          const r = recruiters.find((rec) => rec.id === id)
+                          const isOwner = id === jobOwnerId
+                          return r ? (
+                            <Badge key={id} variant="secondary" className={`gap-1 cursor-pointer text-xs ${
+                              isOwner ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : ''
+                            }`} onClick={() => {
+                              const updated = selectedRecruiterIds.filter((rid) => rid !== id)
+                              setSelectedRecruiterIds(updated)
+                              if (id === jobOwnerId) setJobOwnerId(updated.length > 0 ? updated[0] : null)
+                            }}>
+                              {isOwner && <svg className="w-3 h-3 text-emerald-600 shrink-0" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87L18.18 22 12 18.27 5.82 22 7 14.14l-5-4.87 6.91-1.01L12 2z" /></svg>}
+                              {r.full_name} <span className="text-xs ml-0.5">&times;</span>
+                            </Badge>
+                          ) : null
+                        })}
+                      </div>
+                    )}
+                  </div>
+                )}
+                {/* Job Owner display for non-admin */}
+                {!isAdmin && jobOwnerId && recruiters.length > 0 && (
+                  <div className="space-y-1.5">
+                    <Label className="text-xs text-gray-500">Job Owner</Label>
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-medium text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-full">
+                        ★ {recruiters.find((r) => r.id === jobOwnerId)?.full_name ?? 'Unknown'}
+                      </span>
+                    </div>
                   </div>
                 )}
               </CardContent>

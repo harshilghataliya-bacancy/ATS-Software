@@ -13,8 +13,9 @@ import {
 import { CSS } from '@dnd-kit/utilities'
 import { useUser, useRole } from '@/lib/hooks/use-user'
 import { createClient } from '@/lib/supabase/client'
-import { getApplicationsForJob, moveApplication } from '@/lib/services/applications'
-import { getJobById } from '@/lib/services/jobs'
+import { getApplicationsForJob, moveApplication, assignRecruiter } from '@/lib/services/applications'
+import { getJobById, getJobRecruiters, syncJobRecruiters } from '@/lib/services/jobs'
+import { resolveUserNames, getAssignableRecruiters } from '../../actions'
 import { logActivity } from '@/lib/services/activity'
 import { APPLICATION_STATUS_CONFIG } from '@/lib/constants'
 import { Button } from '@/components/ui/button'
@@ -25,11 +26,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from '@/components/ui/table'
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { ScoreBreakdownDialog } from './score-breakdown-dialog'
 import { BulkResumeUploadDialog } from '@/components/bulk-upload/bulk-resume-upload-dialog'
 import { AddCandidateDialog } from '@/components/add-candidate-dialog'
 import {
-  ArrowLeft, UserPlus, Upload, List, Columns3, Briefcase, Sparkles,
+  ArrowLeft, UserPlus, Upload, List, Columns3, Briefcase, Sparkles, User, Users,
 } from 'lucide-react'
 
 // ---------------------------------------------------------------------------
@@ -77,6 +79,7 @@ interface ApplicationRow {
   current_stage: PipelineStage | null
   status: string
   applied_at: string
+  assigned_recruiter_id?: string | null
 }
 
 interface StageGroup {
@@ -226,7 +229,7 @@ export default function ApplicationsPage() {
   const params = useParams()
   const router = useRouter()
   const { user, organization, isLoading: userLoading } = useUser()
-  const { canManageJobs } = useRole()
+  const { canManageJobs, isAdmin } = useRole()
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [job, setJob] = useState<any>(null)
   const [stages, setStages] = useState<StageGroup[]>([])
@@ -241,6 +244,7 @@ export default function ApplicationsPage() {
   const [filterStatus, setFilterStatus] = useState<string>('active')
   const [filterStage, setFilterStage] = useState<string>('all')
   const [filterScore, setFilterScore] = useState<string>('all')
+  const [filterMyCandidates, setFilterMyCandidates] = useState(false)
 
   // AI Match Scores
   const [matchScores, setMatchScores] = useState<Record<string, MatchScore>>({})
@@ -257,6 +261,17 @@ export default function ApplicationsPage() {
 
   // Add candidate dialog
   const [addCandidateOpen, setAddCandidateOpen] = useState(false)
+
+  // Recruiter assignment
+  const [jobRecruiterIds, setJobRecruiterIds] = useState<string[]>([])
+  const [recruiterNames, setRecruiterNames] = useState<Record<string, string>>({})
+
+  // Manage recruiters dialog
+  const [manageRecruitersOpen, setManageRecruitersOpen] = useState(false)
+  const [allRecruiters, setAllRecruiters] = useState<{ id: string; full_name: string; role: string }[]>([])
+  const [dialogRecruiterIds, setDialogRecruiterIds] = useState<string[]>([])
+  const [dialogOwnerId, setDialogOwnerId] = useState<string | null>(null)
+  const [savingRecruiters, setSavingRecruiters] = useState(false)
 
   // Pipeline drag-and-drop state
   const [activeApp, setActiveApp] = useState<ApplicationRow | null>(null)
@@ -347,6 +362,21 @@ export default function ApplicationsPage() {
         }))
       )
       setAllApps(flatApps)
+    }
+
+    // Load job recruiters and resolve names
+    if (organization) {
+      const supabase2 = createClient()
+      const recruiterIds = await getJobRecruiters(supabase2, params.id as string)
+      setJobRecruiterIds(recruiterIds)
+
+      // Collect all recruiter IDs (from job + from applications)
+      const allRecruiterIds = new Set(recruiterIds)
+      flatApps.forEach((a) => { if (a.assigned_recruiter_id) allRecruiterIds.add(a.assigned_recruiter_id) })
+      if (allRecruiterIds.size > 0) {
+        const { data: names } = await resolveUserNames(Array.from(allRecruiterIds))
+        if (names) setRecruiterNames(names)
+      }
     }
 
     setLoading(false)
@@ -537,7 +567,80 @@ export default function ApplicationsPage() {
     return '[&>div]:bg-red-500'
   }
 
+  // ---------------------------------------------------------------------------
+  // Manage Recruiters dialog handlers
+  // ---------------------------------------------------------------------------
+
+  async function openManageRecruiters() {
+    if (!organization) return
+    setManageRecruitersOpen(true)
+    setDialogRecruiterIds([...jobRecruiterIds])
+    setDialogOwnerId((job?.assigned_to as string) ?? (jobRecruiterIds.length > 0 ? jobRecruiterIds[0] : null))
+    // Fetch all assignable recruiters
+    const result = await getAssignableRecruiters(organization.id)
+    if (result.data) {
+      setAllRecruiters(result.data)
+    }
+  }
+
+  async function saveRecruiters() {
+    if (!organization || !job) return
+    setSavingRecruiters(true)
+    try {
+      const supabase = createClient()
+      // Sync job_recruiters junction table
+      await syncJobRecruiters(supabase, job.id, dialogRecruiterIds)
+      // Update job owner (assigned_to)
+      await supabase.from('jobs').update({
+        assigned_to: dialogOwnerId,
+        updated_at: new Date().toISOString(),
+      }).eq('id', job.id).eq('organization_id', organization.id)
+      // Refresh local state
+      setJobRecruiterIds(dialogRecruiterIds)
+      setJob((prev: Record<string, unknown>) => prev ? { ...prev, assigned_to: dialogOwnerId } : prev)
+      // Resolve any new names
+      const allIds = new Set(dialogRecruiterIds)
+      if (dialogOwnerId) allIds.add(dialogOwnerId)
+      if (allIds.size > 0) {
+        const { data: names } = await resolveUserNames(Array.from(allIds))
+        if (names) setRecruiterNames((prev) => ({ ...prev, ...names }))
+      }
+      setManageRecruitersOpen(false)
+    } catch {
+      setError('Failed to save recruiter assignments')
+    } finally {
+      setSavingRecruiters(false)
+    }
+  }
+
   // Compute pipeline stages from allApps (always fresh — reflects optimistic stage changes)
+  const viewToggle = (
+    <div className="flex items-center gap-0.5 rounded-lg border border-gray-200 bg-gray-50 p-1">
+      <button
+        onClick={() => setViewMode('table')}
+        title="Table view"
+        className={`flex items-center justify-center w-8 h-7 rounded-md transition-all duration-150 ${
+          viewMode === 'table'
+            ? 'bg-white text-gray-900 shadow-sm ring-1 ring-gray-200'
+            : 'text-gray-400 hover:text-gray-600'
+        }`}
+      >
+        <List className="w-3.5 h-3.5" />
+      </button>
+      <button
+        onClick={() => setViewMode('pipeline')}
+        title="Pipeline view"
+        className={`flex items-center justify-center w-8 h-7 rounded-md transition-all duration-150 ${
+          viewMode === 'pipeline'
+            ? 'bg-white text-gray-900 shadow-sm ring-1 ring-gray-200'
+            : 'text-gray-400 hover:text-gray-600'
+        }`}
+      >
+        <Columns3 className="w-3.5 h-3.5" />
+      </button>
+    </div>
+  )
+
   const pipelineStages = stages.map((stage) => ({
     ...stage,
     applications: allApps.filter((a) => a.current_stage_id === stage.id),
@@ -582,40 +685,19 @@ export default function ApplicationsPage() {
                 {batchScoring && <span className="text-[10px] font-medium px-2 py-0.5 rounded-full border border-blue-200 text-blue-500 animate-pulse">AI Scoring...</span>}
                 {moving && <span className="text-xs text-gray-400 animate-pulse">Saving…</span>}
               </div>
-              <p className="text-xs text-gray-400 mt-0.5">
-                {viewMode === 'table' ? 'Applications · Table View' : 'Applications · Pipeline View'}
+              <p className="text-xs text-gray-400 mt-0.5 flex items-center gap-2">
+                Applications
+                {job.assigned_to && recruiterNames[job.assigned_to] && (
+                  <span className="text-[11px] font-medium text-emerald-700 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded-full">
+                    ★ {recruiterNames[job.assigned_to]}
+                  </span>
+                )}
               </p>
             </div>
           </div>
         </div>
 
         <div className="flex items-center gap-2">
-          {/* View Mode Toggle */}
-          <div className="flex items-center gap-0.5 rounded-lg border border-gray-200 bg-gray-50 p-1">
-            <button
-              onClick={() => setViewMode('table')}
-              title="Table view"
-              className={`flex items-center justify-center w-8 h-7 rounded-md transition-all duration-150 ${
-                viewMode === 'table'
-                  ? 'bg-white text-gray-900 shadow-sm ring-1 ring-gray-200'
-                  : 'text-gray-400 hover:text-gray-600'
-              }`}
-            >
-              <List className="w-3.5 h-3.5" />
-            </button>
-            <button
-              onClick={() => setViewMode('pipeline')}
-              title="Pipeline view"
-              className={`flex items-center justify-center w-8 h-7 rounded-md transition-all duration-150 ${
-                viewMode === 'pipeline'
-                  ? 'bg-white text-gray-900 shadow-sm ring-1 ring-gray-200'
-                  : 'text-gray-400 hover:text-gray-600'
-              }`}
-            >
-              <Columns3 className="w-3.5 h-3.5" />
-            </button>
-          </div>
-
           {canManageJobs && (
             <>
               <Button variant="outline" size="sm" onClick={() => setAddCandidateOpen(true)} className="gap-1.5">
@@ -696,15 +778,34 @@ export default function ApplicationsPage() {
                 </div>
               </>
             )}
-            {(filterStatus !== 'active' || filterStage !== 'all' || filterScore !== 'all') && (
+            {jobRecruiterIds.length > 0 && (
+              <Button
+                variant={filterMyCandidates ? 'default' : 'outline'}
+                size="sm"
+                className={`h-8 text-xs gap-1.5 ${filterMyCandidates ? '' : ''}`}
+                onClick={() => setFilterMyCandidates((v) => !v)}
+              >
+                <User className="w-3.5 h-3.5" />
+                My Candidates
+              </Button>
+            )}
+            {(filterStatus !== 'active' || filterStage !== 'all' || filterScore !== 'all' || filterMyCandidates) && (
               <Button
                 variant="ghost" size="sm"
                 className="h-8 text-xs text-gray-500"
-                onClick={() => { setFilterStatus('active'); setFilterStage('all'); setFilterScore('all') }}
+                onClick={() => { setFilterStatus('active'); setFilterStage('all'); setFilterScore('all'); setFilterMyCandidates(false) }}
               >
                 Clear filters
               </Button>
             )}
+            <div className="flex-1" />
+            {isAdmin && (
+              <Button variant="outline" size="sm" onClick={openManageRecruiters} className="h-8 text-xs gap-1.5">
+                <Users className="w-3.5 h-3.5" />
+                Manage Recruiters
+              </Button>
+            )}
+            {viewToggle}
           </div>
 
           {/* Table */}
@@ -714,6 +815,7 @@ export default function ApplicationsPage() {
             <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
               {(() => {
                 const filteredApps = allApps.filter((app) => {
+                  if (filterMyCandidates && user && app.assigned_recruiter_id !== user.id) return false
                   if (filterStage !== 'all' && app.current_stage_id !== filterStage) return false
                   if (filterScore !== 'all') {
                     const score = matchScores[app.id]
@@ -746,6 +848,7 @@ export default function ApplicationsPage() {
                         <TableHead className="text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Assessment</TableHead>
                         <TableHead className="text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Email</TableHead>
                         <TableHead className="text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Phone</TableHead>
+                        <TableHead className="text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Assigned To</TableHead>
                         <TableHead className="text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Current Stage</TableHead>
                         <TableHead className="text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Applied</TableHead>
                       </TableRow>
@@ -829,6 +932,37 @@ export default function ApplicationsPage() {
                           <TableCell className="text-sm text-gray-600">{app.candidate.email}</TableCell>
                           <TableCell className="text-sm text-gray-600">{app.candidate.phone || '-'}</TableCell>
                           <TableCell onClick={(e) => e.stopPropagation()}>
+                            {isAdmin && jobRecruiterIds.length > 0 ? (
+                              <Select
+                                value={app.assigned_recruiter_id ?? '__unassigned'}
+                                onValueChange={async (val) => {
+                                  const newId = val === '__unassigned' ? null : val
+                                  if (!organization) return
+                                  // Optimistic update
+                                  setAllApps((prev) => prev.map((a) => a.id === app.id ? { ...a, assigned_recruiter_id: newId } : a))
+                                  const supabase3 = createClient()
+                                  await assignRecruiter(supabase3, app.id, organization.id, newId)
+                                }}
+                              >
+                                <SelectTrigger className="w-[140px] h-8 text-xs">
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="__unassigned">Unassigned</SelectItem>
+                                  {jobRecruiterIds.map((rid) => (
+                                    <SelectItem key={rid} value={rid}>
+                                      {recruiterNames[rid] ?? rid.slice(0, 8)}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            ) : (
+                              <span className="text-xs text-gray-600">
+                                {app.assigned_recruiter_id ? (recruiterNames[app.assigned_recruiter_id] ?? '-') : '-'}
+                              </span>
+                            )}
+                          </TableCell>
+                          <TableCell onClick={(e) => e.stopPropagation()}>
                             {app.status === 'active' && canManageJobs ? (
                               <Select
                                 value={app.current_stage_id}
@@ -882,6 +1016,14 @@ export default function ApplicationsPage() {
                 </SelectContent>
               </Select>
             </div>
+            <div className="flex-1" />
+            {isAdmin && (
+              <Button variant="outline" size="sm" onClick={openManageRecruiters} className="h-8 text-xs gap-1.5">
+                <Users className="w-3.5 h-3.5" />
+                Manage Recruiters
+              </Button>
+            )}
+            {viewToggle}
           </div>
 
           {allApps.length === 0 ? (
@@ -944,6 +1086,159 @@ export default function ApplicationsPage() {
         jobId={params.id as string}
         jobTitle={job?.title ?? ''}
       />
+
+      {/* Manage Recruiters Dialog */}
+      <Dialog open={manageRecruitersOpen} onOpenChange={setManageRecruitersOpen}>
+        <DialogContent className="sm:max-w-md p-0 overflow-hidden rounded-2xl shadow-xl bg-white">
+          <div className="px-6 py-5 border-b border-gray-100">
+            <DialogHeader>
+              <DialogTitle className="text-gray-900 text-base font-semibold tracking-tight flex items-center gap-2">
+                <Users className="w-4 h-4 text-gray-500" />
+                Manage Recruiters
+              </DialogTitle>
+              <p className="text-gray-400 text-xs mt-1">Assign recruiters and set the job owner</p>
+            </DialogHeader>
+          </div>
+
+          <div className="px-6 py-4">
+            {/* Current owner indicator */}
+            {dialogOwnerId && recruiterNames[dialogOwnerId] && (
+              <div className="flex items-center gap-2 mb-4 px-3 py-2 rounded-lg bg-emerald-50 border border-emerald-200">
+                <svg className="w-3.5 h-3.5 text-emerald-600" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87L18.18 22 12 18.27 5.82 22 7 14.14l-5-4.87 6.91-1.01L12 2z" /></svg>
+                <span className="text-xs font-medium text-emerald-700">Job Owner: {recruiterNames[dialogOwnerId] ?? allRecruiters.find(r => r.id === dialogOwnerId)?.full_name}</span>
+              </div>
+            )}
+
+            {/* Recruiter list */}
+            <ScrollArea className="max-h-[280px]">
+              <div className="space-y-1">
+                {allRecruiters.map((r) => {
+                  const checked = dialogRecruiterIds.includes(r.id)
+                  const isOwner = r.id === dialogOwnerId
+
+                  return (
+                    <div
+                      key={r.id}
+                      className={`flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all duration-150 ${
+                        checked
+                          ? isOwner
+                            ? 'bg-emerald-50/80 ring-1 ring-emerald-200'
+                            : 'bg-slate-50 ring-1 ring-slate-200'
+                          : 'hover:bg-gray-50'
+                      }`}
+                    >
+                      {/* Checkbox */}
+                      <label className="relative flex items-center cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={() => {
+                            let updated: string[]
+                            if (checked) {
+                              updated = dialogRecruiterIds.filter((id) => id !== r.id)
+                              if (r.id === dialogOwnerId) {
+                                setDialogOwnerId(updated.length > 0 ? updated[0] : null)
+                              }
+                            } else {
+                              updated = [...dialogRecruiterIds, r.id]
+                              if (!dialogOwnerId) setDialogOwnerId(r.id)
+                            }
+                            setDialogRecruiterIds(updated)
+                          }}
+                          className="peer sr-only"
+                        />
+                        <div className={`w-[18px] h-[18px] rounded-md border-2 flex items-center justify-center transition-all ${
+                          checked
+                            ? 'bg-slate-800 border-slate-800'
+                            : 'border-gray-300 hover:border-gray-400'
+                        }`}>
+                          {checked && (
+                            <svg className="w-3 h-3 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={3} strokeLinecap="round" strokeLinejoin="round">
+                              <polyline points="20 6 9 17 4 12" />
+                            </svg>
+                          )}
+                        </div>
+                      </label>
+
+                      {/* Name & role */}
+                      <div className="flex-1 min-w-0">
+                        <p className={`text-sm font-medium truncate ${isOwner ? 'text-emerald-800' : 'text-gray-800'}`}>{r.full_name}</p>
+                      </div>
+                      <span className="text-[10px] font-medium text-gray-400 uppercase tracking-wide shrink-0">{r.role}</span>
+
+                      {/* Star owner toggle — only visible when checked */}
+                      {checked && (
+                        <button
+                          type="button"
+                          title={isOwner ? 'Job Owner' : 'Set as Owner'}
+                          className={`w-7 h-7 flex items-center justify-center rounded-full transition-all shrink-0 ${
+                            isOwner
+                              ? 'bg-emerald-100 text-emerald-600 ring-1 ring-emerald-300 shadow-sm'
+                              : 'text-gray-300 hover:text-amber-500 hover:bg-amber-50'
+                          }`}
+                          onClick={() => setDialogOwnerId(r.id)}
+                        >
+                          <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill={isOwner ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth={isOwner ? 0 : 2}>
+                            <path d="M12 2l3.09 6.26L22 9.27l-5 4.87L18.18 22 12 18.27 5.82 22 7 14.14l-5-4.87 6.91-1.01L12 2z" />
+                          </svg>
+                        </button>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            </ScrollArea>
+
+            {/* Selected badges */}
+            {dialogRecruiterIds.length > 0 && (
+              <div className="flex flex-wrap gap-1.5 mt-4 pt-4 border-t border-gray-100">
+                {dialogRecruiterIds.map((id) => {
+                  const r = allRecruiters.find((rec) => rec.id === id)
+                  const isOwner = id === dialogOwnerId
+                  return (
+                    <span
+                      key={id}
+                      className={`inline-flex items-center gap-1 text-xs font-medium px-2 py-1 rounded-full transition-all ${
+                        isOwner
+                          ? 'bg-emerald-100 text-emerald-700 ring-1 ring-emerald-200'
+                          : 'bg-slate-100 text-slate-600'
+                      }`}
+                    >
+                      {isOwner && <svg className="w-2.5 h-2.5 text-emerald-600 shrink-0" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87L18.18 22 12 18.27 5.82 22 7 14.14l-5-4.87 6.91-1.01L12 2z" /></svg>}
+                      {r?.full_name ?? id.slice(0, 8)}
+                      <button
+                        className="ml-0.5 text-gray-400 hover:text-red-500 transition-colors"
+                        onClick={() => {
+                          const updated = dialogRecruiterIds.filter((rid) => rid !== id)
+                          setDialogRecruiterIds(updated)
+                          if (id === dialogOwnerId) setDialogOwnerId(updated.length > 0 ? updated[0] : null)
+                        }}
+                      >
+                        &times;
+                      </button>
+                    </span>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+
+          {/* Footer */}
+          <div className="flex items-center justify-end gap-2 px-6 py-4 border-t border-gray-100">
+            <Button variant="ghost" size="sm" onClick={() => setManageRecruitersOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              size="sm"
+              disabled={savingRecruiters}
+              onClick={saveRecruiters}
+              className="bg-blue-600 hover:bg-blue-700 text-white px-5"
+            >
+              {savingRecruiters ? 'Saving...' : 'Save Changes'}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

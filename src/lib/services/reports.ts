@@ -471,7 +471,7 @@ export async function getRecruiterPerformance(
 
   let appsQuery = supabase
     .from('applications')
-    .select('job_id, status, applied_at, hired_at, candidate_id')
+    .select('job_id, status, applied_at, hired_at, candidate_id, assigned_recruiter_id')
     .eq('organization_id', orgId)
     .is('deleted_at', null)
   if (jobId) appsQuery = appsQuery.eq('job_id', jobId)
@@ -509,12 +509,29 @@ export async function getRecruiterPerformance(
     allUserIds.add(recruiterId)
   }
 
-  // Count unique candidates per recruiter (by job ownership via applications)
+  // Build job-to-owner mapping (assigned_to = job owner)
+  const jobOwnerMap = new Map<string, string>()
+  for (const job of jobsRes.data ?? []) {
+    if (job.assigned_to) jobOwnerMap.set(job.id, job.assigned_to)
+  }
+
+  // Helper: resolve which recruiter owns an application
+  // Prefers assigned_recruiter_id, falls back to job owner (assigned_to) only
+  function getAppRecruiters(app: { job_id: string; assigned_recruiter_id?: string | null }): Set<string> {
+    if (app.assigned_recruiter_id) {
+      return new Set([app.assigned_recruiter_id])
+    }
+    // Fallback: only the job owner (assigned_to), not all recruiters
+    const owner = jobOwnerMap.get(app.job_id)
+    return owner ? new Set([owner]) : new Set()
+  }
+
+  // Count unique candidates per recruiter (by application-level assignment, fallback to job ownership)
   const candidateCounts = new Map<string, number>()
   const recruiterCandidates = new Map<string, Set<string>>()
   for (const app of appsRes.data ?? []) {
-    recruiterJobs.forEach((jobIds, uid) => {
-      if (!jobIds.has(app.job_id)) return
+    const owners = getAppRecruiters(app)
+    owners.forEach((uid) => {
       if (!recruiterCandidates.has(uid)) recruiterCandidates.set(uid, new Set())
       recruiterCandidates.get(uid)!.add(app.candidate_id)
     })
@@ -562,9 +579,9 @@ export async function getRecruiterPerformance(
   const tthSums = new Map<string, { total: number; count: number }>()
 
   for (const app of appsRes.data ?? []) {
-    // Find which recruiters own this job
-    recruiterJobs.forEach((jobIds, uid) => {
-      if (!jobIds.has(app.job_id)) return
+    // Use application-level assignment, fallback to job ownership
+    const owners = getAppRecruiters(app)
+    owners.forEach((uid) => {
       appCounts.set(uid, (appCounts.get(uid) ?? 0) + 1)
       if (app.status === 'hired') {
         hireCounts.set(uid, (hireCounts.get(uid) ?? 0) + 1)
@@ -632,20 +649,29 @@ export async function getCandidateStageTimeline(
     // Specific job filter takes precedence
     jobIds = [jobId]
   } else if (recruiterId) {
-    const { data: jobs } = await supabase
+    // Check job_recruiters junction table first, fallback to created_by/assigned_to
+    const { data: jrJobs } = await supabase
+      .from('job_recruiters')
+      .select('job_id')
+      .eq('user_id', recruiterId)
+    const jrJobIds = new Set(jrJobs?.map((j: { job_id: string }) => j.job_id) ?? [])
+
+    const { data: ownedJobs } = await supabase
       .from('jobs')
-      .select('id')
+      .select('id, assigned_to')
       .eq('organization_id', orgId)
       .is('deleted_at', null)
       .or(`created_by.eq.${recruiterId},assigned_to.eq.${recruiterId}`)
-    jobIds = jobs?.map((j) => j.id) ?? []
+    for (const j of ownedJobs ?? []) jrJobIds.add(j.id)
+
+    jobIds = Array.from(jrJobIds)
     if (jobIds.length === 0) return { data: [], error: null }
   }
 
   // Get applications with candidate + job info
   let appsQuery = supabase
     .from('applications')
-    .select('id, candidate_id, job_id, status, applied_at, hired_at, candidate:candidates(first_name, last_name), job:jobs(title)')
+    .select('id, candidate_id, job_id, status, applied_at, hired_at, assigned_recruiter_id, candidate:candidates(first_name, last_name), job:jobs(title)')
     .eq('organization_id', orgId)
     .is('deleted_at', null)
 
@@ -656,10 +682,29 @@ export async function getCandidateStageTimeline(
     appsQuery = appsQuery.gte('applied_at', dateRange.from).lte('applied_at', dateRange.to)
   }
 
-  const { data: apps, error: appsError } = await appsQuery
+  const { data: allApps, error: appsError } = await appsQuery
 
   if (appsError) return { data: null, error: appsError }
-  if (!apps || apps.length === 0) return { data: [], error: null }
+  if (!allApps || allApps.length === 0) return { data: [], error: null }
+
+  // Fallback: assigned → that recruiter only, unassigned → job owner (assigned_to) only
+  // Build set of jobs where this recruiter is the owner (assigned_to)
+  const ownedJobIds = new Set<string>()
+  if (recruiterId) {
+    const { data: ownerJobs } = await supabase
+      .from('jobs')
+      .select('id')
+      .eq('organization_id', orgId)
+      .eq('assigned_to', recruiterId)
+      .is('deleted_at', null)
+    for (const j of ownerJobs ?? []) ownedJobIds.add(j.id)
+  }
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const apps = recruiterId
+    ? allApps.filter((a: any) => a.assigned_recruiter_id === recruiterId || (!a.assigned_recruiter_id && ownedJobIds.has(a.job_id)))
+    : allApps
+
+  if (apps.length === 0) return { data: [], error: null }
 
   const appIds = apps.map((a) => a.id)
 

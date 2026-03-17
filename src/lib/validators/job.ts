@@ -44,7 +44,8 @@ export const createJobSchema = z.object({
     z.number({ message: 'Please enter maximum experience' }).min(0, 'Experience cannot be negative')
   ),
   priority: priorityEnum.default('medium'),
-  assigned_to: z.string({ message: 'Please assign a recruiter' }).uuid('Please assign a recruiter'),
+  assigned_to: z.string().uuid().nullable().optional(),
+  recruiter_ids: z.array(z.string().uuid()).optional(),
 })
 
 export type CreateJobInput = z.infer<typeof createJobSchema>
@@ -88,6 +89,7 @@ export const updateJobSchema = z.object({
   ),
   priority: priorityEnum.optional(),
   assigned_to: z.string().uuid().nullable().optional(),
+  recruiter_ids: z.array(z.string().uuid()).optional(),
 })
 
 export type UpdateJobInput = z.infer<typeof updateJobSchema>

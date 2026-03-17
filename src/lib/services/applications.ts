@@ -152,6 +152,16 @@ export async function createApplication(
     return { data: null, error: new Error(reapplyCheck.message) }
   }
 
+  // Auto-assign recruiter if job has exactly 1 recruiter
+  let autoRecruiterId: string | null = null
+  const { data: jobRecruiters } = await supabase
+    .from('job_recruiters')
+    .select('user_id')
+    .eq('job_id', data.job_id)
+  if (jobRecruiters && jobRecruiters.length === 1) {
+    autoRecruiterId = jobRecruiters[0].user_id
+  }
+
   const { data: application, error } = await supabase
     .from('applications')
     .insert({
@@ -160,6 +170,7 @@ export async function createApplication(
       current_stage_id: firstStage.id,
       status: 'active',
       applied_at: new Date().toISOString(),
+      ...(autoRecruiterId ? { assigned_recruiter_id: autoRecruiterId } : {}),
     })
     .select(
       `
@@ -171,6 +182,27 @@ export async function createApplication(
     .single()
 
   return { data: application, error }
+}
+
+export async function assignRecruiter(
+  supabase: SupabaseClient,
+  applicationId: string,
+  orgId: string,
+  recruiterId: string | null
+) {
+  const { data, error } = await supabase
+    .from('applications')
+    .update({
+      assigned_recruiter_id: recruiterId,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', applicationId)
+    .eq('organization_id', orgId)
+    .is('deleted_at', null)
+    .select()
+    .single()
+
+  return { data, error }
 }
 
 export async function moveApplication(

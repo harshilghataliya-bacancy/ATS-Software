@@ -20,13 +20,15 @@ import { CSS } from '@dnd-kit/utilities'
 import { useUser, useRole } from '@/lib/hooks/use-user'
 import { createClient } from '@/lib/supabase/client'
 import { getApplicationsForJob, moveApplication } from '@/lib/services/applications'
-import { getJobById } from '@/lib/services/jobs'
+import { getJobById, getJobRecruiters } from '@/lib/services/jobs'
+import { resolveUserNames } from '../../actions'
 import { APPLICATION_STATUS_CONFIG } from '@/lib/constants'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
 import { ScrollArea } from '@/components/ui/scroll-area'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -49,6 +51,7 @@ interface ApplicationCard {
   current_stage_id: string
   applied_at: string
   source?: string
+  assigned_recruiter_id?: string | null
 }
 
 interface PipelineStage {
@@ -110,10 +113,12 @@ function ApplicationCardUI({
   app,
   isDragging,
   draggable = true,
+  recruiterName,
 }: {
   app: ApplicationCard
   isDragging?: boolean
   draggable?: boolean
+  recruiterName?: string
 }) {
   const initials = `${app.candidate.first_name?.[0] ?? ''}${app.candidate.last_name?.[0] ?? ''}`.toUpperCase()
   const statusConfig = APPLICATION_STATUS_CONFIG[app.status as keyof typeof APPLICATION_STATUS_CONFIG]
@@ -138,11 +143,16 @@ function ApplicationCardUI({
             <p className="text-xs text-gray-500 truncate">{app.candidate.email}</p>
           </div>
         </div>
-        <div className="flex items-center gap-2 mt-2">
+        <div className="flex items-center gap-2 mt-2 flex-wrap">
           {statusConfig && (
             <Badge variant={statusConfig.variant} className="text-[10px] px-1.5 py-0">
               {statusConfig.label}
             </Badge>
+          )}
+          {recruiterName && (
+            <span className="text-[10px] bg-indigo-50 text-indigo-600 px-1.5 py-0.5 rounded font-medium">
+              {recruiterName}
+            </span>
           )}
           {app.candidate.tags?.slice(0, 2).map((tag) => (
             <span key={tag} className="text-[10px] bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded">
@@ -159,7 +169,7 @@ function ApplicationCardUI({
 // Draggable Application Card
 // ---------------------------------------------------------------------------
 
-function DraggableApplicationCard({ app }: { app: ApplicationCard }) {
+function DraggableApplicationCard({ app, recruiterName }: { app: ApplicationCard; recruiterName?: string }) {
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
     id: app.id,
   })
@@ -171,7 +181,7 @@ function DraggableApplicationCard({ app }: { app: ApplicationCard }) {
 
   return (
     <div ref={setNodeRef} style={style} {...listeners} {...attributes}>
-      <ApplicationCardUI app={app} />
+      <ApplicationCardUI app={app} recruiterName={recruiterName} />
     </div>
   )
 }
@@ -190,6 +200,9 @@ export default function PipelinePage() {
   const [error, setError] = useState<string | null>(null)
   const [activeApp, setActiveApp] = useState<ApplicationCard | null>(null)
   const [moving, setMoving] = useState(false)
+  const [jobRecruiterIds, setJobRecruiterIds] = useState<string[]>([])
+  const [recruiterNames, setRecruiterNames] = useState<Record<string, string>>({})
+  const [filterRecruiter, setFilterRecruiter] = useState<string>('all')
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
@@ -215,6 +228,14 @@ export default function PipelinePage() {
       setError(pipelineResult.error.message)
     } else if (pipelineResult.data) {
       setStages(pipelineResult.data.stages as PipelineStage[])
+    }
+
+    // Load job recruiters
+    const recruiterIds = await getJobRecruiters(supabase, params.id as string)
+    setJobRecruiterIds(recruiterIds)
+    if (recruiterIds.length > 0) {
+      const { data: names } = await resolveUserNames(recruiterIds)
+      if (names) setRecruiterNames(names)
     }
 
     setLoading(false)
@@ -378,6 +399,29 @@ export default function PipelinePage() {
         <div className="bg-red-50 text-red-700 text-sm p-3 rounded-md mb-4">{error}</div>
       )}
 
+      {/* Recruiter Filter */}
+      {jobRecruiterIds.length > 1 && (
+        <div className="flex items-center gap-3 mb-4">
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-gray-500">Recruiter:</span>
+            <Select value={filterRecruiter} onValueChange={setFilterRecruiter}>
+              <SelectTrigger className="w-[180px] h-8 text-xs">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Recruiters</SelectItem>
+                <SelectItem value="unassigned">Unassigned</SelectItem>
+                {jobRecruiterIds.map((rid) => (
+                  <SelectItem key={rid} value={rid}>
+                    {recruiterNames[rid] ?? rid.slice(0, 8)}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+      )}
+
       {/* Kanban Board */}
       <DndContext
         sensors={sensors}
@@ -386,24 +430,33 @@ export default function PipelinePage() {
         onDragEnd={handleDragEnd}
       >
         <div className="flex gap-4 overflow-x-auto pb-4" style={{ minHeight: 'calc(100vh - 220px)' }}>
-          {stages.map((stage) => (
-            <StageColumn key={stage.id} stage={stage}>
-              {stage.applications.map((app) => (
-                canManageJobs && app.status === 'active'
-                  ? <DraggableApplicationCard key={app.id} app={app} />
-                  : <ApplicationCardUI key={app.id} app={app} draggable={false} />
-              ))}
-              {stage.applications.length === 0 && (
+          {stages.map((stage) => {
+            const filteredApps = filterRecruiter === 'all'
+              ? stage.applications
+              : filterRecruiter === 'unassigned'
+                ? stage.applications.filter((a) => !a.assigned_recruiter_id)
+                : stage.applications.filter((a) => a.assigned_recruiter_id === filterRecruiter)
+            const filteredStage = { ...stage, applications: filteredApps }
+            return (
+            <StageColumn key={stage.id} stage={filteredStage}>
+              {filteredApps.map((app) => {
+                const rName = app.assigned_recruiter_id ? recruiterNames[app.assigned_recruiter_id] : undefined
+                return canManageJobs && app.status === 'active'
+                  ? <DraggableApplicationCard key={app.id} app={app} recruiterName={rName} />
+                  : <ApplicationCardUI key={app.id} app={app} draggable={false} recruiterName={rName} />
+              })}
+              {filteredApps.length === 0 && (
                 <div className="flex items-center justify-center h-16 text-xs text-gray-400 border-2 border-dashed border-gray-200 rounded-lg">
                   Drop here
                 </div>
               )}
             </StageColumn>
-          ))}
+            )
+          })}
         </div>
 
         <DragOverlay>
-          {activeApp ? <ApplicationCardUI app={activeApp} isDragging /> : null}
+          {activeApp ? <ApplicationCardUI app={activeApp} isDragging recruiterName={activeApp.assigned_recruiter_id ? recruiterNames[activeApp.assigned_recruiter_id] : undefined} /> : null}
         </DragOverlay>
       </DndContext>
     </div>

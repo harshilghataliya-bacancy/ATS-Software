@@ -135,6 +135,7 @@ export interface Application {
   rejected_at: string | null
   hired_at: string | null
   rejection_reason: string | null
+  assigned_recruiter_id: string | null
   created_at: string
   updated_at: string
   deleted_at: string | null
@@ -500,6 +501,13 @@ export interface CandidateBankMember {
   organization_id: string
   added_by: string | null
   added_at: string
+}
+
+export interface JobRecruiter {
+  id: string
+  job_id: string
+  user_id: string
+  assigned_at: string
 }
 
 // Join Types

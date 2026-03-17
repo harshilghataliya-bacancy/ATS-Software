@@ -5,7 +5,8 @@ import { useParams, useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { useUser, useRole } from '@/lib/hooks/use-user'
 import { createClient } from '@/lib/supabase/client'
-import { getApplicationById, moveApplication, hireApplication } from '@/lib/services/applications'
+import { getApplicationById, moveApplication, hireApplication, assignRecruiter } from '@/lib/services/applications'
+import { getJobRecruiters } from '@/lib/services/jobs'
 import { getMatchScore } from '@/lib/services/ai-matching'
 import { updateCandidate } from '@/lib/services/candidates'
 import { CANDIDATE_SOURCES, MAX_FILE_SIZE } from '@/lib/constants'
@@ -97,7 +98,7 @@ export default function ApplicationDetailPage() {
   const searchParams = useSearchParams()
   const [activeTab, setActiveTab] = useState(searchParams.get('tab') || 'personal')
   const { user, organization, isLoading: userLoading } = useUser()
-  const { canManageCandidates, isInterviewer, canSendWhatsApp } = useRole()
+  const { canManageCandidates, isInterviewer, canSendWhatsApp, isAdmin } = useRole()
   const [application, setApplication] = useState<AnyData | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -132,6 +133,10 @@ export default function ApplicationDetailPage() {
   // Activity log state
   const [activityLogs, setActivityLogs] = useState<AnyData[]>([])
   const [activityLoading, setActivityLoading] = useState(false)
+
+  // Recruiter assignment
+  const [jobRecruiterIds, setJobRecruiterIds] = useState<string[]>([])
+  const [recruiterNames, setRecruiterNames] = useState<Record<string, string>>({})
 
   // Interviewers only have access to Dashboard + Interviews
   useEffect(() => {
@@ -192,6 +197,17 @@ export default function ApplicationDetailPage() {
       const { data: activities } = await fetchApplicationActivities(organization.id, data.id, data.candidate_id)
       setActivityLogs(activities || [])
       setActivityLoading(false)
+
+      // Load job recruiters for assignment dropdown
+      if (data.job?.id) {
+        const supabase4 = createClient()
+        const rIds = await getJobRecruiters(supabase4, data.job.id)
+        setJobRecruiterIds(rIds)
+        if (rIds.length > 0) {
+          const rNames = await resolveUserNames(rIds)
+          setRecruiterNames(rNames)
+        }
+      }
     }
     setLoading(false)
   }, [organization, params.id])
@@ -298,6 +314,19 @@ export default function ApplicationDetailPage() {
         candidate_name: `${application.candidate?.first_name} ${application.candidate?.last_name}`,
       }).catch(() => {})
       await loadApplication()
+    }
+  }
+
+  async function handleRecruiterChange(recruiterId: string) {
+    if (!organization || !application) return
+    const newId = recruiterId === 'unassigned' ? null : recruiterId
+    if (newId === (application.assigned_recruiter_id || null)) return
+    const supabase = createClient()
+    const { error: assignError } = await assignRecruiter(supabase, application.id, organization.id, newId)
+    if (assignError) {
+      setError(assignError.message)
+    } else {
+      setApplication((prev: AnyData | null) => prev ? { ...prev, assigned_recruiter_id: newId } : prev)
     }
   }
 
@@ -452,18 +481,38 @@ export default function ApplicationDetailPage() {
               {job?.department && <span className="text-gray-400"> &middot; {job.department}</span>}
             </p>
             {isActive && canManageCandidates && stages.length > 0 && (
-              <div className="flex items-center gap-2 mt-1.5">
-                <span className="text-xs text-gray-500">Stage:</span>
-                <Select value={application.current_stage?.id || ''} onValueChange={handleStageChange}>
-                  <SelectTrigger className="h-7 w-[180px] text-xs">
-                    <SelectValue placeholder="Move stage..." />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {stages.map((s) => (
-                      <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+              <div className="flex items-center gap-4 mt-1.5">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-gray-500">Stage:</span>
+                  <Select value={application.current_stage?.id || ''} onValueChange={handleStageChange}>
+                    <SelectTrigger className="h-7 w-[180px] text-xs">
+                      <SelectValue placeholder="Move stage..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {stages.map((s) => (
+                        <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                {isAdmin && jobRecruiterIds.length > 0 && (
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-gray-500">Assigned:</span>
+                    <Select value={application.assigned_recruiter_id || 'unassigned'} onValueChange={handleRecruiterChange}>
+                      <SelectTrigger className="h-7 w-[180px] text-xs">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="unassigned">Unassigned</SelectItem>
+                        {jobRecruiterIds.map((rid) => (
+                          <SelectItem key={rid} value={rid}>
+                            {recruiterNames[rid] ?? rid.slice(0, 8)}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
               </div>
             )}
           </div>

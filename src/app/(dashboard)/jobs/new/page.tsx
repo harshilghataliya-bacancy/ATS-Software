@@ -37,6 +37,8 @@ export default function NewJobPage() {
   const { user, organization } = useUser()
   const { isAdmin } = useRole()
   const [recruiters, setRecruiters] = useState<Recruiter[]>([])
+  const [selectedRecruiterIds, setSelectedRecruiterIds] = useState<string[]>([])
+  const [jobOwnerId, setJobOwnerId] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [skillInput, setSkillInput] = useState('')
   const [skills, setSkills] = useState<string[]>([])
@@ -61,7 +63,7 @@ export default function NewJobPage() {
   const [formKey, setFormKey] = useState(0)
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { register, handleSubmit, formState: { errors }, setValue, getValues, watch, clearErrors } = useForm<CreateJobInput>({
+  const { register, handleSubmit, formState: { errors }, setValue, getValues, watch } = useForm<CreateJobInput>({
     resolver: zodResolver(createJobSchema) as any,
     defaultValues: {
       employment_type: 'full_time',
@@ -416,21 +418,96 @@ export default function NewJobPage() {
                   {errors.application_deadline && <p className="text-sm text-red-600">{errors.application_deadline.message}</p>}
                 </div>
                 {recruiters.length > 0 && (
-                  <div className="space-y-2">
-                    <Label>Assign Recruiter <span className="text-red-500">*</span></Label>
-                    <Select
-                      key={`ar-${formKey}`}
-                      defaultValue={getValues('assigned_to') ?? undefined}
-                      onValueChange={(val) => { setValue('assigned_to', val); clearErrors('assigned_to') }}
-                    >
-                      <SelectTrigger><SelectValue placeholder="Select a recruiter" /></SelectTrigger>
-                      <SelectContent>
-                        {recruiters.map((r) => (
-                          <SelectItem key={r.id} value={r.id}>{r.full_name} ({r.role})</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    {errors.assigned_to && <p className="text-sm text-red-600">{errors.assigned_to.message}</p>}
+                  <div className="space-y-3">
+                    <Label>Assign Recruiters</Label>
+                    <div className="space-y-1 rounded-lg border border-gray-200 p-2 max-h-56 overflow-y-auto">
+                      {recruiters.map((r) => {
+                        const checked = selectedRecruiterIds.includes(r.id)
+                        const isOwner = r.id === jobOwnerId
+                        return (
+                          <div key={r.id} className={`flex items-center gap-2 rounded-lg px-2 py-1.5 transition-all ${
+                            checked
+                              ? isOwner
+                                ? 'bg-emerald-50/80 ring-1 ring-emerald-200'
+                                : 'bg-blue-50/50 ring-1 ring-blue-100'
+                              : 'hover:bg-gray-50'
+                          }`}>
+                            <input
+                              type="checkbox"
+                              checked={checked}
+                              className="rounded border-gray-300 text-blue-600 focus:ring-blue-500 shrink-0"
+                              onChange={() => {
+                                let updated: string[]
+                                if (checked) {
+                                  updated = selectedRecruiterIds.filter((id) => id !== r.id)
+                                  if (r.id === jobOwnerId) {
+                                    const newOwner = updated.length > 0 ? updated[0] : null
+                                    setJobOwnerId(newOwner)
+                                    setValue('assigned_to', newOwner)
+                                  }
+                                } else {
+                                  updated = [...selectedRecruiterIds, r.id]
+                                  if (!jobOwnerId) {
+                                    setJobOwnerId(r.id)
+                                    setValue('assigned_to', r.id)
+                                  }
+                                }
+                                setSelectedRecruiterIds(updated)
+                                setValue('recruiter_ids', updated)
+                              }}
+                            />
+                            <span className={`text-sm flex-1 ${isOwner ? 'text-emerald-700 font-semibold' : checked ? 'text-gray-800' : 'text-gray-600'}`}>
+                              {r.full_name}
+                            </span>
+                            <span className="text-[11px] text-gray-400">{r.role}</span>
+                            {checked && (
+                              <button
+                                type="button"
+                                title={isOwner ? 'Job Owner' : 'Set as Owner'}
+                                className={`w-6 h-6 flex items-center justify-center rounded-full transition-all shrink-0 ${
+                                  isOwner
+                                    ? 'bg-emerald-100 text-emerald-600 ring-1 ring-emerald-300'
+                                    : 'text-gray-300 hover:text-amber-500 hover:bg-amber-50'
+                                }`}
+                                onClick={() => {
+                                  setJobOwnerId(r.id)
+                                  setValue('assigned_to', r.id)
+                                }}
+                              >
+                                <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill={isOwner ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth={isOwner ? 0 : 2}>
+                                  <path d="M12 2l3.09 6.26L22 9.27l-5 4.87L18.18 22 12 18.27 5.82 22 7 14.14l-5-4.87 6.91-1.01L12 2z" />
+                                </svg>
+                              </button>
+                            )}
+                          </div>
+                        )
+                      })}
+                    </div>
+                    {selectedRecruiterIds.length > 0 && (
+                      <div className="flex flex-wrap gap-1.5">
+                        {selectedRecruiterIds.map((id) => {
+                          const r = recruiters.find((rec) => rec.id === id)
+                          const isOwner = id === jobOwnerId
+                          return r ? (
+                            <Badge key={id} variant="secondary" className={`gap-1 cursor-pointer text-xs ${
+                              isOwner ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : ''
+                            }`} onClick={() => {
+                              const updated = selectedRecruiterIds.filter((rid) => rid !== id)
+                              setSelectedRecruiterIds(updated)
+                              setValue('recruiter_ids', updated)
+                              if (id === jobOwnerId) {
+                                const newOwner = updated.length > 0 ? updated[0] : null
+                                setJobOwnerId(newOwner)
+                                setValue('assigned_to', newOwner)
+                              }
+                            }}>
+                              {isOwner && <svg className="w-3 h-3 text-emerald-600 shrink-0" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87L18.18 22 12 18.27 5.82 22 7 14.14l-5-4.87 6.91-1.01L12 2z" /></svg>}
+                              {r.full_name} <span className="text-xs ml-0.5">&times;</span>
+                            </Badge>
+                          ) : null
+                        })}
+                      </div>
+                    )}
                   </div>
                 )}
               </CardContent>

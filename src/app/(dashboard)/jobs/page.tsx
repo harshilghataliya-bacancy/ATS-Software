@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { useUser, useRole } from '@/lib/hooks/use-user'
 import { createClient } from '@/lib/supabase/client'
-import { getJobs, deleteJob } from '@/lib/services/jobs'
+import { getJobs, deleteJob, getJobRecruiters } from '@/lib/services/jobs'
 import { resolveUserNames } from './actions'
 import {
   JOB_STATUS_CONFIG, EMPLOYMENT_TYPES, EXPERIENCE_LEVELS,
@@ -88,6 +88,7 @@ export default function JobsPage() {
   const [departments, setDepartments] = useState<string[]>([])
   const [locations, setLocations] = useState<string[]>([])
   const [recruiterNames, setRecruiterNames] = useState<Record<string, string>>({})
+  const [jobRecruitersMap, setJobRecruitersMap] = useState<Record<string, string[]>>({})
   const [total, setTotal] = useState(0)
   const [page, setPage] = useState(1)
   const [viewMode, setViewMode] = useState<ViewMode>('table')
@@ -122,8 +123,25 @@ export default function JobsPage() {
         setDepartments(depts)
         setLocations(locs)
       }
-      const assignedIds = Array.from(new Set(jobList.map((j) => j.assigned_to).filter(Boolean))) as string[]
-      const newIds = assignedIds.filter((id) => !recruiterNames[id])
+      // Fetch recruiters from job_recruiters junction table for each job
+      const recruiterMap: Record<string, string[]> = {}
+      await Promise.all(
+        jobList.map(async (job) => {
+          const ids = await getJobRecruiters(supabase, job.id)
+          recruiterMap[job.id] = ids
+        })
+      )
+      setJobRecruitersMap(recruiterMap)
+
+      // Collect all unique user IDs: from assigned_to AND from job_recruiters
+      const allRecruiterIds = new Set<string>()
+      jobList.forEach((j) => {
+        if (j.assigned_to) allRecruiterIds.add(j.assigned_to)
+      })
+      Object.values(recruiterMap).forEach((ids) => {
+        ids.forEach((id) => allRecruiterIds.add(id))
+      })
+      const newIds = Array.from(allRecruiterIds).filter((id) => !recruiterNames[id])
       if (newIds.length > 0) {
         const { data: names } = await resolveUserNames(newIds)
         if (names) setRecruiterNames((prev) => ({ ...prev, ...names }))
@@ -140,6 +158,18 @@ export default function JobsPage() {
     const supabase = createClient()
     await deleteJob(supabase, jobId, organization.id)
     setJobs((prev) => prev.filter((j) => j.id !== jobId))
+  }
+
+  // Get all resolved recruiter names for a job (from job_recruiters table)
+  function getJobRecruiterNames(jobId: string): string[] {
+    const ids = jobRecruitersMap[jobId] ?? []
+    return ids.map((id) => recruiterNames[id]).filter(Boolean)
+  }
+
+  // Get job owner name (assigned_to)
+  function getJobOwnerName(job: Job): string | null {
+    if (!job.assigned_to) return null
+    return recruiterNames[job.assigned_to] || null
   }
 
   const employmentLabel = (val: string) => EMPLOYMENT_TYPES.find((t) => t.value === val)?.label ?? val
@@ -168,14 +198,14 @@ export default function JobsPage() {
 
   function downloadCSV() {
     if (jobs.length === 0) return
-    const headers = ['Title', 'Department', 'Location', 'Employment Type', 'Status', 'Priority', 'Openings', 'Applicants', 'Active Candidates', 'Deadline', 'Assigned Recruiter', 'Created At']
+    const headers = ['Title', 'Department', 'Location', 'Employment Type', 'Status', 'Priority', 'Openings', 'Applicants', 'Active Candidates', 'Deadline', 'Assigned Recruiters', 'Created At']
     const rows = jobs.map((job) => [
       job.title, job.department || '', job.location || '',
       employmentLabel(job.employment_type), job.status, job.priority || '',
       String(job.num_openings || 1), String(job.application_count),
       String(job.active_candidate_count ?? 0),
       job.application_deadline || '',
-      job.assigned_to ? (recruiterNames[job.assigned_to] || '') : '',
+      getJobRecruiterNames(job.id).join(', '),
       new Date(job.created_at).toLocaleDateString(),
     ])
     const csv = [headers, ...rows].map((r) => r.map((v) => `"${v.replace(/"/g, '""')}"`).join(',')).join('\n')
@@ -460,13 +490,30 @@ export default function JobsPage() {
                       )}
                     </div>
 
-                    {/* Assigned recruiter */}
-                    {job.assigned_to && recruiterNames[job.assigned_to] && (
-                      <div className="flex items-center gap-1.5 text-[12px] text-blue-600 font-medium mb-2.5">
-                        <UserCircle className="w-3 h-3 flex-shrink-0" />
-                        {recruiterNames[job.assigned_to]}
-                      </div>
-                    )}
+                    {/* Assigned recruiters */}
+                    {(() => {
+                      const ids = jobRecruitersMap[job.id] ?? []
+                      const ownerName = getJobOwnerName(job)
+                      return ids.length > 0 ? (
+                        <div className="flex items-center gap-1.5 text-[12px] font-medium mb-2.5 flex-wrap">
+                          <UserCircle className="w-3 h-3 flex-shrink-0 text-blue-600" />
+                          {ids.map((id, i) => {
+                            const name = recruiterNames[id]
+                            if (!name) return null
+                            const isOwner = name === ownerName
+                            return (
+                              <span key={i} className={`px-1.5 py-0.5 rounded-full text-[11px] border ${
+                                isOwner
+                                  ? 'bg-emerald-50 border-emerald-200 text-emerald-700'
+                                  : 'bg-blue-50 border-blue-100 text-blue-700'
+                              }`}>
+                                {name}{isOwner ? ' ★' : ''}
+                              </span>
+                            )
+                          })}
+                        </div>
+                      ) : null
+                    })()}
 
                     {/* Key stats grid */}
                     <div className="grid grid-cols-2 gap-x-3 gap-y-1.5 text-[12px] text-gray-600 mb-3 bg-gray-50/70 rounded-lg px-3 py-2.5">
@@ -674,11 +721,30 @@ export default function JobsPage() {
 
                         {/* Recruiter */}
                         <TableCell className="py-3.5">
-                          {job.assigned_to && recruiterNames[job.assigned_to] ? (
-                            <span className="text-[12px] text-gray-600 font-medium">{recruiterNames[job.assigned_to]}</span>
-                          ) : (
-                            <span className="text-gray-300 text-[12px]">—</span>
-                          )}
+                          {(() => {
+                            const ids = jobRecruitersMap[job.id] ?? []
+                            const ownerName = getJobOwnerName(job)
+                            return ids.length > 0 ? (
+                              <div className="flex flex-wrap gap-1">
+                                {ids.map((id, i) => {
+                                  const name = recruiterNames[id]
+                                  if (!name) return null
+                                  const isOwner = name === ownerName
+                                  return (
+                                    <span key={i} className={`text-[11px] px-1.5 py-0.5 rounded-full font-medium border ${
+                                      isOwner
+                                        ? 'text-emerald-700 bg-emerald-50 border-emerald-200'
+                                        : 'text-blue-700 bg-blue-50 border-blue-100'
+                                    }`}>
+                                      {name}{isOwner ? ' ★' : ''}
+                                    </span>
+                                  )
+                                })}
+                              </div>
+                            ) : (
+                              <span className="text-gray-300 text-[12px]">&mdash;</span>
+                            )
+                          })()}
                         </TableCell>
 
                         {/* Actions */}
