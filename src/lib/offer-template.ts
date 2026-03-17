@@ -12,6 +12,8 @@ export interface OfferTemplateVariables {
   work_type?: string
   business_unit?: string
   salary_structure?: string
+  signatory_name?: string
+  signatory_title?: string
 }
 
 export interface SalaryComponent {

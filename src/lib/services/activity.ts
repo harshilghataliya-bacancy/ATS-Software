@@ -27,7 +27,7 @@ interface ActivityFilters {
 export async function logActivity(
   supabase: SupabaseClient,
   orgId: string,
-  userId: string,
+  userId: string | null,
   entityType: EntityType,
   entityId: string,
   action: string,

@@ -103,6 +103,8 @@ export async function POST(request: NextRequest) {
       work_type: parsed.data.work_type,
       business_unit: parsed.data.business_unit,
       offer_template_id: parsed.data.offer_template_id ?? null,
+      // salary_structure_id: requires migration 00032 to be applied
+
     },
     user.id
   )

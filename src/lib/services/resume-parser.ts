@@ -143,6 +143,7 @@ Rules:
     const parsed = JSON.parse(content) as ParsedResumeForAutoFill
     return { data: parsed, error: null }
   } catch (err) {
+    console.error('[parseResumeFromBytes] Error:', err)
     return {
       data: null,
       error: err instanceof Error ? err : new Error('Resume parsing failed'),

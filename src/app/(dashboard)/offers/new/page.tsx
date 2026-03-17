@@ -8,9 +8,11 @@ import { createClient } from '@/lib/supabase/client'
 import { getApplicationById } from '@/lib/services/applications'
 import { getEmailTemplates } from '@/lib/services/email'
 import { getOfferTemplates } from '@/lib/services/offer-templates'
+import { buildSalaryComponentsFromStructure } from '@/lib/services/salary-structures'
 import { substituteOfferVariables, formatSalary } from '@/lib/offer-template'
+import type { SalaryStructure, SalaryComponent } from '@/types/database'
 import {
-  DEFAULT_OFFER_TEMPLATE, SALARY_STRUCTURE_CONFIG,
+  DEFAULT_OFFER_TEMPLATE,
   EMPLOYMENT_TYPE_OPTIONS, WORK_TYPE_OPTIONS, REMUNERATION_TYPES, CURRENCIES, CANDIDATE_SOURCES,
 } from '@/lib/constants'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -25,13 +27,6 @@ import { ArrowLeft, Check, X, FileText } from 'lucide-react'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type AnyData = Record<string, any>
-
-interface SalaryComponent {
-  name: string
-  monthly: number
-  annual: number
-  section: string // 'earnings' | 'deduction' | 'employer'
-}
 
 interface BonusComponent {
   name: string
@@ -63,64 +58,11 @@ interface OfferFormData {
 
 const STEP_LABELS = ['Job Details', 'Compensation', 'Offer Details', 'Preview & Send']
 
-// Build salary components from CTC — matches standard Indian payroll structure
-// Structure: Earnings → SUB TOTAL (Gross) → Gratuity/PF → TOTAL (CTC)
-// Deductions: Employee PF, Professional Tax → NET PAY
-function buildSalaryComponents(ctc: number, pfApplicable: boolean): SalaryComponent[] {
-  if (ctc <= 0) return []
-
-  const cfg = SALARY_STRUCTURE_CONFIG
-
-  // Basic = 30% of CTC
-  const basic = Math.round(ctc * cfg.basicPctOfCtc / 100)
-
-  // Employer contributions
-  const gratuity = Math.round(basic * cfg.gratuityPctOfBasic / 100)
-  const employerPf = pfApplicable ? Math.round(basic * cfg.employerPfPctOfBasic / 100) : 0
-
-  // Gross (SUB TOTAL) = CTC - employer contributions
-  const gross = ctc - gratuity - employerPf
-
-  // Fixed earning components
-  const hra = Math.round(basic * cfg.hraPctOfBasic / 100)
-  const lta = Math.round(ctc * cfg.ltaPctOfCtc / 100)
-  const uniform = cfg.uniformMonthly * 12
-  const bonusAllowance = Math.round(basic * cfg.bonusAllowancePctOfBasic / 100)
-  const flexiPay = Math.round(ctc * cfg.flexiPayPctOfCtc / 100)
-
-  // Special Allowance = balancing figure
-  const specialAllowance = Math.max(0, gross - basic - hra - lta - uniform - bonusAllowance - flexiPay)
-
-  const components: SalaryComponent[] = [
-    // Earnings
-    { name: 'Basic', monthly: Math.round(basic / 12), annual: basic, section: 'earnings' },
-    { name: 'HRA', monthly: Math.round(hra / 12), annual: hra, section: 'earnings' },
-    { name: 'Special Allowance', monthly: Math.round(specialAllowance / 12), annual: specialAllowance, section: 'earnings' },
-    { name: 'Travel Reimbursement (LTA)', monthly: Math.round(lta / 12), annual: lta, section: 'earnings' },
-    { name: 'Uniform', monthly: Math.round(uniform / 12), annual: uniform, section: 'earnings' },
-    { name: 'Bonus Allowance', monthly: Math.round(bonusAllowance / 12), annual: bonusAllowance, section: 'earnings' },
-    { name: 'Flexi Pay', monthly: Math.round(flexiPay / 12), annual: flexiPay, section: 'earnings' },
-    // Employer contributions (shown after SUB TOTAL)
-    { name: 'Gratuity', monthly: Math.round(gratuity / 12), annual: gratuity, section: 'employer' },
-  ]
-
-  if (pfApplicable) {
-    components.push(
-      { name: 'Employer PF', monthly: Math.round(employerPf / 12), annual: employerPf, section: 'employer' },
-    )
-    // Employee PF deduction
-    const employeePf = Math.round(basic * cfg.employeePfPctOfBasic / 100)
-    components.push(
-      { name: 'Employee PF', monthly: Math.round(employeePf / 12), annual: employeePf, section: 'deduction' },
-    )
-  }
-
-  // Professional Tax deduction
-  components.push(
-    { name: 'Professional Tax', monthly: Math.round(cfg.professionalTaxAnnual / 12), annual: cfg.professionalTaxAnnual, section: 'deduction' },
-  )
-
-  return components
+// Rebuild salary components from the selected structure's component definitions
+function rebuildSalary(ctc: number, structures: SalaryStructure[], structureId: string): SalaryComponent[] {
+  const structure = structures.find(s => s.id === structureId)
+  if (!structure) return []
+  return buildSalaryComponentsFromStructure(ctc, structure.components)
 }
 
 export default function NewOfferWizardPage() {
@@ -141,6 +83,10 @@ export default function NewOfferWizardPage() {
   const [offerTemplates, setOfferTemplates] = useState<AnyData[]>([])
   const [selectedTemplateId, setSelectedTemplateId] = useState<string>('default')
   const [selectedOfferTemplate, setSelectedOfferTemplate] = useState<AnyData | null>(null)
+
+  // Salary structures
+  const [salaryStructures, setSalaryStructures] = useState<SalaryStructure[]>([])
+  const [selectedStructureId, setSelectedStructureId] = useState<string>('')
 
   // Form state
   const [form, setForm] = useState<OfferFormData>({
@@ -176,10 +122,11 @@ export default function NewOfferWizardPage() {
     setLoading(true)
     const supabase = createClient()
 
-    const [appResult, templatesResult, offerTplResult] = await Promise.all([
+    const [appResult, templatesResult, offerTplResult, structuresRes] = await Promise.all([
       getApplicationById(supabase, applicationId, organization.id),
       getEmailTemplates(supabase, organization.id, 'offer'),
       getOfferTemplates(supabase, organization.id),
+      fetch('/api/salary-structures').then(r => r.json()),
     ])
 
     if (appResult.error || !appResult.data) {
@@ -192,6 +139,14 @@ export default function NewOfferWizardPage() {
     setApplication(app)
     setTemplates(templatesResult.data || [])
     setOfferTemplates(offerTplResult.data || [])
+
+    // Set salary structures
+    const structs: SalaryStructure[] = structuresRes.data || []
+    setSalaryStructures(structs)
+    const defaultStruct = structs.find(s => s.is_default) || structs[0]
+    if (defaultStruct) {
+      setSelectedStructureId(defaultStruct.id)
+    }
 
     // Pre-fill form from application data
     setForm((prev) => ({
@@ -215,15 +170,20 @@ export default function NewOfferWizardPage() {
     loadData()
   }, [organization, applicationId, loadData])
 
-  // Rebuild salary structure when CTC or PF changes
+  // Rebuild salary structure when CTC or structure changes
   function handleTotalSalaryChange(value: number) {
-    const components = buildSalaryComponents(value, form.pfApplicable)
+    const components = rebuildSalary(value, salaryStructures, selectedStructureId)
     setForm((prev) => ({ ...prev, totalSalary: value, salaryComponents: components }))
   }
 
   function handlePfToggle(checked: boolean) {
-    const components = buildSalaryComponents(form.totalSalary, checked)
-    setForm((prev) => ({ ...prev, pfApplicable: checked, salaryComponents: components }))
+    setForm((prev) => ({ ...prev, pfApplicable: checked }))
+  }
+
+  function handleStructureChange(structureId: string) {
+    setSelectedStructureId(structureId)
+    const components = rebuildSalary(form.totalSalary, salaryStructures, structureId)
+    setForm((prev) => ({ ...prev, salaryComponents: components }))
   }
 
   function handleComponentChange(index: number, field: 'name' | 'monthly' | 'annual', value: string | number) {
@@ -324,6 +284,8 @@ export default function NewOfferWizardPage() {
     expiry_date: form.expiryDate ? new Date(form.expiryDate).toLocaleDateString('en-US', { dateStyle: 'long' }) : '',
     company_name: organization?.name || '',
     location: form.location,
+    signatory_name: selectedOfferTemplate?.signatory_name || '',
+    signatory_title: selectedOfferTemplate?.signatory_title || '',
   })
 
   // Validation per step
@@ -366,6 +328,7 @@ export default function NewOfferWizardPage() {
           work_type: form.workType,
           business_unit: form.businessUnit || undefined,
           offer_template_id: selectedOfferTemplate?.id ?? null,
+          salary_structure_id: selectedStructureId || null,
         }),
       })
       const data = await res.json()
@@ -730,6 +693,30 @@ export default function NewOfferWizardPage() {
                   <CardTitle>Compensation</CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-4">
+                  {/* Salary Structure Selector */}
+                  {salaryStructures.length > 0 && (
+                    <div>
+                      <Label>Salary Structure</Label>
+                      <Select value={selectedStructureId} onValueChange={handleStructureChange}>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select salary structure" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {salaryStructures.map((s) => (
+                            <SelectItem key={s.id} value={s.id}>
+                              {s.name}{s.is_default ? ' (Default)' : ''}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      {salaryStructures.find(s => s.id === selectedStructureId)?.description && (
+                        <p className="text-xs text-gray-500 mt-1">
+                          {salaryStructures.find(s => s.id === selectedStructureId)?.description}
+                        </p>
+                      )}
+                    </div>
+                  )}
+
                   <div className="grid grid-cols-3 gap-4">
                     <div>
                       <Label>Currency</Label>

@@ -7,7 +7,8 @@ import { useUser, useRole } from '@/lib/hooks/use-user'
 import { createClient } from '@/lib/supabase/client'
 import { getCandidateById, updateCandidate } from '@/lib/services/candidates'
 import { createApplication } from '@/lib/services/applications'
-import { getCandidateActivityLog } from '@/lib/services/activity'
+import { logActivity } from '@/lib/services/activity'
+import { fetchCandidateActivities } from '../actions'
 import { getJobs } from '@/lib/services/jobs'
 import { CANDIDATE_SOURCES } from '@/lib/constants'
 import { EDUCATION_LABELS, GENDER_OPTIONS, NOTICE_PERIOD_OPTIONS } from '@/lib/validators/candidate'
@@ -106,10 +107,9 @@ export default function CandidateDetailPage() {
       setCandidate(data)
       setFormData(data)
 
-      // Fetch activity logs for this candidate (across all applications)
+      // Fetch activity logs with user names resolved (server action)
       setActivityLoading(true)
-      const supabaseAct = createClient()
-      const { data: activities } = await getCandidateActivityLog(supabaseAct, organization.id, data.id, 50)
+      const { data: activities } = await fetchCandidateActivities(organization.id, data.id)
       setActivityLogs(activities || [])
       setActivityLoading(false)
 
@@ -187,6 +187,18 @@ export default function CandidateDetailPage() {
       setSuccess(true)
       setEditing(false)
       setTimeout(() => setSuccess(false), 3000)
+
+      // Log activity
+      await logActivity(supabase, organization.id, user!.id, 'candidate', candidate.id, 'candidate_updated', {
+        updated_fields: Object.keys({
+          first_name: formData.first_name, last_name: formData.last_name, email: formData.email,
+          phone: formData.phone, location: formData.location, current_company: formData.current_company,
+          current_title: formData.current_title, notes: formData.notes,
+        }).filter(k => formData[k] !== candidate[k]),
+      })
+      // Refresh activity log
+      const { data: activities } = await fetchCandidateActivities(organization.id, candidate.id)
+      setActivityLogs(activities || [])
     }
     setSaving(false)
   }
@@ -205,6 +217,12 @@ export default function CandidateDetailPage() {
     if (applyError) {
       setError(applyError.message)
     } else {
+      const selectedJobData = jobs.find(j => j.id === selectedJob)
+      // Log activity
+      await logActivity(supabase, organization.id, user.id, 'candidate', candidate.id, 'application_created', {
+        job_title: selectedJobData?.title || 'Unknown',
+        job_id: selectedJob,
+      })
       setApplyDialogOpen(false)
       setSelectedJob('')
       await loadCandidate()
@@ -234,6 +252,13 @@ export default function CandidateDetailPage() {
         const data = await res.json()
         setError(data.error || 'Failed to move application')
       } else {
+        const targetJobData = jobs.find(j => j.id === moveTargetJob)
+        const supabase = createClient()
+        await logActivity(supabase, organization!.id, user!.id, 'application', moveAppId, 'stage_changed', {
+          to_stage: 'Applied',
+          job_title: targetJobData?.title || 'Unknown',
+          move_type: 'job_transfer',
+        })
         setMoveDialogOpen(false)
         setMoveAppId(null)
         setMoveTargetJob('')
@@ -258,6 +283,10 @@ export default function CandidateDetailPage() {
         const data = await res.json()
         setError(data.error || 'Failed to reject application')
       } else {
+        const supabase = createClient()
+        await logActivity(supabase, organization!.id, user!.id, 'application', applicationId, 'application_rejected', {
+          candidate_name: `${candidate!.first_name} ${candidate!.last_name}`,
+        })
         await loadCandidate()
       }
     } catch {

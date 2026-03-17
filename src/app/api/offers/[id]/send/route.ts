@@ -117,6 +117,8 @@ export async function POST(
     expiry_date: expiryDate,
     company_name: org?.name || '',
     location: offer.location || job?.location || '',
+    signatory_name: activeTemplate?.signatory_name || '',
+    signatory_title: activeTemplate?.signatory_title || '',
   }
 
   // Simple email body — full details are in the PDF

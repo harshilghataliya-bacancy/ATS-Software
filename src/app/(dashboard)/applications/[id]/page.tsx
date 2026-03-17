@@ -26,6 +26,8 @@ import { SendEmailDialog } from '@/components/email/send-email-dialog'
 import { SendWhatsAppDialog } from '@/components/whatsapp/send-whatsapp-dialog'
 import { InterviewFeedbackDialog } from '@/app/(dashboard)/jobs/[id]/applications/interview-feedback-dialog'
 import { logActivity } from '@/lib/services/activity'
+import { fetchApplicationActivities } from '../actions'
+import { ActivityTimeline } from '@/components/shared/activity-timeline'
 import { resolveUserNames } from '@/app/(dashboard)/interviews/actions'
 import {
   ArrowLeft, Mail, MessageSquare, FileText, UserCircle, Calendar, Link as LinkIcon,
@@ -127,6 +129,9 @@ export default function ApplicationDetailPage() {
   const [addingNote, setAddingNote] = useState(false)
   const [noteError, setNoteError] = useState<string | null>(null)
 
+  // Activity log state
+  const [activityLogs, setActivityLogs] = useState<AnyData[]>([])
+  const [activityLoading, setActivityLoading] = useState(false)
 
   // Interviewers only have access to Dashboard + Interviews
   useEffect(() => {
@@ -181,6 +186,12 @@ export default function ApplicationDetailPage() {
       } catch {
         // ignore
       }
+
+      // Load activity logs
+      setActivityLoading(true)
+      const { data: activities } = await fetchApplicationActivities(organization.id, data.id, data.candidate_id)
+      setActivityLogs(activities || [])
+      setActivityLoading(false)
     }
     setLoading(false)
   }, [organization, params.id])
@@ -527,6 +538,12 @@ export default function ApplicationDetailPage() {
             Notes
             {notes.length > 0 && (
               <span className="ml-1.5 text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-gray-100 text-gray-700">{notes.length}</span>
+            )}
+          </TabsTrigger>
+          <TabsTrigger value="activity">
+            Activity
+            {activityLogs.length > 0 && (
+              <span className="ml-1.5 text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-gray-100 text-gray-700">{activityLogs.length}</span>
             )}
           </TabsTrigger>
         </TabsList>
@@ -1197,6 +1214,49 @@ export default function ApplicationDetailPage() {
                 <div className="pt-2 border-t border-gray-200 text-xs text-gray-400 space-y-1">
                   <p><span className="font-medium text-gray-500">{notes.length}</span> note{notes.length !== 1 ? 's' : ''} added</p>
                   <p>Tip: Press <kbd className="bg-white border border-gray-200 rounded px-1 py-0.5 text-[10px] font-mono">⌘</kbd> + <kbd className="bg-white border border-gray-200 rounded px-1 py-0.5 text-[10px] font-mono">↵</kbd> to submit</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </TabsContent>
+
+        {/* ============ TAB 6: Activity ============ */}
+        <TabsContent value="activity" className="mt-6">
+          <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
+            <div className="lg:col-span-3">
+              <div className="bg-white rounded-xl border border-gray-200 shadow-sm">
+                <div className="px-6 py-4 border-b border-gray-100">
+                  <h3 className="text-base font-semibold text-gray-900">
+                    Activity Timeline
+                    {activityLogs.length > 0 && (
+                      <span className="ml-2 text-[11px] font-medium px-2 py-0.5 rounded-full bg-gray-100 text-gray-700">
+                        {activityLogs.length}
+                      </span>
+                    )}
+                  </h3>
+                  <p className="text-xs text-gray-500 mt-0.5">All actions performed on this application and candidate</p>
+                </div>
+                <div className="p-6">
+                  <ActivityTimeline
+                    activities={activityLogs}
+                    loading={activityLoading}
+                    emptyMessage="No activity recorded yet"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="lg:col-span-2">
+              <div className="lg:sticky lg:top-6 rounded-lg border border-gray-100 bg-gray-50/60 p-4 space-y-3">
+                <div className="flex items-center gap-2 text-xs text-gray-500">
+                  <Info className="w-4 h-4 text-gray-400" />
+                  <span className="font-medium text-gray-700">About Activity</span>
+                </div>
+                <p className="text-xs text-gray-500 leading-relaxed">
+                  This timeline shows all actions performed by your team — stage changes, interviews scheduled, offers sent, profile updates, and more.
+                </p>
+                <div className="pt-2 border-t border-gray-200 text-xs text-gray-400 space-y-1">
+                  <p><span className="font-medium text-gray-500">{activityLogs.length}</span> activit{activityLogs.length !== 1 ? 'ies' : 'y'} recorded</p>
                 </div>
               </div>
             </div>

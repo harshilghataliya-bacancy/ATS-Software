@@ -1,6 +1,12 @@
 import React from 'react'
-import { Document, Page, Text, View, Image, StyleSheet } from '@react-pdf/renderer'
+import { Document, Page, Text, View, Image, StyleSheet, Font } from '@react-pdf/renderer'
 import { OFFER_PDF_DEFAULTS } from '@/lib/constants'
+
+// Register a cursive "pen" font for recruiter signature
+Font.register({
+  family: 'GreatVibes',
+  src: 'https://fonts.gstatic.com/s/greatvibes/v18/RWmMoKWR9v4ksMfaWd_JN-XCg6UKDXlq.ttf',
+})
 
 // ---------------------------------------------------------------------------
 // Types
@@ -159,7 +165,8 @@ const s = StyleSheet.create({
 
   // ── Signature block ────────────────────────────────────────────────────
   sigFor: { fontSize: 10, fontFamily: 'Helvetica-Bold', marginTop: 28 },
-  sigLineRule: { borderBottomWidth: 0.75, borderBottomColor: '#374151', width: 170, marginTop: 34, marginBottom: 5 },
+  sigPenName: { fontFamily: 'GreatVibes', fontSize: 22, color: '#1a1a2e', marginTop: 14, marginBottom: 4 },
+  sigLineRule: { borderBottomWidth: 0.75, borderBottomColor: '#374151', width: 170, marginBottom: 5 },
   sigName: { fontSize: 10, fontFamily: 'Helvetica-Bold' },
   sigRole: { fontSize: 9, color: '#6b7280' },
 
@@ -218,6 +225,7 @@ const s = StyleSheet.create({
   dualSigRow: { flexDirection: 'row' as const, justifyContent: 'space-between' as const, marginTop: 40 },
   dualSigCol: { width: '45%' },
   dualSigLabel: { fontSize: 10, color: '#9ca3af', marginBottom: 8 },
+  dualSigPenName: { fontFamily: 'GreatVibes', fontSize: 20, color: '#1a1a2e', marginBottom: 4 },
   dualSigLine: { borderBottomWidth: 0.75, borderBottomColor: '#9ca3af', marginBottom: 6 },
   dualSigCompany: { fontSize: 10, color: '#374151', marginBottom: 2 },
   dualSigName: { fontSize: 10, fontFamily: 'Helvetica-Bold', color: '#1f2937' },
@@ -333,7 +341,7 @@ export function OfferPDFDocument(props: OfferPDFProps) {
   const introText      = sub(props.introText      || OFFER_PDF_DEFAULTS.intro_text,      vars)
   const closingText    = sub(props.closingText    || OFFER_PDF_DEFAULTS.closing_text,    vars)
   const validityText   = sub(props.validityText   || OFFER_PDF_DEFAULTS.validity_text,   vars)
-  const acceptanceText = sub(props.acceptanceText || OFFER_PDF_DEFAULTS.acceptance_text, vars)
+  // acceptanceText available via props.acceptanceText if needed
   // Signatory — clean resolved name (no unsubstituted placeholders)
   const resolvedSignatoryName  = stripPlaceholders(vars.signatory_name)
   const resolvedSignatoryTitle = stripPlaceholders(vars.signatory_title)
@@ -358,11 +366,11 @@ export function OfferPDFDocument(props: OfferPDFProps) {
   const termsContent = templateTerms || OFFER_PDF_DEFAULTS.terms_and_conditions
   const hasTerms = showTermsSection && !!termsContent
 
-  // Determine which section is last so the dual signature block goes there
-  const lastSection = hasTerms ? 'terms' : hasSalaryBreakdown ? 'salary' : showAcceptanceSection ? 'acceptance' : 'body'
+  // Determine which section is last so the acceptance + dual signature block goes there
+  const lastSection = hasTerms ? 'terms' : hasSalaryBreakdown ? 'salary' : 'body'
 
-  // Footer text
-  const footerText = props.footerText || undefined
+  // Footer text — substitute variables like {{company_name}}
+  const footerText = props.footerText ? sub(props.footerText, vars) : undefined
 
   // Shared header/footer props
   const headerProps = {
@@ -374,7 +382,7 @@ export function OfferPDFDocument(props: OfferPDFProps) {
     dividerColor,
   }
   const footerProps = {
-    address: companyAddress,
+    address: companyAddress ? sub(companyAddress, vars) : undefined,
     footerText,
     dividerColor,
   }
@@ -395,19 +403,49 @@ export function OfferPDFDocument(props: OfferPDFProps) {
     </Page>
   )
 
-  const dualSigBlock = (
-    <View style={s.dualSigRow}>
-      <View style={s.dualSigCol}>
-        <Text style={s.dualSigLabel}>For {companyName}</Text>
-        <View style={s.dualSigLine} />
-        <Text style={s.dualSigCompany}>For {companyName}</Text>
-        {resolvedSignatoryName ? <Text style={s.dualSigName}>{resolvedSignatoryName}</Text> : null}
-        {resolvedSignatoryTitle ? <Text style={s.dualSigTitle}>{resolvedSignatoryTitle}</Text> : null}
+  // Acceptance + dual signature block — placed on the last page
+  const acceptanceAndSigBlock = (
+    <View>
+      {/* Acceptance confirmation lines */}
+      {showAcceptanceSection && (
+        <View style={{ marginTop: 24 }}>
+          <Text style={[s.acceptBody, { fontFamily: 'Helvetica-Bold', textDecoration: 'underline', marginBottom: 10 }]}>
+            ACCEPTANCE CONFIRMATION
+          </Text>
+          <FormattedPara
+            text={`I, **${candidateName}**, have read all the documents and understood all the Rules & Regulations of the company and hereby accept this employment offer.`}
+            style={s.acceptBody}
+          />
+          <FormattedPara
+            text={`Joining Date: **${startDate}**`}
+            style={[s.acceptBody, { marginBottom: 0 }]}
+          />
+        </View>
+      )}
+      {/* Dual signature block — labels row */}
+      <View style={[s.dualSigRow, { marginBottom: 0 }]}>
+        <View style={s.dualSigCol}>
+          <Text style={s.dualSigLabel}>For {companyName}</Text>
+        </View>
+        <View style={s.dualSigCol}>
+          <Text style={s.dualSigLabel}>Acceptance by Candidate</Text>
+        </View>
       </View>
-      <View style={s.dualSigCol}>
-        <Text style={s.dualSigLabel}>Acceptance by Candidate</Text>
-        <View style={s.dualSigLine} />
-        <Text style={s.dualSigName}>{candidateName}</Text>
+      {/* Signatures row — aligned side by side */}
+      <View style={[s.dualSigRow, { marginTop: 0 }]}>
+        <View style={s.dualSigCol}>
+          {resolvedSignatoryName ? <Text style={s.dualSigPenName}>{resolvedSignatoryName}</Text> : null}
+          <View style={s.dualSigLine} />
+          {resolvedSignatoryName ? <Text style={s.dualSigName}>{resolvedSignatoryName}</Text> : null}
+          {resolvedSignatoryTitle ? <Text style={s.dualSigTitle}>{resolvedSignatoryTitle}</Text> : null}
+        </View>
+        <View style={s.dualSigCol}>
+          {/* Space for candidate to sign */}
+          <View style={{ height: 30 }} />
+          <View style={s.dualSigLine} />
+          <Text style={s.dualSigName}>{candidateName}</Text>
+          <Text style={s.dualSigTitle}>Date: _______________</Text>
+        </View>
       </View>
     </View>
   )
@@ -435,6 +473,11 @@ export function OfferPDFDocument(props: OfferPDFProps) {
           return <FormattedPara key={`p-${i}`} text={trimmed} style={s.body} />
         })}
 
+        {/* Reporting Manager — explicit mention */}
+        {reportingManager ? (
+          <FormattedPara text={`Your Reporting Manager will be **${reportingManager}**.`} style={[s.body, { marginTop: 4 }]} />
+        ) : null}
+
         {/* Closing */}
         {closingText ? (
           <FormattedPara text={closingText} style={[s.body, { marginTop: 4 }]} />
@@ -445,42 +488,22 @@ export function OfferPDFDocument(props: OfferPDFProps) {
           <FormattedPara text={validityText} style={s.body} />
         ) : null}
 
-        {/* Company signature block */}
+        {/* HR Signature — right aligned on page 1 */}
         {showSignatureBlock && (
-          <View>
-            <Text style={s.sigFor}>For, {companyName}</Text>
-            <View style={s.sigLineRule} />
-            {resolvedSignatoryName ? <Text style={s.sigName}>{resolvedSignatoryName}</Text> : null}
-            {resolvedSignatoryTitle ? <Text style={s.sigRole}>{resolvedSignatoryTitle}</Text> : null}
-            <Text style={s.sigRole}>{signatoryLabel}</Text>
+          <View style={{ alignItems: 'flex-end', marginTop: 28 }}>
+            <View style={{ width: 200 }}>
+              <Text style={s.sigFor}>For, {companyName}</Text>
+              {resolvedSignatoryName ? <Text style={s.sigPenName}>{resolvedSignatoryName}</Text> : null}
+              <View style={s.sigLineRule} />
+              {resolvedSignatoryName ? <Text style={s.sigName}>{resolvedSignatoryName}</Text> : null}
+              {resolvedSignatoryTitle ? <Text style={s.sigRole}>{resolvedSignatoryTitle}</Text> : null}
+              <Text style={s.sigRole}>{signatoryLabel}</Text>
+            </View>
           </View>
         )}
-        {lastSection === 'body' && dualSigBlock}
+
+        {lastSection === 'body' && acceptanceAndSigBlock}
       </PageWrapper>
-
-      {/* ================================================================ */}
-      {/* PAGE — Acceptance Confirmation                                   */}
-      {/* ================================================================ */}
-      {showAcceptanceSection && (
-        <PageWrapper>
-          <Text style={s.acceptTitle}>ACCEPTANCE CONFIRMATION</Text>
-
-          <Text style={[s.acceptBody, { fontFamily: 'Helvetica-Bold' }]}>Date: {createdDate}</Text>
-          <Text style={[s.acceptBody, { marginBottom: 16 }]}>To: {companyName}</Text>
-
-          {/* Acceptance paragraphs from template */}
-          {acceptanceText.split('\n').map((para, i) => {
-            const trimmed = para.trim()
-            if (!trimmed) return <View key={i} style={{ height: 6 }} />
-            return <FormattedPara key={`acc-${i}`} text={trimmed} style={s.acceptBody} />
-          })}
-
-          {/* Signature line */}
-          <View style={s.acceptSigLine} />
-          <Text style={[s.acceptBody, { color: '#6b7280', marginTop: 4 }]}>Signature</Text>
-          {lastSection === 'acceptance' && dualSigBlock}
-        </PageWrapper>
-      )}
 
       {/* ================================================================ */}
       {/* PAGE — ANNEXURE I: Salary Breakdown                              */}
@@ -591,7 +614,7 @@ export function OfferPDFDocument(props: OfferPDFProps) {
               * PF deducted at 12% of Basic. Gratuity at 4.81% of Basic per Payment of Gratuity Act, 1972.
             </Text>
           )}
-          {lastSection === 'salary' && dualSigBlock}
+          {lastSection === 'salary' && acceptanceAndSigBlock}
         </PageWrapper>
       )}
 
@@ -624,7 +647,7 @@ export function OfferPDFDocument(props: OfferPDFProps) {
 
             return <FormattedPara key={i} text={trimmed} style={s.termsBody} />
           })}
-          {lastSection === 'terms' && dualSigBlock}
+          {lastSection === 'terms' && acceptanceAndSigBlock}
         </PageWrapper>
       )}
 

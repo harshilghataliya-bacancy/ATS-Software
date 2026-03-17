@@ -23,6 +23,7 @@ const ACTION_CONFIG: Record<string, { icon: string; color: string; label: string
   'candidate_created': { icon: 'plus', color: 'bg-blue-100 text-blue-600', label: 'Candidate Added' },
   'candidate_updated': { icon: 'edit', color: 'bg-gray-100 text-gray-600', label: 'Profile Updated' },
   'assessment_sent': { icon: 'send', color: 'bg-indigo-100 text-indigo-600', label: 'Assessment Sent' },
+  'assessment_completed': { icon: 'check', color: 'bg-indigo-100 text-indigo-600', label: 'Assessment Completed' },
   'resume_uploaded': { icon: 'doc', color: 'bg-teal-100 text-teal-600', label: 'Resume Uploaded' },
   'resume_parsed': { icon: 'doc', color: 'bg-teal-100 text-teal-600', label: 'Resume Parsed' },
   'whatsapp_sent': { icon: 'send', color: 'bg-green-100 text-green-600', label: 'WhatsApp Sent' },
@@ -87,11 +88,66 @@ function getMetadataDescription(action: string, metadata: AnyData | null): strin
   if (action === 'email_sent' && metadata.subject) {
     parts.push(`Subject: ${metadata.subject}`)
   }
+  if (action === 'assessment_completed' && metadata.assessment_name) {
+    parts.push(`${metadata.assessment_name}: ${metadata.score}%`)
+  }
   if (metadata.job_title) {
     parts.push(`Job: ${metadata.job_title}`)
   }
 
   return parts.length > 0 ? parts.join(' | ') : null
+}
+
+function getActionSentence(action: string, metadata: AnyData | null): string {
+  switch (action) {
+    case 'stage_changed':
+      if (metadata?.from_stage && metadata?.to_stage)
+        return `moved candidate from ${metadata.from_stage} to ${metadata.to_stage}`
+      if (metadata?.to_stage) return `moved candidate to ${metadata.to_stage}`
+      return 'changed stage'
+    case 'interview_scheduled':
+      return 'scheduled an interview'
+    case 'interview_completed':
+      return 'completed an interview'
+    case 'interview_cancelled':
+      return 'cancelled an interview'
+    case 'offer_created':
+      return 'created an offer'
+    case 'offer_sent':
+      return 'sent an offer'
+    case 'offer_accepted':
+      return 'marked offer as accepted'
+    case 'offer_declined':
+      return 'marked offer as declined'
+    case 'offer_revoked':
+      return 'revoked the offer'
+    case 'email_sent':
+      return 'sent an email'
+    case 'feedback_submitted':
+      return 'submitted feedback'
+    case 'application_created':
+      return metadata?.job_title ? `applied candidate to ${metadata.job_title}` : 'created an application'
+    case 'application_rejected':
+      return 'rejected the application'
+    case 'application_hired':
+      return 'hired the candidate'
+    case 'candidate_created':
+      return 'added the candidate'
+    case 'candidate_updated':
+      return 'updated candidate profile'
+    case 'resume_uploaded':
+      return 'uploaded a resume'
+    case 'resume_parsed':
+      return 'parsed the resume'
+    case 'assessment_sent':
+      return 'sent an assessment'
+    case 'assessment_completed':
+      return metadata?.score != null ? `scored assessment at ${metadata.score}%` : 'completed an assessment'
+    case 'whatsapp_sent':
+      return 'sent a WhatsApp message'
+    default:
+      return action.replace(/_/g, ' ')
+  }
 }
 
 interface ActivityTimelineProps {
@@ -150,7 +206,14 @@ export function ActivityTimeline({ activities, loading, emptyMessage = 'No activ
             {/* Content */}
             <div className="flex-1 pb-5 min-w-0">
               <div className="flex items-start justify-between gap-2">
-                <p className="text-sm font-medium text-gray-800">{config.label}</p>
+                <div>
+                  {(activity.metadata?.user_name || activity.metadata?.source === 'candidate') && (
+                    <span className="text-sm font-semibold text-gray-900">
+                      {activity.metadata?.user_name || activity.metadata?.candidate_name || 'Candidate'}{' '}
+                    </span>
+                  )}
+                  <span className="text-sm font-medium text-gray-600">{getActionSentence(activity.action, activity.metadata)}</span>
+                </div>
                 <span className="text-[11px] text-gray-400 whitespace-nowrap shrink-0" title={new Date(activity.created_at).toLocaleString()}>
                   {timeAgo}
                 </span>
@@ -158,7 +221,7 @@ export function ActivityTimeline({ activities, loading, emptyMessage = 'No activ
               {description && (
                 <p className="text-xs text-gray-500 mt-0.5">{description}</p>
               )}
-              {activity.entity_type && activity.action !== 'stage_changed' && (
+              {activity.entity_type && activity.action !== 'stage_changed' && !activity.metadata?.user_name && (
                 <span className="inline-block text-[10px] font-medium text-gray-400 mt-1 uppercase tracking-wide">
                   {activity.entity_type}
                 </span>
