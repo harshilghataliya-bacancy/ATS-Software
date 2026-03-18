@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState, useCallback } from 'react'
+import { useRouter } from 'next/navigation'
 import dynamic from 'next/dynamic'
 import Link from 'next/link'
 import { useUser, useRole } from '@/lib/hooks/use-user'
@@ -129,8 +130,9 @@ const ENTITY_COLORS: Record<string, string> = {
 }
 
 export default function DashboardPage() {
+  const router = useRouter()
   const { user, organization, isLoading } = useUser()
-  const { isAdmin, isRecruiter, isInterviewer } = useRole()
+  const { isAdmin, isRecruiter, isInterviewer, canViewDashboard } = useRole()
   const [stats, setStats] = useState<{
     open_jobs: number
     active_candidates: number
@@ -317,6 +319,11 @@ export default function DashboardPage() {
         </div>
       </div>
     )
+  }
+
+  if (!isLoading && !canViewDashboard && !isInterviewer) {
+    router.replace('/jobs')
+    return null
   }
 
   function formatAction(activity: ActivityLog): string {

@@ -72,7 +72,7 @@ function NavItem({ href, label, icon: Icon, active, collapsed }: { href: string;
 export function Sidebar() {
   const pathname = usePathname()
   const { user, organization } = useUser()
-  const { role, canManageMembers, canViewReports, canAccessBanks, isInterviewer, isAdmin } = useRole()
+  const { role, canManageMembers, canViewReports, canViewDashboard, canAccessBanks, isInterviewer, isAdmin } = useRole()
   const [collapsed, setCollapsed] = useState(false)
 
   const roleBadge: Record<string, { label: string; color: string }> = {
@@ -131,6 +131,7 @@ export function Sidebar() {
         <nav className={`flex-1 overflow-y-auto ${collapsed ? 'p-2' : 'px-3 py-3'} space-y-0.5`}>
           {mainNav
             .filter((item) => {
+              if (item.href === '/dashboard' && !canViewDashboard && !isInterviewer) return false
               if (item.href === '/reports' && !canViewReports) return false
               if (item.href === '/banks' && !canAccessBanks) return false
               if (isInterviewer && !['/dashboard', '/interviews'].includes(item.href)) return false

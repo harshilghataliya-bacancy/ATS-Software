@@ -200,9 +200,9 @@ const KPI_CONFIG = [
 
 export default function ReportsPage() {
   const { organization, isLoading: userLoading } = useUser()
-  const { canViewReports } = useRole()
+  const { canViewReports, canViewFullReports } = useRole()
   const [loading, setLoading] = useState(true)
-  const [activeTab, setActiveTab] = useState('overview')
+  const [activeTab, setActiveTab] = useState(canViewFullReports ? 'overview' : 'recruiter')
 
   const [stats, setStats] = useState<Stats | null>(null)
   const [pipeline, setPipeline] = useState<PipelineStage[]>([])
@@ -218,6 +218,13 @@ export default function ReportsPage() {
   const loadReports = useCallback(async () => {
     if (!organization) return
     setLoading(true)
+
+    // Recruiters only see their own performance tab — skip overview data
+    if (!canViewFullReports) {
+      setLoading(false)
+      return
+    }
+
     const supabase = createClient()
     const dateRange = DATE_PRESETS.find((p) => p.value === datePreset)?.getRange()
     const jobFilter = selectedJobId !== 'all' ? selectedJobId : undefined
@@ -270,7 +277,8 @@ export default function ReportsPage() {
     }
 
     setLoading(false)
-  }, [organization, selectedJobId, datePreset])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [organization, selectedJobId, datePreset, canViewFullReports])
 
   useEffect(() => {
     if (organization) loadReports()
@@ -478,7 +486,7 @@ export default function ReportsPage() {
       {/* Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab}>
         <TabsList>
-          <TabsTrigger value="overview">Overview</TabsTrigger>
+          {canViewFullReports && <TabsTrigger value="overview">Overview</TabsTrigger>}
           <TabsTrigger value="recruiter">Recruiter Performance</TabsTrigger>
         </TabsList>
 

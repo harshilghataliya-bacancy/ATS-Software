@@ -35,7 +35,7 @@ export default function NewJobPage() {
   const router = useRouter()
   const { toast } = useToast()
   const { user, organization } = useUser()
-  const { isAdmin } = useRole()
+  const { isAdmin, canCreateJobs } = useRole()
   const [recruiters, setRecruiters] = useState<Recruiter[]>([])
   const [selectedRecruiterIds, setSelectedRecruiterIds] = useState<string[]>([])
   const [jobOwnerId, setJobOwnerId] = useState<string | null>(null)
@@ -184,6 +184,15 @@ export default function NewJobPage() {
   function submitAs(status: 'draft' | 'published') {
     setValue('status', status)
     handleSubmit(onSubmit)()
+  }
+
+  if (!canCreateJobs) {
+    return (
+      <div className="text-center py-12">
+        <h2 className="text-lg font-semibold text-gray-900">Access Denied</h2>
+        <p className="text-gray-500 mt-1">Only administrators can create new jobs.</p>
+      </div>
+    )
   }
 
   return (

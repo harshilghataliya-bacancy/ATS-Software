@@ -75,7 +75,7 @@ const PRIORITY_CONFIG: Record<string, { label: string; cls: string }> = {
 
 export default function JobsPage() {
   const { user, organization, isLoading } = useUser()
-  const { canManageJobs, isAdmin } = useRole()
+  const { canManageJobs, canCreateJobs, isAdmin } = useRole()
   const [jobs, setJobs] = useState<Job[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
@@ -309,7 +309,7 @@ export default function JobsPage() {
             <span className="hidden sm:inline">Export CSV</span>
           </Button>
 
-          {canManageJobs && (
+          {canCreateJobs && (
             <Link href="/jobs/new">
               <Button
                 size="sm"
@@ -429,7 +429,7 @@ export default function JobsPage() {
             <p className="text-xs text-gray-400 mb-4 max-w-xs">
               {search || statusFilter !== 'all' ? 'Try adjusting your filters.' : 'Create your first job posting to start receiving applications.'}
             </p>
-            {canManageJobs && !search && statusFilter === 'all' && (
+            {canCreateJobs && !search && statusFilter === 'all' && (
               <Link href="/jobs/new">
                 <Button size="sm" variant="outline" className="gap-1.5">
                   <Plus className="w-3.5 h-3.5" />New Job
