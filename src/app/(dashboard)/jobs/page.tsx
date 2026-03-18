@@ -19,14 +19,17 @@ import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger,
 } from '@/components/ui/alert-dialog'
+import {
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import { Pagination } from '@/components/ui/pagination'
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from '@/components/ui/table'
 import {
-  Search, Plus, Download, LayoutGrid, List, Eye, Users, Trash2, Briefcase,
-  Building2, MapPin, Clock, DollarSign, CalendarDays, GraduationCap, Globe,
-  UserCircle,
+  Search, Plus, Download, LayoutGrid, List, Users, Briefcase,
+  Building2, MapPin, DollarSign, CalendarDays, GraduationCap,
+  MoreHorizontal, Pencil, Trash2, ArrowUpRight, UserCircle, Filter,
 } from 'lucide-react'
 
 type ViewMode = 'card' | 'table'
@@ -56,22 +59,49 @@ interface Job {
   active_candidate_count?: number
 }
 
-// Status → left border accent color
-const STATUS_BORDER: Record<string, string> = {
-  published: 'border-l-emerald-500',
-  draft:     'border-l-slate-300',
-  closed:    'border-l-rose-400',
-  archived:  'border-l-amber-400',
+const STATUS_DOT: Record<string, string> = {
+  published: 'bg-emerald-500',
+  draft:     'bg-slate-300',
+  closed:    'bg-rose-400',
+  archived:  'bg-amber-400',
+}
+
+const STATUS_PILL: Record<string, string> = {
+  published: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+  draft:     'bg-slate-50 text-slate-600 border-slate-200',
+  closed:    'bg-rose-50 text-rose-600 border-rose-200',
+  archived:  'bg-amber-50 text-amber-600 border-amber-200',
+}
+
+const PRIORITY_DOT: Record<string, string> = {
+  urgent: 'bg-red-500',
+  high:   'bg-orange-400',
+  medium: 'bg-blue-400',
+  low:    'bg-slate-300',
 }
 
 const PRIORITY_CONFIG: Record<string, { label: string; cls: string }> = {
-  urgent: { label: 'Urgent', cls: 'bg-red-50 text-red-700 border border-red-200' },
-  high:   { label: 'High',   cls: 'bg-orange-50 text-orange-700 border border-orange-200' },
-  medium: { label: 'Medium', cls: 'bg-blue-50 text-blue-700 border border-blue-200' },
-  low:    { label: 'Low',    cls: 'bg-slate-50 text-slate-600 border border-slate-200' },
+  urgent: { label: 'Urgent', cls: 'bg-red-50 text-red-700 border-red-200' },
+  high:   { label: 'High',   cls: 'bg-orange-50 text-orange-700 border-orange-200' },
+  medium: { label: 'Medium', cls: 'bg-blue-50 text-blue-700 border-blue-200' },
+  low:    { label: 'Low',    cls: 'bg-slate-50 text-slate-600 border-slate-200' },
 }
 
-// ── Main Page ──────────────────────────────────────────────────────────────
+// Avatar gradient based on name hash
+const GRADIENTS = [
+  'from-blue-500 to-indigo-600',
+  'from-emerald-500 to-teal-600',
+  'from-violet-500 to-purple-600',
+  'from-rose-500 to-pink-600',
+  'from-amber-500 to-orange-600',
+  'from-cyan-500 to-blue-600',
+]
+
+function getGradient(name: string) {
+  let hash = 0
+  for (let i = 0; i < name.length; i++) hash = name.charCodeAt(i) + ((hash << 5) - hash)
+  return GRADIENTS[Math.abs(hash) % GRADIENTS.length]
+}
 
 export default function JobsPage() {
   const { user, organization, isLoading } = useUser()
@@ -91,7 +121,8 @@ export default function JobsPage() {
   const [jobRecruitersMap, setJobRecruitersMap] = useState<Record<string, string[]>>({})
   const [total, setTotal] = useState(0)
   const [page, setPage] = useState(1)
-  const [viewMode, setViewMode] = useState<ViewMode>('table')
+  const [viewMode, setViewMode] = useState<ViewMode>('card')
+  const [showFilters, setShowFilters] = useState(false)
   const router = useRouter()
 
   useEffect(() => {
@@ -123,7 +154,6 @@ export default function JobsPage() {
         setDepartments(depts)
         setLocations(locs)
       }
-      // Fetch recruiters from job_recruiters junction table for each job
       const recruiterMap: Record<string, string[]> = {}
       await Promise.all(
         jobList.map(async (job) => {
@@ -133,7 +163,6 @@ export default function JobsPage() {
       )
       setJobRecruitersMap(recruiterMap)
 
-      // Collect all unique user IDs: from assigned_to AND from job_recruiters
       const allRecruiterIds = new Set<string>()
       jobList.forEach((j) => {
         if (j.assigned_to) allRecruiterIds.add(j.assigned_to)
@@ -160,13 +189,11 @@ export default function JobsPage() {
     setJobs((prev) => prev.filter((j) => j.id !== jobId))
   }
 
-  // Get all resolved recruiter names for a job (from job_recruiters table)
   function getJobRecruiterNames(jobId: string): string[] {
     const ids = jobRecruitersMap[jobId] ?? []
     return ids.map((id) => recruiterNames[id]).filter(Boolean)
   }
 
-  // Get job owner name (assigned_to)
   function getJobOwnerName(job: Job): string | null {
     if (!job.assigned_to) return null
     return recruiterNames[job.assigned_to] || null
@@ -191,7 +218,7 @@ export default function JobsPage() {
     const now = new Date()
     const diff = Math.ceil((d.getTime() - now.getTime()) / (1000 * 60 * 60 * 24))
     const formatted = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
-    if (diff < 0) return { text: `Expired`, urgentLabel: formatted, urgent: true }
+    if (diff < 0) return { text: 'Expired', urgentLabel: formatted, urgent: true }
     if (diff <= 7) return { text: `${diff}d left`, urgentLabel: formatted, urgent: true }
     return { text: formatted, urgentLabel: null, urgent: false }
   }
@@ -226,19 +253,23 @@ export default function JobsPage() {
   }
 
   const totalPages = Math.ceil(total / ITEMS_PER_PAGE)
+  const activeFilterCount = [statusFilter, deptFilter, locationFilter, typeFilter, priorityFilter].filter(f => f !== 'all').length + (myJobsOnly ? 1 : 0)
 
-  // ── Shared: Delete Dialog ─────────────────────────────────────────────────
-  function DeleteDialog({ job }: { job: Job }) {
+  // Status summary counts
+  const statusCounts = jobs.reduce<Record<string, number>>((acc, j) => {
+    acc[j.status] = (acc[j.status] || 0) + 1
+    return acc
+  }, {})
+
+  function DeleteDialog({ job, trigger }: { job: Job; trigger?: React.ReactNode }) {
     return (
       <AlertDialog>
         <AlertDialogTrigger asChild>
-          <Button
-            variant="ghost" size="sm"
-            className="h-8 w-8 p-0 text-slate-400 hover:text-red-500 hover:bg-red-50 transition-colors"
-            title="Delete job"
-          >
-            <Trash2 className="w-3.5 h-3.5" />
-          </Button>
+          {trigger || (
+            <button className="w-full text-left text-[13px] text-red-600 px-2 py-1.5 rounded-md hover:bg-red-50 transition-colors">
+              Delete
+            </button>
+          )}
         </AlertDialogTrigger>
         <AlertDialogContent>
           <AlertDialogHeader>
@@ -264,24 +295,23 @@ export default function JobsPage() {
   return (
     <div className="space-y-5">
 
-      {/* ── Page Header ──────────────────────────────────────────────────── */}
-      <div className="flex items-center justify-between gap-4">
+      {/* ── Header ──────────────────────────────────────────────────────── */}
+      <div className="flex items-start justify-between gap-4">
         <div>
-          <h1 className="text-xl font-semibold text-gray-900">Jobs</h1>
-          <p className="text-sm text-gray-400 mt-0.5">
+          <h1 className="text-xl font-bold text-gray-900 tracking-tight">Jobs</h1>
+          <p className="text-[13px] text-gray-400 mt-0.5">
             {total > 0 ? `${total} position${total !== 1 ? 's' : ''}` : 'Manage your job postings'}
           </p>
         </div>
 
         <div className="flex items-center gap-2">
-          {/* View Mode Toggle */}
-          <div className="flex items-center gap-0.5 rounded-lg border border-gray-200 bg-gray-50 p-1">
+          {/* View toggle */}
+          <div className="flex items-center rounded-lg border border-gray-200 bg-white p-0.5">
             <button
               onClick={() => setViewMode('card')}
-              title="Card view"
               className={`flex items-center justify-center w-8 h-7 rounded-md transition-all duration-150 ${
                 viewMode === 'card'
-                  ? 'bg-white text-gray-900 shadow-sm ring-1 ring-gray-200'
+                  ? 'bg-gray-900 text-white shadow-sm'
                   : 'text-gray-400 hover:text-gray-600'
               }`}
             >
@@ -289,10 +319,9 @@ export default function JobsPage() {
             </button>
             <button
               onClick={() => setViewMode('table')}
-              title="Table view"
               className={`flex items-center justify-center w-8 h-7 rounded-md transition-all duration-150 ${
                 viewMode === 'table'
-                  ? 'bg-white text-gray-900 shadow-sm ring-1 ring-gray-200'
+                  ? 'bg-gray-900 text-white shadow-sm'
                   : 'text-gray-400 hover:text-gray-600'
               }`}
             >
@@ -303,18 +332,15 @@ export default function JobsPage() {
           <Button
             variant="outline" size="sm"
             onClick={downloadCSV} disabled={jobs.length === 0}
-            className="h-9 gap-1.5 text-gray-600 border-gray-200 hover:border-gray-300"
+            className="h-9 gap-1.5 text-gray-500 border-gray-200"
           >
             <Download className="w-3.5 h-3.5" />
-            <span className="hidden sm:inline">Export CSV</span>
+            <span className="hidden sm:inline">Export</span>
           </Button>
 
           {canCreateJobs && (
             <Link href="/jobs/new">
-              <Button
-                size="sm"
-                className="h-9 gap-1.5 bg-blue-600 hover:bg-blue-700 text-white shadow-sm"
-              >
+              <Button size="sm" className="h-9 gap-1.5 bg-gray-900 hover:bg-gray-800 text-white shadow-sm">
                 <Plus className="w-3.5 h-3.5" />
                 New Job
               </Button>
@@ -323,116 +349,180 @@ export default function JobsPage() {
         </div>
       </div>
 
-      {/* ── Filters ──────────────────────────────────────────────────────── */}
-      <div className="flex flex-wrap gap-2">
-        <div className="relative flex-1 min-w-[200px] max-w-sm">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-          <Input
-            placeholder="Search jobs…"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
-            className="pl-9 h-9 bg-white border-gray-200 text-sm"
-          />
+      {/* ── Search + Filter Bar ─────────────────────────────────────────── */}
+      <div className="space-y-3">
+        <div className="flex items-center gap-2">
+          <div className="relative flex-1 max-w-md">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+            <Input
+              placeholder="Search jobs…"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
+              className="pl-9 h-9 bg-white border-gray-200 text-[13px]"
+            />
+          </div>
+
+          <Button
+            variant="outline" size="sm"
+            onClick={() => setShowFilters(!showFilters)}
+            className={`h-9 gap-1.5 border-gray-200 ${showFilters ? 'bg-gray-100 border-gray-300' : ''}`}
+          >
+            <Filter className="w-3.5 h-3.5" />
+            Filters
+            {activeFilterCount > 0 && (
+              <span className="ml-0.5 w-5 h-5 rounded-full bg-gray-900 text-white text-[10px] font-bold flex items-center justify-center">
+                {activeFilterCount}
+              </span>
+            )}
+          </Button>
+
+          {(isAdmin || canManageJobs) && (
+            <Button
+              variant={myJobsOnly ? 'default' : 'outline'}
+              size="sm"
+              onClick={() => setMyJobsOnly(!myJobsOnly)}
+              className={`h-9 ${myJobsOnly
+                ? 'bg-gray-900 hover:bg-gray-800 text-white'
+                : 'border-gray-200 text-gray-500'
+              }`}
+            >
+              My Jobs
+            </Button>
+          )}
+
+          {/* Status quick-pills */}
+          <div className="hidden lg:flex items-center gap-1.5 ml-auto">
+            {['published', 'draft', 'closed', 'archived'].map(s => {
+              const count = statusCounts[s] || 0
+              const isActive = statusFilter === s
+              return (
+                <button
+                  key={s}
+                  onClick={() => setStatusFilter(isActive ? 'all' : s)}
+                  className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium transition-all border ${
+                    isActive
+                      ? STATUS_PILL[s] + ' border-current'
+                      : 'border-transparent text-gray-400 hover:text-gray-600 hover:bg-gray-50'
+                  }`}
+                >
+                  <span className={`w-1.5 h-1.5 rounded-full ${STATUS_DOT[s]}`} />
+                  {JOB_STATUS_CONFIG[s as keyof typeof JOB_STATUS_CONFIG]?.label ?? s}
+                  {count > 0 && <span className="tabular-nums">{count}</span>}
+                </button>
+              )
+            })}
+          </div>
         </div>
 
-        {(isAdmin || canManageJobs) && (
-          <Button
-            variant={myJobsOnly ? 'default' : 'outline'}
-            size="sm"
-            onClick={() => setMyJobsOnly(!myJobsOnly)}
-            className={`h-9 ${myJobsOnly
-              ? 'bg-blue-600 hover:bg-blue-700 text-white border-blue-600'
-              : 'border-gray-200 text-gray-600 hover:border-gray-300'
-            }`}
-          >
-            My Jobs
-          </Button>
+        {/* Expanded filters */}
+        {showFilters && (
+          <div className="flex flex-wrap gap-2 pt-1 pb-1">
+            <Select value={statusFilter} onValueChange={setStatusFilter}>
+              <SelectTrigger className="h-8 w-[130px] border-gray-200 bg-white text-[12px]">
+                <SelectValue placeholder="Status" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Status</SelectItem>
+                <SelectItem value="draft">Draft</SelectItem>
+                <SelectItem value="published">Published</SelectItem>
+                <SelectItem value="closed">Closed</SelectItem>
+                <SelectItem value="archived">Archived</SelectItem>
+              </SelectContent>
+            </Select>
+
+            {departments.length > 0 && (
+              <Select value={deptFilter} onValueChange={setDeptFilter}>
+                <SelectTrigger className="h-8 w-[140px] border-gray-200 bg-white text-[12px]">
+                  <SelectValue placeholder="Department" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Departments</SelectItem>
+                  {departments.map((d) => <SelectItem key={d} value={d}>{d}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            )}
+
+            {locations.length > 0 && (
+              <Select value={locationFilter} onValueChange={setLocationFilter}>
+                <SelectTrigger className="h-8 w-[140px] border-gray-200 bg-white text-[12px]">
+                  <SelectValue placeholder="Location" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Locations</SelectItem>
+                  {locations.map((l) => <SelectItem key={l} value={l}>{l}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            )}
+
+            <Select value={typeFilter} onValueChange={setTypeFilter}>
+              <SelectTrigger className="h-8 w-[130px] border-gray-200 bg-white text-[12px]">
+                <SelectValue placeholder="Type" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Types</SelectItem>
+                {EMPLOYMENT_TYPES.map((t) => <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>)}
+              </SelectContent>
+            </Select>
+
+            <Select value={priorityFilter} onValueChange={setPriorityFilter}>
+              <SelectTrigger className="h-8 w-[130px] border-gray-200 bg-white text-[12px]">
+                <SelectValue placeholder="Priority" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Priority</SelectItem>
+                {JOB_PRIORITIES.map((p) => <SelectItem key={p.value} value={p.value}>{p.label}</SelectItem>)}
+              </SelectContent>
+            </Select>
+
+            {activeFilterCount > 0 && (
+              <button
+                onClick={() => { setStatusFilter('all'); setDeptFilter('all'); setLocationFilter('all'); setTypeFilter('all'); setPriorityFilter('all'); setMyJobsOnly(false) }}
+                className="h-8 px-2.5 text-[12px] text-gray-400 hover:text-gray-600 transition-colors"
+              >
+                Clear all
+              </button>
+            )}
+          </div>
         )}
-
-        <Select value={statusFilter} onValueChange={setStatusFilter}>
-          <SelectTrigger className="h-9 w-[130px] border-gray-200 bg-white text-sm">
-            <SelectValue placeholder="Status" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All Status</SelectItem>
-            <SelectItem value="draft">Draft</SelectItem>
-            <SelectItem value="published">Published</SelectItem>
-            <SelectItem value="closed">Closed</SelectItem>
-            <SelectItem value="archived">Archived</SelectItem>
-          </SelectContent>
-        </Select>
-
-        {departments.length > 0 && (
-          <Select value={deptFilter} onValueChange={setDeptFilter}>
-            <SelectTrigger className="h-9 w-[140px] border-gray-200 bg-white text-sm">
-              <SelectValue placeholder="Department" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Departments</SelectItem>
-              {departments.map((d) => <SelectItem key={d} value={d}>{d}</SelectItem>)}
-            </SelectContent>
-          </Select>
-        )}
-
-        {locations.length > 0 && (
-          <Select value={locationFilter} onValueChange={setLocationFilter}>
-            <SelectTrigger className="h-9 w-[140px] border-gray-200 bg-white text-sm">
-              <SelectValue placeholder="Location" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Locations</SelectItem>
-              {locations.map((l) => <SelectItem key={l} value={l}>{l}</SelectItem>)}
-            </SelectContent>
-          </Select>
-        )}
-
-        <Select value={typeFilter} onValueChange={setTypeFilter}>
-          <SelectTrigger className="h-9 w-[130px] border-gray-200 bg-white text-sm">
-            <SelectValue placeholder="Type" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All Types</SelectItem>
-            {EMPLOYMENT_TYPES.map((t) => <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>)}
-          </SelectContent>
-        </Select>
-
-        <Select value={priorityFilter} onValueChange={setPriorityFilter}>
-          <SelectTrigger className="h-9 w-[130px] border-gray-200 bg-white text-sm">
-            <SelectValue placeholder="Priority" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All Priority</SelectItem>
-            {JOB_PRIORITIES.map((p) => <SelectItem key={p.value} value={p.value}>{p.label}</SelectItem>)}
-          </SelectContent>
-        </Select>
       </div>
 
       {/* ── Content ──────────────────────────────────────────────────────── */}
       {loading ? (
         viewMode === 'card' ? (
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-            {[1, 2, 3, 4, 5, 6].map((i) => <Skeleton key={i} className="h-60 rounded-xl" />)}
+            {[1, 2, 3, 4, 5, 6].map((i) => (
+              <div key={i} className="rounded-xl border border-gray-100 bg-white p-5 space-y-3">
+                <Skeleton className="h-4 w-3/4" />
+                <Skeleton className="h-3 w-1/2" />
+                <Skeleton className="h-20 w-full rounded-lg" />
+                <div className="flex gap-2">
+                  <Skeleton className="h-7 flex-1 rounded-md" />
+                  <Skeleton className="h-7 flex-1 rounded-md" />
+                </div>
+              </div>
+            ))}
           </div>
         ) : (
-          <div className="rounded-xl border border-gray-200 overflow-hidden">
+          <div className="rounded-xl border border-gray-200 overflow-hidden bg-white">
             <Skeleton className="h-11 w-full" />
             {[1, 2, 3, 4, 5].map((i) => <Skeleton key={i} className="h-14 w-full mt-px" />)}
           </div>
         )
       ) : jobs.length === 0 ? (
-        /* ── Empty State ── */
-        <div className="rounded-xl border-2 border-dashed border-gray-200 py-20">
+        <div className="rounded-xl border-2 border-dashed border-gray-200 py-20 bg-white">
           <div className="flex flex-col items-center text-center px-6">
-            <Briefcase className="w-10 h-10 text-gray-300 mb-3" />
-            <p className="text-sm font-medium text-gray-500 mb-1">No jobs found</p>
-            <p className="text-xs text-gray-400 mb-4 max-w-xs">
+            <div className="w-14 h-14 rounded-2xl bg-gray-50 flex items-center justify-center mb-4">
+              <Briefcase className="w-7 h-7 text-gray-300" />
+            </div>
+            <p className="text-[14px] font-semibold text-gray-600 mb-1">No jobs found</p>
+            <p className="text-[13px] text-gray-400 mb-5 max-w-xs">
               {search || statusFilter !== 'all' ? 'Try adjusting your filters.' : 'Create your first job posting to start receiving applications.'}
             </p>
             {canCreateJobs && !search && statusFilter === 'all' && (
               <Link href="/jobs/new">
-                <Button size="sm" variant="outline" className="gap-1.5">
-                  <Plus className="w-3.5 h-3.5" />New Job
+                <Button size="sm" className="gap-1.5 bg-gray-900 hover:bg-gray-800 text-white">
+                  <Plus className="w-3.5 h-3.5" /> New Job
                 </Button>
               </Link>
             )}
@@ -449,151 +539,185 @@ export default function JobsPage() {
               const salary = formatSalary(job.salary_min, job.salary_max, job.salary_currency)
               const deadline = formatDeadline(job.application_deadline)
               const openings = job.num_openings || 1
-              const borderColor = STATUS_BORDER[job.status] || 'border-l-gray-200'
+              const recruiterNamesList = getJobRecruiterNames(job.id)
+              const ownerName = getJobOwnerName(job)
 
               return (
                 <div
                   key={job.id}
+                  className="group relative rounded-xl border border-gray-200 bg-white hover:border-gray-300 hover:shadow-md transition-all duration-200 flex flex-col overflow-hidden cursor-pointer"
                   onClick={() => router.push(`/jobs/${job.id}/applications`)}
-                  className={`group relative border-l-4 ${borderColor} border border-gray-200 rounded-xl hover:shadow-md transition-all duration-200 flex flex-col overflow-hidden bg-white cursor-pointer`}
                 >
-                  <div className="pt-4 pb-4 px-5 flex flex-col flex-1 gap-0">
+                  {/* Top bar — status color accent */}
+                  <div className={`h-1 ${STATUS_DOT[job.status]?.replace('bg-', 'bg-') || 'bg-gray-200'}`} />
 
-                    {/* Status + Priority row */}
-                    <div className="flex items-center justify-between mb-3">
-                      <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full ${statusConfig?.className ?? 'bg-gray-100 text-gray-600'}`}>
+                  <div className="p-5 flex flex-col flex-1">
+                    {/* Header: title + actions */}
+                    <div className="flex items-start justify-between gap-2 mb-3">
+                      <div className="flex-1 min-w-0">
+                        <h3 className="text-[15px] font-bold text-gray-900 leading-snug line-clamp-2 group-hover:text-blue-700 transition-colors">
+                          {job.title}
+                        </h3>
+                        <div className="flex items-center gap-2 mt-1.5 text-[12px] text-gray-400">
+                          {job.department && (
+                            <span className="flex items-center gap-1">
+                              <Building2 className="w-3 h-3" />
+                              {job.department}
+                            </span>
+                          )}
+                          {job.location && (
+                            <span className="flex items-center gap-1">
+                              <MapPin className="w-3 h-3" />
+                              {job.location}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Actions dropdown */}
+                      <div onClick={(e) => e.stopPropagation()}>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <button className="w-7 h-7 rounded-md flex items-center justify-center text-gray-300 opacity-0 group-hover:opacity-100 hover:bg-gray-100 hover:text-gray-600 transition-all">
+                              <MoreHorizontal className="w-4 h-4" />
+                            </button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end" className="w-44">
+                            <DropdownMenuItem onClick={() => router.push(`/jobs/${job.id}`)} className="gap-2 text-[13px]">
+                              <Pencil className="w-3.5 h-3.5" /> Edit Job
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => router.push(`/jobs/${job.id}/applications`)} className="gap-2 text-[13px]">
+                              <Users className="w-3.5 h-3.5" /> Applications
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => router.push(`/jobs/${job.id}/pipeline`)} className="gap-2 text-[13px]">
+                              <ArrowUpRight className="w-3.5 h-3.5" /> Pipeline
+                            </DropdownMenuItem>
+                            {isAdmin && (
+                              <>
+                                <DropdownMenuSeparator />
+                                <DeleteDialog
+                                  job={job}
+                                  trigger={
+                                    <DropdownMenuItem onSelect={(e) => e.preventDefault()} className="gap-2 text-[13px] text-red-600 focus:text-red-600">
+                                      <Trash2 className="w-3.5 h-3.5" /> Delete Job
+                                    </DropdownMenuItem>
+                                  }
+                                />
+                              </>
+                            )}
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </div>
+                    </div>
+
+                    {/* Tags row: status + priority + type */}
+                    <div className="flex flex-wrap items-center gap-1.5 mb-4">
+                      <span className={`inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-full border ${STATUS_PILL[job.status] || 'bg-gray-50 text-gray-600 border-gray-200'}`}>
+                        <span className={`w-1.5 h-1.5 rounded-full ${STATUS_DOT[job.status] || 'bg-gray-300'}`} />
                         {statusConfig?.label ?? job.status}
                       </span>
-                      <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full ${priority.cls}`}>
+                      <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full border ${priority.cls}`}>
                         {priority.label}
                       </span>
-                    </div>
-
-                    {/* Title */}
-                    <h3 className="text-[15px] font-bold text-gray-900 leading-snug mb-1 line-clamp-2 group-hover:text-blue-700 transition-colors">
-                      {job.title}
-                    </h3>
-
-                    {/* Department + Location */}
-                    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px] text-gray-500 mb-3">
-                      {job.department && (
-                        <span className="flex items-center gap-1">
-                          <Building2 className="w-3 h-3 flex-shrink-0 text-gray-400" />
-                          {job.department}
-                        </span>
-                      )}
-                      {job.location && (
-                        <span className="flex items-center gap-1">
-                          <MapPin className="w-3 h-3 flex-shrink-0 text-gray-400" />
-                          {job.location}
-                        </span>
-                      )}
-                    </div>
-
-                    {/* Assigned recruiters */}
-                    {(() => {
-                      const ids = jobRecruitersMap[job.id] ?? []
-                      const ownerName = getJobOwnerName(job)
-                      return ids.length > 0 ? (
-                        <div className="flex items-center gap-1.5 text-[12px] font-medium mb-2.5 flex-wrap">
-                          <UserCircle className="w-3 h-3 flex-shrink-0 text-blue-600" />
-                          {ids.map((id, i) => {
-                            const name = recruiterNames[id]
-                            if (!name) return null
-                            const isOwner = name === ownerName
-                            return (
-                              <span key={i} className={`px-1.5 py-0.5 rounded-full text-[11px] border ${
-                                isOwner
-                                  ? 'bg-emerald-50 border-emerald-200 text-emerald-700'
-                                  : 'bg-blue-50 border-blue-100 text-blue-700'
-                              }`}>
-                                {name}{isOwner ? ' ★' : ''}
-                              </span>
-                            )
-                          })}
-                        </div>
-                      ) : null
-                    })()}
-
-                    {/* Key stats grid */}
-                    <div className="grid grid-cols-2 gap-x-3 gap-y-1.5 text-[12px] text-gray-600 mb-3 bg-gray-50/70 rounded-lg px-3 py-2.5">
-                      <div className="flex items-center gap-1.5">
-                        <Clock className="w-3 h-3 text-gray-400 flex-shrink-0" />
+                      <span className="text-[11px] text-gray-500 px-2 py-0.5 rounded-full bg-gray-50 border border-gray-100">
                         {employmentLabel(job.employment_type)}
+                      </span>
+                      {job.remote_policy && job.remote_policy !== 'on_site' && (
+                        <span className="text-[11px] text-gray-500 px-2 py-0.5 rounded-full bg-gray-50 border border-gray-100">
+                          {remoteLabel(job.remote_policy)}
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Stats row */}
+                    <div className="grid grid-cols-3 gap-3 mb-4">
+                      <div className="text-center p-2.5 rounded-lg bg-gray-50/80">
+                        <p className="text-[18px] font-bold text-gray-900 tabular-nums">{job.application_count}</p>
+                        <p className="text-[10px] text-gray-400 font-medium uppercase tracking-wide mt-0.5">Applicants</p>
                       </div>
-                      <div className="flex items-center gap-1.5">
-                        <Globe className="w-3 h-3 text-gray-400 flex-shrink-0" />
-                        {remoteLabel(job.remote_policy)}
+                      <div className="text-center p-2.5 rounded-lg bg-gray-50/80">
+                        <p className="text-[18px] font-bold text-emerald-600 tabular-nums">{job.active_candidate_count ?? 0}</p>
+                        <p className="text-[10px] text-gray-400 font-medium uppercase tracking-wide mt-0.5">Active</p>
                       </div>
-                      <div className="flex items-center gap-1.5">
-                        <Users className="w-3 h-3 text-gray-400 flex-shrink-0" />
-                        <span>{openings} opening{openings !== 1 ? 's' : ''}</span>
-                      </div>
-                      <div className="flex items-center gap-1.5">
-                        <Briefcase className="w-3 h-3 text-gray-400 flex-shrink-0" />
-                        <span className="font-semibold text-gray-800">{job.application_count}</span>
-                        <span>applicant{job.application_count !== 1 ? 's' : ''}</span>
+                      <div className="text-center p-2.5 rounded-lg bg-gray-50/80">
+                        <p className="text-[18px] font-bold text-gray-900 tabular-nums">{openings}</p>
+                        <p className="text-[10px] text-gray-400 font-medium uppercase tracking-wide mt-0.5">Opening{openings !== 1 ? 's' : ''}</p>
                       </div>
                     </div>
 
-                    {/* Experience */}
-                    {job.experience_level && (
-                      <div className="flex items-center gap-1.5 text-[12px] text-gray-500 mb-1.5">
-                        <GraduationCap className="w-3 h-3 text-gray-400 flex-shrink-0" />
-                        {experienceLabel(job.experience_level)}
-                        {(job.experience_min !== null || job.experience_max !== null) && (
-                          <span className="text-gray-400">· {job.experience_min ?? 0}{job.experience_max ? `–${job.experience_max}` : '+'} yrs</span>
-                        )}
-                      </div>
-                    )}
-
-                    {/* Salary */}
-                    {salary && (
-                      <div className="flex items-center gap-1.5 text-[12px] font-semibold text-emerald-700 mb-1.5">
-                        <DollarSign className="w-3 h-3 flex-shrink-0" />
-                        {salary}
-                      </div>
-                    )}
-
-                    {/* Deadline */}
-                    {deadline && (
-                      <div className={`flex items-center gap-1.5 text-[12px] mb-1.5 ${deadline.urgent ? 'text-red-600 font-semibold' : 'text-gray-500'}`}>
-                        <CalendarDays className="w-3 h-3 flex-shrink-0" />
-                        Deadline: {deadline.text}
-                        {deadline.urgentLabel && <span className="text-gray-400 font-normal">({deadline.urgentLabel})</span>}
-                      </div>
-                    )}
+                    {/* Meta info */}
+                    <div className="space-y-1.5 text-[12px] text-gray-500 mb-3">
+                      {salary && (
+                        <div className="flex items-center gap-1.5 font-semibold text-emerald-700">
+                          <DollarSign className="w-3 h-3 shrink-0" />
+                          {salary}
+                        </div>
+                      )}
+                      {job.experience_level && (
+                        <div className="flex items-center gap-1.5">
+                          <GraduationCap className="w-3 h-3 shrink-0 text-gray-400" />
+                          {experienceLabel(job.experience_level)}
+                          {(job.experience_min !== null || job.experience_max !== null) && (
+                            <span className="text-gray-400">· {job.experience_min ?? 0}{job.experience_max ? `–${job.experience_max}` : '+'} yrs</span>
+                          )}
+                        </div>
+                      )}
+                      {deadline && (
+                        <div className={`flex items-center gap-1.5 ${deadline.urgent ? 'text-red-600 font-semibold' : ''}`}>
+                          <CalendarDays className="w-3 h-3 shrink-0" />
+                          Deadline: {deadline.text}
+                          {deadline.urgentLabel && <span className="text-gray-400 font-normal">({deadline.urgentLabel})</span>}
+                        </div>
+                      )}
+                    </div>
 
                     {/* Skills */}
                     {job.skills && job.skills.length > 0 && (
-                      <div className="flex flex-wrap gap-1 mt-auto pt-2">
+                      <div className="flex flex-wrap gap-1 mb-3">
                         {job.skills.slice(0, 4).map((s) => (
-                          <span key={s} className="text-[11px] bg-blue-50 text-blue-600 border border-indigo-100 px-2 py-0.5 rounded-full font-medium">
+                          <span key={s} className="text-[10px] bg-blue-50 text-blue-600 border border-blue-100 px-1.5 py-0.5 rounded font-medium">
                             {s}
                           </span>
                         ))}
                         {job.skills.length > 4 && (
-                          <span className="text-[11px] text-gray-400 px-1 py-0.5 font-medium">+{job.skills.length - 4}</span>
+                          <span className="text-[10px] text-gray-400 px-1 py-0.5">+{job.skills.length - 4}</span>
                         )}
                       </div>
                     )}
 
-                    {/* Action Buttons */}
-                    <div className="flex items-center gap-2 mt-auto pt-3 border-t border-gray-100" onClick={(e) => e.stopPropagation()}>
-                      <Link href={`/jobs/${job.id}`} className="flex-1">
-                        <button className="w-full h-8 text-[12px] font-semibold border border-gray-200 text-gray-700 hover:border-blue-300 hover:text-blue-700 hover:bg-blue-50/50 transition-colors rounded-md">
-                          View / Edit
-                        </button>
-                      </Link>
-                      <Link href={`/jobs/${job.id}/applications`} className="flex-1">
-                        <button className="w-full h-8 text-[12px] font-semibold bg-blue-600 hover:bg-blue-700 text-white shadow-sm transition-colors rounded-md">
-                          Applications
-                          <span className="ml-1 bg-blue-500/60 rounded px-1 py-0.5 text-[10px] leading-none">
-                            {job.application_count}
+                    {/* Footer: recruiters */}
+                    <div className="mt-auto pt-3 border-t border-gray-100">
+                      {recruiterNamesList.length > 0 ? (
+                        <div className="flex items-center gap-1.5">
+                          <div className="flex -space-x-1.5">
+                            {recruiterNamesList.slice(0, 3).map((name, i) => {
+                              const gradient = getGradient(name)
+                              const initials = name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)
+                              return (
+                                <div
+                                  key={i}
+                                  className={`w-6 h-6 rounded-full bg-gradient-to-br ${gradient} flex items-center justify-center ring-2 ring-white`}
+                                  title={name + (name === ownerName ? ' (Owner)' : '')}
+                                >
+                                  <span className="text-[8px] font-bold text-white">{initials}</span>
+                                </div>
+                              )
+                            })}
+                            {recruiterNamesList.length > 3 && (
+                              <div className="w-6 h-6 rounded-full bg-gray-100 flex items-center justify-center ring-2 ring-white">
+                                <span className="text-[9px] font-bold text-gray-500">+{recruiterNamesList.length - 3}</span>
+                              </div>
+                            )}
+                          </div>
+                          <span className="text-[11px] text-gray-400 truncate">
+                            {recruiterNamesList.slice(0, 2).join(', ')}{recruiterNamesList.length > 2 ? ` +${recruiterNamesList.length - 2}` : ''}
                           </span>
-                        </button>
-                      </Link>
-                      {isAdmin && <DeleteDialog job={job} />}
+                        </div>
+                      ) : (
+                        <span className="text-[11px] text-gray-300 flex items-center gap-1">
+                          <UserCircle className="w-3 h-3" /> No recruiters assigned
+                        </span>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -606,112 +730,103 @@ export default function JobsPage() {
       ) : (
         /* ── Table View ──────────────────────────────────────────────────── */
         <>
-          <div className="rounded-xl border border-gray-200 overflow-hidden bg-white shadow-sm">
-            <div className="px-5 py-2.5 border-b border-gray-100 bg-gray-50/60">
-              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
-                {total} Job{total !== 1 ? 's' : ''}
-              </p>
-            </div>
-
+          <div className="rounded-xl border border-gray-200 overflow-hidden bg-white">
             <div className="overflow-x-auto">
               <Table>
                 <TableHeader>
-                  <TableRow className="bg-gray-50/40 hover:bg-gray-50/40 border-b border-gray-100">
-                    <TableHead className="text-[11px] font-semibold text-gray-500 uppercase tracking-wider w-[260px] pl-5">Job Title</TableHead>
+                  <TableRow className="bg-gray-50/60 hover:bg-gray-50/60 border-b border-gray-100">
+                    <TableHead className="text-[11px] font-semibold text-gray-500 uppercase tracking-wider w-[280px] pl-5">Job</TableHead>
                     <TableHead className="text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Location</TableHead>
                     <TableHead className="text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Type</TableHead>
                     <TableHead className="text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Status</TableHead>
                     <TableHead className="text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Priority</TableHead>
-                    <TableHead className="text-[11px] font-semibold text-gray-500 uppercase tracking-wider text-center">Open</TableHead>
-                    <TableHead className="text-[11px] font-semibold text-gray-500 uppercase tracking-wider text-center">Applications</TableHead>
+                    <TableHead className="text-[11px] font-semibold text-gray-500 uppercase tracking-wider text-center">Apps</TableHead>
                     <TableHead className="text-[11px] font-semibold text-gray-500 uppercase tracking-wider text-center">Active</TableHead>
                     <TableHead className="text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Deadline</TableHead>
-                    <TableHead className="text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Recruiter</TableHead>
-                    <TableHead className="text-[11px] font-semibold text-gray-500 uppercase tracking-wider text-right pr-5">Actions</TableHead>
+                    <TableHead className="text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Recruiters</TableHead>
+                    <TableHead className="text-[11px] font-semibold text-gray-500 uppercase tracking-wider w-[60px]"></TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {jobs.map((job, idx) => {
+                  {jobs.map((job) => {
                     const statusConfig = JOB_STATUS_CONFIG[job.status as keyof typeof JOB_STATUS_CONFIG]
                     const priority = PRIORITY_CONFIG[job.priority] || PRIORITY_CONFIG.medium
                     const deadline = formatDeadline(job.application_deadline)
-                    const openings = job.num_openings || 1
+                    const recruiterNamesList = getJobRecruiterNames(job.id)
+                    const ownerName = getJobOwnerName(job)
 
                     return (
                       <TableRow
                         key={job.id}
                         onClick={() => router.push(`/jobs/${job.id}/applications`)}
-                        className={`transition-colors hover:bg-blue-50/30 border-b border-gray-50 cursor-pointer ${idx % 2 === 1 ? 'bg-gray-50/25' : 'bg-white'}`}
+                        className="group transition-colors hover:bg-gray-50/80 border-b border-gray-50 cursor-pointer"
                       >
-                        {/* Title + Dept */}
-                        <TableCell className="pl-5 py-3.5">
-                          <div>
-                            <Link
-                              href={`/jobs/${job.id}`}
-                              className="text-[13px] font-semibold text-gray-900 hover:text-blue-600 transition-colors leading-snug"
-                            >
-                              {job.title}
-                            </Link>
-                            {job.department && (
-                              <p className="text-[11px] text-gray-400 mt-0.5 font-medium">{job.department}</p>
-                            )}
+                        {/* Job Title + Dept */}
+                        <TableCell className="pl-5 py-3">
+                          <div className="flex items-center gap-3">
+                            <div className={`w-1 h-8 rounded-full shrink-0 ${STATUS_DOT[job.status] || 'bg-gray-200'}`} />
+                            <div className="min-w-0">
+                              <p className="text-[13px] font-semibold text-gray-900 truncate group-hover:text-blue-600 transition-colors">
+                                {job.title}
+                              </p>
+                              {job.department && (
+                                <p className="text-[11px] text-gray-400 mt-0.5">{job.department}</p>
+                              )}
+                            </div>
                           </div>
                         </TableCell>
 
-                        {/* Location + Remote */}
-                        <TableCell className="py-3.5">
+                        {/* Location */}
+                        <TableCell className="py-3">
                           <div>
-                            <p className="text-[12px] text-gray-700 font-medium">{job.location || '—'}</p>
+                            <p className="text-[12px] text-gray-600">{job.location || '—'}</p>
                             <p className="text-[11px] text-gray-400 mt-0.5">{remoteLabel(job.remote_policy)}</p>
                           </div>
                         </TableCell>
 
                         {/* Type */}
-                        <TableCell className="py-3.5">
-                          <span className="text-[12px] text-gray-600 font-medium">{employmentLabel(job.employment_type)}</span>
+                        <TableCell className="py-3">
+                          <span className="text-[12px] text-gray-600">{employmentLabel(job.employment_type)}</span>
                         </TableCell>
 
                         {/* Status */}
-                        <TableCell className="py-3.5">
-                          <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full ${statusConfig?.className ?? 'bg-gray-100 text-gray-700'}`}>
+                        <TableCell className="py-3">
+                          <span className={`inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-full border ${STATUS_PILL[job.status] || 'bg-gray-50 text-gray-600 border-gray-200'}`}>
+                            <span className={`w-1.5 h-1.5 rounded-full ${STATUS_DOT[job.status] || 'bg-gray-300'}`} />
                             {statusConfig?.label ?? job.status}
                           </span>
                         </TableCell>
 
                         {/* Priority */}
-                        <TableCell className="py-3.5">
-                          <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full ${priority.cls}`}>
+                        <TableCell className="py-3">
+                          <span className={`inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-full border ${priority.cls}`}>
+                            <span className={`w-1.5 h-1.5 rounded-full ${PRIORITY_DOT[job.priority] || 'bg-gray-300'}`} />
                             {priority.label}
                           </span>
                         </TableCell>
 
-                        {/* Openings */}
-                        <TableCell className="text-center py-3.5">
-                          <span className="text-[13px] font-bold text-gray-800">{openings}</span>
-                        </TableCell>
-
-                        {/* Applicants */}
-                        <TableCell className="text-center py-3.5">
-                          <span className={`text-[13px] font-bold ${
-                            job.application_count > 0 ? 'text-blue-600' : 'text-gray-400'
+                        {/* Applications */}
+                        <TableCell className="text-center py-3">
+                          <span className={`text-[13px] font-bold tabular-nums ${
+                            job.application_count > 0 ? 'text-gray-800' : 'text-gray-300'
                           }`}>
                             {job.application_count}
                           </span>
                         </TableCell>
 
-                        {/* Active Candidates */}
-                        <TableCell className="text-center py-3.5">
-                          <span className={`text-[13px] font-bold ${
-                            (job.active_candidate_count ?? 0) > 0 ? 'text-emerald-600' : 'text-gray-400'
+                        {/* Active */}
+                        <TableCell className="text-center py-3">
+                          <span className={`text-[13px] font-bold tabular-nums ${
+                            (job.active_candidate_count ?? 0) > 0 ? 'text-emerald-600' : 'text-gray-300'
                           }`}>
                             {job.active_candidate_count ?? 0}
                           </span>
                         </TableCell>
 
                         {/* Deadline */}
-                        <TableCell className="py-3.5">
+                        <TableCell className="py-3">
                           {deadline ? (
-                            <span className={`text-[12px] font-medium ${deadline.urgent ? 'text-red-600' : 'text-gray-600'}`}>
+                            <span className={`text-[12px] font-medium ${deadline.urgent ? 'text-red-600' : 'text-gray-500'}`}>
                               {deadline.text}
                             </span>
                           ) : (
@@ -719,57 +834,67 @@ export default function JobsPage() {
                           )}
                         </TableCell>
 
-                        {/* Recruiter */}
-                        <TableCell className="py-3.5">
-                          {(() => {
-                            const ids = jobRecruitersMap[job.id] ?? []
-                            const ownerName = getJobOwnerName(job)
-                            return ids.length > 0 ? (
-                              <div className="flex flex-wrap gap-1">
-                                {ids.map((id, i) => {
-                                  const name = recruiterNames[id]
-                                  if (!name) return null
-                                  const isOwner = name === ownerName
+                        {/* Recruiters */}
+                        <TableCell className="py-3">
+                          {recruiterNamesList.length > 0 ? (
+                            <div className="flex items-center gap-1.5">
+                              <div className="flex -space-x-1">
+                                {recruiterNamesList.slice(0, 3).map((name, i) => {
+                                  const gradient = getGradient(name)
+                                  const initials = name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)
                                   return (
-                                    <span key={i} className={`text-[11px] px-1.5 py-0.5 rounded-full font-medium border ${
-                                      isOwner
-                                        ? 'text-emerald-700 bg-emerald-50 border-emerald-200'
-                                        : 'text-blue-700 bg-blue-50 border-blue-100'
-                                    }`}>
-                                      {name}{isOwner ? ' ★' : ''}
-                                    </span>
+                                    <div
+                                      key={i}
+                                      className={`w-5 h-5 rounded-full bg-gradient-to-br ${gradient} flex items-center justify-center ring-1.5 ring-white`}
+                                      title={name + (name === ownerName ? ' (Owner)' : '')}
+                                    >
+                                      <span className="text-[7px] font-bold text-white">{initials}</span>
+                                    </div>
                                   )
                                 })}
                               </div>
-                            ) : (
-                              <span className="text-gray-300 text-[12px]">&mdash;</span>
-                            )
-                          })()}
+                              {recruiterNamesList.length > 3 && (
+                                <span className="text-[11px] text-gray-400">+{recruiterNamesList.length - 3}</span>
+                              )}
+                            </div>
+                          ) : (
+                            <span className="text-gray-300 text-[12px]">—</span>
+                          )}
                         </TableCell>
 
                         {/* Actions */}
-                        <TableCell className="text-right pr-5 py-3.5" onClick={(e) => e.stopPropagation()}>
-                          <div className="flex items-center justify-end gap-1">
-                            <Link href={`/jobs/${job.id}`}>
-                              <Button
-                                variant="ghost" size="sm"
-                                className="h-8 w-8 p-0 text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-colors"
-                                title="View / Edit"
-                              >
-                                <Eye className="w-3.5 h-3.5" />
-                              </Button>
-                            </Link>
-                            <Link href={`/jobs/${job.id}/applications`}>
-                              <Button
-                                variant="ghost" size="sm"
-                                className="h-8 w-8 p-0 text-gray-400 hover:text-blue-600 hover:bg-blue-50 transition-colors"
-                                title="View Applications"
-                              >
-                                <Users className="w-3.5 h-3.5" />
-                              </Button>
-                            </Link>
-                            {isAdmin && <DeleteDialog job={job} />}
-                          </div>
+                        <TableCell className="pr-4 py-3" onClick={(e) => e.stopPropagation()}>
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <button className="w-7 h-7 rounded-md flex items-center justify-center text-gray-300 opacity-0 group-hover:opacity-100 hover:bg-gray-100 hover:text-gray-600 transition-all">
+                                <MoreHorizontal className="w-4 h-4" />
+                              </button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end" className="w-44">
+                              <DropdownMenuItem onClick={() => router.push(`/jobs/${job.id}`)} className="gap-2 text-[13px]">
+                                <Pencil className="w-3.5 h-3.5" /> Edit Job
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => router.push(`/jobs/${job.id}/applications`)} className="gap-2 text-[13px]">
+                                <Users className="w-3.5 h-3.5" /> Applications
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => router.push(`/jobs/${job.id}/pipeline`)} className="gap-2 text-[13px]">
+                                <ArrowUpRight className="w-3.5 h-3.5" /> Pipeline
+                              </DropdownMenuItem>
+                              {isAdmin && (
+                                <>
+                                  <DropdownMenuSeparator />
+                                  <DeleteDialog
+                                    job={job}
+                                    trigger={
+                                      <DropdownMenuItem onSelect={(e) => e.preventDefault()} className="gap-2 text-[13px] text-red-600 focus:text-red-600">
+                                        <Trash2 className="w-3.5 h-3.5" /> Delete Job
+                                      </DropdownMenuItem>
+                                    }
+                                  />
+                                </>
+                              )}
+                            </DropdownMenuContent>
+                          </DropdownMenu>
                         </TableCell>
                       </TableRow>
                     )
