@@ -183,7 +183,7 @@ export function Sidebar() {
                   key={item.href}
                   {...item}
                   collapsed={collapsed}
-                  active={pathname.startsWith(item.href)}
+                  active={pathname.startsWith(item.href) && !pathname.startsWith('/settings/offer-templates')}
                 />
               ))}
             </>
