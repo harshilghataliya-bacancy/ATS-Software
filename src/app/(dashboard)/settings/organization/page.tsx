@@ -11,7 +11,6 @@ import { useWhatsAppStatus } from '@/lib/hooks/use-whatsapp-status'
 import { createClient } from '@/lib/supabase/client'
 import { updateOrganization } from '@/lib/services/organization'
 import { REAPPLY_RESTRICTION_OPTIONS } from '@/lib/constants'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -19,6 +18,11 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { Switch } from '@/components/ui/switch'
 import { Badge } from '@/components/ui/badge'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import {
+  Building2, Mail, MessageSquare, Globe, ShieldCheck,
+  CheckCircle2, XCircle, ExternalLink, ChevronDown, ChevronUp,
+  Sparkles, Clock,
+} from 'lucide-react'
 import type { OrganizationDomain, OrganizationSubdomain } from '@/types/database'
 
 export default function OrganizationSettingsPage() {
@@ -31,6 +35,75 @@ export default function OrganizationSettingsPage() {
     }>
       <OrganizationSettingsContent />
     </Suspense>
+  )
+}
+
+function SectionCard({ icon: Icon, iconColor, title, description, children, defaultOpen = true }: {
+  icon: React.ComponentType<{ className?: string }>
+  iconColor: string
+  title: string
+  description: string
+  children: React.ReactNode
+  defaultOpen?: boolean
+}) {
+  const [open, setOpen] = useState(defaultOpen)
+  return (
+    <div className="rounded-xl border border-gray-200 bg-white overflow-hidden">
+      <button
+        onClick={() => setOpen(!open)}
+        className="w-full flex items-center gap-3.5 px-6 py-4 hover:bg-gray-50/50 transition-colors text-left"
+      >
+        <div className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 ${iconColor}`}>
+          <Icon className="w-[18px] h-[18px]" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <h3 className="text-[14px] font-semibold text-gray-900">{title}</h3>
+          <p className="text-[12px] text-gray-400 mt-0.5 line-clamp-1">{description}</p>
+        </div>
+        {open ? <ChevronUp className="w-4 h-4 text-gray-300 shrink-0" /> : <ChevronDown className="w-4 h-4 text-gray-300 shrink-0" />}
+      </button>
+      {open && (
+        <div className="px-6 pb-5 pt-1 border-t border-gray-100">
+          {children}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function StatusPill({ connected, label }: { connected: boolean; label: string }) {
+  return (
+    <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium ${
+      connected
+        ? 'bg-emerald-50 text-emerald-600 border border-emerald-100'
+        : 'bg-gray-50 text-gray-400 border border-gray-100'
+    }`}>
+      {connected
+        ? <CheckCircle2 className="w-3 h-3" />
+        : <XCircle className="w-3 h-3" />
+      }
+      {label}
+    </span>
+  )
+}
+
+function SuccessMessage({ show, message }: { show: boolean; message: string }) {
+  if (!show) return null
+  return (
+    <div className="flex items-center gap-2 bg-emerald-50 border border-emerald-100 text-emerald-700 text-[13px] px-3.5 py-2.5 rounded-lg">
+      <CheckCircle2 className="w-4 h-4 shrink-0" />
+      {message}
+    </div>
+  )
+}
+
+function ErrorMessage({ message }: { message: string | null }) {
+  if (!message) return null
+  return (
+    <div className="flex items-center gap-2 bg-red-50 border border-red-100 text-red-600 text-[13px] px-3.5 py-2.5 rounded-lg">
+      <XCircle className="w-4 h-4 shrink-0" />
+      {message}
+    </div>
   )
 }
 
@@ -340,485 +413,364 @@ function OrganizationSettingsContent() {
 
   if (isLoading) {
     return (
-      <div className="space-y-6">
-        <Skeleton className="h-8 w-48" />
-        <Skeleton className="h-64" />
+      <div className="space-y-4">
+        {[1, 2, 3].map((i) => (
+          <div key={i} className="rounded-xl border border-gray-200 p-6">
+            <Skeleton className="h-5 w-48 mb-3" />
+            <Skeleton className="h-4 w-72 mb-5" />
+            <Skeleton className="h-20 w-full" />
+          </div>
+        ))}
       </div>
     )
   }
 
   if (!isAdmin) {
     return (
-      <div className="text-center py-12">
-        <h2 className="text-lg font-semibold text-gray-900">Access Denied</h2>
-        <p className="text-gray-500 mt-1">Only administrators can manage organization settings.</p>
+      <div className="rounded-xl border-2 border-dashed border-gray-200 py-16 text-center">
+        <ShieldCheck className="w-8 h-8 text-gray-300 mx-auto mb-3" />
+        <p className="text-gray-500 font-medium">Access Denied</p>
+        <p className="text-sm text-gray-400 mt-1">Only administrators can manage organization settings.</p>
       </div>
     )
   }
 
+  const weightTotal = skillWeight + experienceWeight + semanticWeight
+
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-gray-900">Organization Settings</h1>
-        <p className="text-gray-500 mt-1">Manage your organization details</p>
-      </div>
+    <div className="space-y-4">
+      <p className="text-sm text-gray-500">Manage your organization details, integrations, and configurations</p>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>General</CardTitle>
-          <CardDescription>Update your organization information</CardDescription>
-        </CardHeader>
-        <CardContent>
-          {error && (
-            <div className="bg-red-50 text-red-700 text-sm p-3 rounded-md mb-4">{error}</div>
-          )}
-          {success && (
-            <div className="bg-green-50 text-green-700 text-sm p-3 rounded-md mb-4">
-              Settings updated successfully
-            </div>
-          )}
+      {/* General Settings */}
+      <SectionCard
+        icon={Building2}
+        iconColor="bg-blue-50 text-blue-600"
+        title="General"
+        description="Organization name and URL slug"
+      >
+        <ErrorMessage message={error} />
+        <SuccessMessage show={success} message="Settings updated successfully" />
 
-          <form onSubmit={handleSubmit(onSubmit)} className="space-y-4 max-w-md">
-            <div className="space-y-2">
-              <Label htmlFor="name">Organization Name</Label>
-              <Input id="name" {...register('name')} />
-              {errors.name && (
-                <p className="text-sm text-red-600">{errors.name.message}</p>
-              )}
-            </div>
+        <form onSubmit={handleSubmit(onSubmit)} className="space-y-4 mt-3 max-w-md">
+          <div className="space-y-1.5">
+            <Label className="text-[13px] text-gray-600">Organization Name</Label>
+            <Input {...register('name')} className="h-9" />
+            {errors.name && <p className="text-[12px] text-red-500">{errors.name.message}</p>}
+          </div>
+          <div className="space-y-1.5">
+            <Label className="text-[13px] text-gray-600">URL Slug</Label>
+            <Input {...register('slug')} className="h-9" />
+            {errors.slug && <p className="text-[12px] text-red-500">{errors.slug.message}</p>}
+          </div>
+          <Button type="submit" size="sm" disabled={saving}>
+            {saving ? 'Saving...' : 'Save Changes'}
+          </Button>
+        </form>
+      </SectionCard>
 
-            <div className="space-y-2">
-              <Label htmlFor="slug">URL Slug</Label>
-              <Input id="slug" {...register('slug')} />
-              {errors.slug && (
-                <p className="text-sm text-red-600">{errors.slug.message}</p>
-              )}
-            </div>
+      {/* Gmail */}
+      <SectionCard
+        icon={Mail}
+        iconColor="bg-red-50 text-red-500"
+        title="Gmail Integration"
+        description="Send emails to candidates directly from HireFlow"
+        defaultOpen={false}
+      >
+        <div className="space-y-3 mt-3">
+          <SuccessMessage show={gmailJustConnected} message="Gmail connected successfully!" />
+          {gmailError && <ErrorMessage message={`Gmail connection failed: ${gmailError}`} />}
 
-            <Button type="submit" disabled={saving}>
-              {saving ? 'Saving...' : 'Save changes'}
-            </Button>
-          </form>
-        </CardContent>
-      </Card>
-
-      {/* Gmail Integration — admin only */}
-      {isAdmin && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Gmail Integration</CardTitle>
-            <CardDescription>
-              Connect your Gmail account to send emails to candidates directly from HireFlow.
-              All team members will use this connected account for sending emails.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            {gmailJustConnected && (
-              <div className="bg-green-50 text-green-700 text-sm p-3 rounded-md mb-4">
-                Gmail connected successfully!
-              </div>
-            )}
-            {gmailError && (
-              <div className="bg-red-50 text-red-700 text-sm p-3 rounded-md mb-4">
-                Gmail connection failed: {gmailError}
-              </div>
-            )}
-
-            {gmailLoading ? (
-              <Skeleton className="h-10 w-40" />
-            ) : gmailConnected ? (
-              <div className="flex items-center gap-4">
-                <div className="flex items-center gap-2">
-                  <div className="w-2 h-2 rounded-full bg-green-500" />
-                  <span className="text-sm text-gray-700">Gmail connected</span>
-                </div>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={handleDisconnectGmail}
-                  disabled={disconnecting}
-                >
+          {gmailLoading ? (
+            <Skeleton className="h-10 w-40" />
+          ) : (
+            <div className="flex items-center justify-between">
+              <StatusPill connected={gmailConnected} label={gmailConnected ? 'Connected' : 'Not connected'} />
+              {gmailConnected ? (
+                <Button variant="outline" size="sm" onClick={handleDisconnectGmail} disabled={disconnecting} className="text-[13px]">
                   {disconnecting ? 'Disconnecting...' : 'Disconnect'}
                 </Button>
-              </div>
-            ) : (
-              <Button asChild>
-                <a href="/api/gmail/connect">Connect Gmail</a>
-              </Button>
-            )}
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Reapply Restriction — admin only */}
-      {isAdmin && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Reapply Restrictions</CardTitle>
-            <CardDescription>
-              Control how long candidates must wait before reapplying for the same job after declining an offer.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {reapplySuccess && (
-              <div className="bg-green-50 text-green-700 text-sm p-3 rounded-md">
-                Reapply restriction updated successfully
-              </div>
-            )}
-            <div className="max-w-sm space-y-2">
-              <Label>Restriction Period</Label>
-              <Select
-                value={String(reapplyMonths)}
-                onValueChange={(v) => setReapplyMonths(Number(v))}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {REAPPLY_RESTRICTION_OPTIONS.map((opt) => (
-                    <SelectItem key={opt.value} value={String(opt.value)}>
-                      {opt.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <p className="text-xs text-gray-500">
-                Candidates who decline an offer will not be able to reapply for the same job during this period.
-              </p>
-            </div>
-            <Button onClick={handleSaveReapply} disabled={reaplySaving}>
-              {reaplySaving ? 'Saving...' : 'Save'}
-            </Button>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* WhatsApp Integration — admin only */}
-      {isAdmin && (
-        <Card>
-          <CardHeader>
-            <CardTitle>WhatsApp Integration</CardTitle>
-            <CardDescription>
-              Connect your Twilio account to send WhatsApp messages to candidates directly from HireFlow.
-              All team members (except interviewers) will be able to send messages.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {waError && (
-              <div className="bg-red-50 text-red-700 text-sm p-3 rounded-md">{waError}</div>
-            )}
-            {waSuccess && (
-              <div className="bg-green-50 text-green-700 text-sm p-3 rounded-md">
-                WhatsApp configuration saved successfully!
-              </div>
-            )}
-
-            {waLoading ? (
-              <Skeleton className="h-10 w-40" />
-            ) : waConfigured ? (
-              <div className="flex items-center gap-4">
-                <div className="flex items-center gap-2">
-                  <div className="w-2 h-2 rounded-full bg-green-500" />
-                  <span className="text-sm text-gray-700">WhatsApp connected</span>
-                </div>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={handleDisconnectWhatsApp}
-                  disabled={waDisconnecting}
-                >
-                  {waDisconnecting ? 'Disconnecting...' : 'Disconnect'}
+              ) : (
+                <Button asChild size="sm" className="gap-1.5 text-[13px]">
+                  <a href="/api/gmail/connect">
+                    <ExternalLink className="w-3.5 h-3.5" /> Connect Gmail
+                  </a>
                 </Button>
-              </div>
-            ) : (
-              <div className="space-y-4 max-w-md">
-                <div className="space-y-2">
-                  <Label>Twilio Account SID</Label>
-                  <Input
-                    placeholder="ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
-                    value={waSid}
-                    onChange={(e) => setWaSid(e.target.value)}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>Auth Token</Label>
-                  <Input
-                    type="password"
-                    placeholder="Your Twilio Auth Token"
-                    value={waToken}
-                    onChange={(e) => setWaToken(e.target.value)}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>WhatsApp-Enabled Number</Label>
-                  <Input
-                    placeholder="+14155238886"
-                    value={waNumber}
-                    onChange={(e) => setWaNumber(e.target.value)}
-                  />
-                  <p className="text-xs text-gray-500">
-                    E.164 format (e.g., +14155238886). For sandbox, use the Twilio sandbox number.
-                  </p>
-                </div>
-                <div className="flex items-center justify-between">
-                  <div>
-                    <Label className="text-sm font-medium">Sandbox Mode</Label>
-                    <p className="text-xs text-gray-500 mt-0.5">
-                      Enable for testing with Twilio WhatsApp sandbox
-                    </p>
-                  </div>
-                  <Switch checked={waSandbox} onCheckedChange={setWaSandbox} />
-                </div>
-                <Button onClick={handleSaveWhatsApp} disabled={waSaving || !waSid || !waToken || !waNumber}>
-                  {waSaving ? 'Saving...' : 'Save WhatsApp Config'}
-                </Button>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      )}
-
-      {/* White Label — admin only */}
-      {isAdmin && (
-        <Card>
-          <CardHeader>
-            <CardTitle>White Label</CardTitle>
-            <CardDescription>
-              Configure custom domains and platform subdomains for your organization.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-8">
-            {whitelabelError && (
-              <div className="bg-red-50 text-red-700 text-sm p-3 rounded-md">{whitelabelError}</div>
-            )}
-
-            {/* Custom Domains */}
-            <div className="space-y-4">
-              <div>
-                <Label className="text-sm font-medium">Custom Domain</Label>
-                <p className="text-xs text-gray-500 mt-0.5">
-                  Use your own domain (e.g., careers.acme.com) to host your careers page
-                </p>
-              </div>
-
-              <div className="flex gap-2">
-                <Input
-                  placeholder="careers.yourcompany.com"
-                  value={newDomain}
-                  onChange={(e) => setNewDomain(e.target.value)}
-                  className="max-w-sm"
-                />
-                <Button onClick={handleAddDomain} disabled={domainLoading || !newDomain.trim()}>
-                  {domainLoading ? 'Adding...' : 'Add Domain'}
-                </Button>
-              </div>
-
-              {domains.length > 0 && (
-                <div className="space-y-3">
-                  {domains.map((d) => (
-                    <div key={d.id} className="border rounded-lg p-3 space-y-2">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          <span className="text-sm font-medium">{d.domain}</span>
-                          <Badge variant={d.status === 'verified' ? 'default' : d.status === 'pending' ? 'secondary' : 'destructive'}>
-                            {d.status}
-                          </Badge>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          {d.status !== 'verified' && (
-                            <Button variant="outline" size="sm" onClick={() => handleVerifyDomain(d.id)}>
-                              Verify
-                            </Button>
-                          )}
-                          <Button variant="outline" size="sm" onClick={() => setExpandedDomain(expandedDomain === d.id ? null : d.id)}>
-                            {expandedDomain === d.id ? 'Hide DNS' : 'DNS Setup'}
-                          </Button>
-                          <Button variant="ghost" size="sm" className="text-red-600 hover:text-red-700" onClick={() => handleRemoveDomain(d.id)}>
-                            Remove
-                          </Button>
-                        </div>
-                      </div>
-
-                      {expandedDomain === d.id && d.dns_instructions && (
-                        <div className="bg-gray-50 rounded-md p-3 text-xs space-y-3 mt-2">
-                          <div>
-                            <p className="font-medium text-gray-700 mb-1">Step 1: Add TXT record to verify ownership</p>
-                            <div className="bg-white rounded p-2 font-mono">
-                              <div><span className="text-gray-500">Type:</span> {d.dns_instructions.verification.type}</div>
-                              <div><span className="text-gray-500">Host:</span> {d.dns_instructions.verification.host}</div>
-                              <div><span className="text-gray-500">Value:</span> {d.dns_instructions.verification.value}</div>
-                            </div>
-                          </div>
-                          <div>
-                            <p className="font-medium text-gray-700 mb-1">Step 2: Add CNAME record to point to HireFlow</p>
-                            <div className="bg-white rounded p-2 font-mono">
-                              <div><span className="text-gray-500">Type:</span> {d.dns_instructions.cname.type}</div>
-                              <div><span className="text-gray-500">Host:</span> {d.dns_instructions.cname.host}</div>
-                              <div><span className="text-gray-500">Value:</span> {d.dns_instructions.cname.value}</div>
-                            </div>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                </div>
               )}
             </div>
+          )}
+          <p className="text-[12px] text-gray-400">All team members will use this connected account for sending emails.</p>
+        </div>
+      </SectionCard>
 
-            <div className="border-t pt-6 space-y-4">
-              <div>
-                <Label className="text-sm font-medium">Platform Subdomain</Label>
-                <p className="text-xs text-gray-500 mt-0.5">
-                  Get a free subdomain on {platformDomain}
-                </p>
-              </div>
+      {/* WhatsApp */}
+      <SectionCard
+        icon={MessageSquare}
+        iconColor="bg-green-50 text-green-600"
+        title="WhatsApp Integration"
+        description="Send WhatsApp messages via Twilio"
+        defaultOpen={false}
+      >
+        <div className="space-y-4 mt-3">
+          <ErrorMessage message={waError} />
+          <SuccessMessage show={waSuccess} message="WhatsApp configuration saved!" />
 
-              <div className="flex gap-2 items-center">
-                <Input
-                  placeholder="yourcompany"
-                  value={newSubdomain}
-                  onChange={(e) => setNewSubdomain(e.target.value)}
-                  className="max-w-[200px]"
-                />
-                <span className="text-sm text-gray-500">.{platformDomain}</span>
-                <Button onClick={handleAddSubdomain} disabled={subdomainLoading || !newSubdomain.trim()}>
-                  {subdomainLoading ? 'Creating...' : 'Create'}
-                </Button>
-              </div>
-
-              {subdomains.length > 0 && (
-                <div className="space-y-2">
-                  {subdomains.map((s) => (
-                    <div key={s.id} className="flex items-center justify-between border rounded-lg p-3">
-                      <div className="flex items-center gap-2">
-                        <span className="text-sm font-medium">{s.subdomain}.{platformDomain}</span>
-                        <Badge variant={s.status === 'active' ? 'default' : 'secondary'}>{s.status}</Badge>
-                      </div>
-                      <Button variant="ghost" size="sm" className="text-red-600 hover:text-red-700" onClick={() => handleRemoveSubdomain(s.id)}>
-                        Remove
-                      </Button>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-
-          </CardContent>
-        </Card>
-      )}
-
-      {/* AI Scoring Configuration — admin only */}
-      {isAdmin && (
-        <Card>
-          <CardHeader>
-            <CardTitle>AI Candidate Scoring</CardTitle>
-            <CardDescription>
-              Configure AI-powered candidate matching and scoring. Uses OpenAI GPT-4o to analyze
-              candidates against job requirements.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-6">
-            {aiSuccess && (
-              <div className="bg-green-50 text-green-700 text-sm p-3 rounded-md">
-                AI scoring settings saved successfully
-              </div>
-            )}
-
+          {waLoading ? (
+            <Skeleton className="h-10 w-40" />
+          ) : waConfigured ? (
             <div className="flex items-center justify-between">
+              <StatusPill connected={true} label="Connected" />
+              <Button variant="outline" size="sm" onClick={handleDisconnectWhatsApp} disabled={waDisconnecting} className="text-[13px]">
+                {waDisconnecting ? 'Disconnecting...' : 'Disconnect'}
+              </Button>
+            </div>
+          ) : (
+            <div className="space-y-3 max-w-md">
+              <div className="space-y-1.5">
+                <Label className="text-[13px] text-gray-600">Twilio Account SID</Label>
+                <Input placeholder="ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" value={waSid} onChange={(e) => setWaSid(e.target.value)} className="h-9 text-sm" />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-[13px] text-gray-600">Auth Token</Label>
+                <Input type="password" placeholder="Your Twilio Auth Token" value={waToken} onChange={(e) => setWaToken(e.target.value)} className="h-9 text-sm" />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-[13px] text-gray-600">WhatsApp-Enabled Number</Label>
+                <Input placeholder="+14155238886" value={waNumber} onChange={(e) => setWaNumber(e.target.value)} className="h-9 text-sm" />
+                <p className="text-[11px] text-gray-400">E.164 format (e.g., +14155238886)</p>
+              </div>
+              <div className="flex items-center justify-between py-2">
+                <div>
+                  <p className="text-[13px] font-medium text-gray-700">Sandbox Mode</p>
+                  <p className="text-[11px] text-gray-400">Enable for testing with Twilio sandbox</p>
+                </div>
+                <Switch checked={waSandbox} onCheckedChange={setWaSandbox} />
+              </div>
+              <Button size="sm" onClick={handleSaveWhatsApp} disabled={waSaving || !waSid || !waToken || !waNumber}>
+                {waSaving ? 'Saving...' : 'Save Configuration'}
+              </Button>
+            </div>
+          )}
+        </div>
+      </SectionCard>
+
+      {/* White Label */}
+      <SectionCard
+        icon={Globe}
+        iconColor="bg-purple-50 text-purple-600"
+        title="White Label"
+        description="Custom domains and platform subdomains"
+        defaultOpen={false}
+      >
+        <div className="space-y-6 mt-3">
+          <ErrorMessage message={whitelabelError} />
+
+          {/* Custom Domains */}
+          <div className="space-y-3">
+            <div>
+              <p className="text-[13px] font-medium text-gray-700">Custom Domain</p>
+              <p className="text-[11px] text-gray-400">Use your own domain (e.g., careers.acme.com) for your careers page</p>
+            </div>
+            <div className="flex gap-2">
+              <Input
+                placeholder="careers.yourcompany.com"
+                value={newDomain}
+                onChange={(e) => setNewDomain(e.target.value)}
+                className="max-w-sm h-9 text-sm"
+              />
+              <Button size="sm" onClick={handleAddDomain} disabled={domainLoading || !newDomain.trim()}>
+                {domainLoading ? 'Adding...' : 'Add Domain'}
+              </Button>
+            </div>
+
+            {domains.length > 0 && (
+              <div className="space-y-2">
+                {domains.map((d) => (
+                  <div key={d.id} className="rounded-lg border border-gray-100 bg-gray-50/50 p-3 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <span className="text-[13px] font-medium text-gray-700">{d.domain}</span>
+                        <Badge
+                          variant={d.status === 'verified' ? 'default' : d.status === 'pending' ? 'secondary' : 'destructive'}
+                          className="text-[10px]"
+                        >
+                          {d.status}
+                        </Badge>
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        {d.status !== 'verified' && (
+                          <Button variant="outline" size="sm" onClick={() => handleVerifyDomain(d.id)} className="h-7 text-[12px]">Verify</Button>
+                        )}
+                        <Button variant="outline" size="sm" onClick={() => setExpandedDomain(expandedDomain === d.id ? null : d.id)} className="h-7 text-[12px]">
+                          {expandedDomain === d.id ? 'Hide DNS' : 'DNS Setup'}
+                        </Button>
+                        <Button variant="ghost" size="sm" className="h-7 text-[12px] text-red-500 hover:text-red-600" onClick={() => handleRemoveDomain(d.id)}>Remove</Button>
+                      </div>
+                    </div>
+
+                    {expandedDomain === d.id && d.dns_instructions && (
+                      <div className="bg-white rounded-lg border border-gray-100 p-3 text-[12px] space-y-3 mt-1">
+                        <div>
+                          <p className="font-medium text-gray-600 mb-1.5">Step 1: Add TXT record to verify ownership</p>
+                          <div className="bg-gray-50 rounded p-2 font-mono text-[11px] space-y-0.5">
+                            <div><span className="text-gray-400">Type:</span> {d.dns_instructions.verification.type}</div>
+                            <div><span className="text-gray-400">Host:</span> {d.dns_instructions.verification.host}</div>
+                            <div><span className="text-gray-400">Value:</span> {d.dns_instructions.verification.value}</div>
+                          </div>
+                        </div>
+                        <div>
+                          <p className="font-medium text-gray-600 mb-1.5">Step 2: Add CNAME record to point to HireFlow</p>
+                          <div className="bg-gray-50 rounded p-2 font-mono text-[11px] space-y-0.5">
+                            <div><span className="text-gray-400">Type:</span> {d.dns_instructions.cname.type}</div>
+                            <div><span className="text-gray-400">Host:</span> {d.dns_instructions.cname.host}</div>
+                            <div><span className="text-gray-400">Value:</span> {d.dns_instructions.cname.value}</div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Subdomains */}
+          <div className="border-t border-gray-100 pt-5 space-y-3">
+            <div>
+              <p className="text-[13px] font-medium text-gray-700">Platform Subdomain</p>
+              <p className="text-[11px] text-gray-400">Get a free subdomain on {platformDomain}</p>
+            </div>
+            <div className="flex gap-2 items-center">
+              <Input
+                placeholder="yourcompany"
+                value={newSubdomain}
+                onChange={(e) => setNewSubdomain(e.target.value)}
+                className="max-w-[200px] h-9 text-sm"
+              />
+              <span className="text-[13px] text-gray-400">.{platformDomain}</span>
+              <Button size="sm" onClick={handleAddSubdomain} disabled={subdomainLoading || !newSubdomain.trim()}>
+                {subdomainLoading ? 'Creating...' : 'Create'}
+              </Button>
+            </div>
+
+            {subdomains.length > 0 && (
+              <div className="space-y-2">
+                {subdomains.map((s) => (
+                  <div key={s.id} className="flex items-center justify-between rounded-lg border border-gray-100 bg-gray-50/50 px-3 py-2.5">
+                    <div className="flex items-center gap-2">
+                      <span className="text-[13px] font-medium text-gray-700">{s.subdomain}.{platformDomain}</span>
+                      <Badge variant={s.status === 'active' ? 'default' : 'secondary'} className="text-[10px]">{s.status}</Badge>
+                    </div>
+                    <Button variant="ghost" size="sm" className="h-7 text-[12px] text-red-500 hover:text-red-600" onClick={() => handleRemoveSubdomain(s.id)}>Remove</Button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      </SectionCard>
+
+      {/* Reapply Restriction */}
+      <SectionCard
+        icon={Clock}
+        iconColor="bg-amber-50 text-amber-600"
+        title="Reapply Restrictions"
+        description="Control how long candidates must wait before reapplying"
+        defaultOpen={false}
+      >
+        <div className="space-y-4 mt-3">
+          <SuccessMessage show={reapplySuccess} message="Reapply restriction updated" />
+          <div className="max-w-sm space-y-1.5">
+            <Label className="text-[13px] text-gray-600">Restriction Period</Label>
+            <Select value={String(reapplyMonths)} onValueChange={(v) => setReapplyMonths(Number(v))}>
+              <SelectTrigger className="h-9 text-sm">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {REAPPLY_RESTRICTION_OPTIONS.map((opt) => (
+                  <SelectItem key={opt.value} value={String(opt.value)}>{opt.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <p className="text-[11px] text-gray-400">
+              Candidates who decline an offer will not be able to reapply for the same job during this period.
+            </p>
+          </div>
+          <Button size="sm" onClick={handleSaveReapply} disabled={reaplySaving}>
+            {reaplySaving ? 'Saving...' : 'Save'}
+          </Button>
+        </div>
+      </SectionCard>
+
+      {/* AI Scoring */}
+      <SectionCard
+        icon={Sparkles}
+        iconColor="bg-indigo-50 text-indigo-600"
+        title="AI Candidate Scoring"
+        description="Configure AI-powered candidate matching with GPT-4o"
+        defaultOpen={false}
+      >
+        <div className="space-y-5 mt-3">
+          <SuccessMessage show={aiSuccess} message="AI scoring settings saved" />
+
+          <div className="space-y-3">
+            <div className="flex items-center justify-between py-1">
               <div>
-                <Label className="text-sm font-medium">Enable AI Scoring</Label>
-                <p className="text-xs text-gray-500 mt-0.5">
-                  Allow AI to score candidates against job descriptions
-                </p>
+                <p className="text-[13px] font-medium text-gray-700">Enable AI Scoring</p>
+                <p className="text-[11px] text-gray-400">Score candidates against job descriptions</p>
               </div>
               <Switch checked={aiEnabled} onCheckedChange={setAiEnabled} />
             </div>
-
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between py-1">
               <div>
-                <Label className="text-sm font-medium">Auto-Score New Applications</Label>
-                <p className="text-xs text-gray-500 mt-0.5">
-                  Automatically score candidates when they apply
-                </p>
+                <p className="text-[13px] font-medium text-gray-700">Auto-Score New Applications</p>
+                <p className="text-[11px] text-gray-400">Automatically score candidates when they apply</p>
               </div>
               <Switch checked={aiAutoScore} onCheckedChange={setAiAutoScore} />
             </div>
+          </div>
 
-            <div className="space-y-4 pt-2 border-t">
-              <Label className="text-sm font-medium">Score Weights (must total 100)</Label>
-
-              <div className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <span className="text-sm text-gray-700">Skills Match</span>
-                    <p className="text-xs text-gray-400">How well candidate skills match requirements</p>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Input
-                      type="number"
-                      min={0}
-                      max={100}
-                      value={skillWeight}
-                      onChange={(e) => setSkillWeight(Number(e.target.value))}
-                      className="w-20 h-8 text-center"
-                    />
-                    <span className="text-sm text-gray-500">%</span>
-                  </div>
-                </div>
-
-                <div className="flex items-center justify-between">
-                  <div>
-                    <span className="text-sm text-gray-700">Experience Match</span>
-                    <p className="text-xs text-gray-400">Relevance of work experience</p>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Input
-                      type="number"
-                      min={0}
-                      max={100}
-                      value={experienceWeight}
-                      onChange={(e) => setExperienceWeight(Number(e.target.value))}
-                      className="w-20 h-8 text-center"
-                    />
-                    <span className="text-sm text-gray-500">%</span>
-                  </div>
-                </div>
-
-                <div className="flex items-center justify-between">
-                  <div>
-                    <span className="text-sm text-gray-700">Semantic Similarity</span>
-                    <p className="text-xs text-gray-400">AI embedding-based profile-job similarity</p>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Input
-                      type="number"
-                      min={0}
-                      max={100}
-                      value={semanticWeight}
-                      onChange={(e) => setSemanticWeight(Number(e.target.value))}
-                      className="w-20 h-8 text-center"
-                    />
-                    <span className="text-sm text-gray-500">%</span>
-                  </div>
-                </div>
-              </div>
-
-              {skillWeight + experienceWeight + semanticWeight !== 100 && (
-                <p className="text-sm text-red-600">
-                  Weights must total 100 (currently {skillWeight + experienceWeight + semanticWeight})
-                </p>
-              )}
+          <div className="border-t border-gray-100 pt-4 space-y-3">
+            <div className="flex items-center justify-between">
+              <p className="text-[12px] font-semibold text-gray-500 uppercase tracking-wider">Score Weights</p>
+              <span className={`text-[11px] font-medium tabular-nums px-2 py-0.5 rounded-full ${
+                weightTotal === 100
+                  ? 'bg-emerald-50 text-emerald-600'
+                  : 'bg-red-50 text-red-500'
+              }`}>
+                {weightTotal}/100
+              </span>
             </div>
 
-            <Button
-              onClick={handleSaveAiConfig}
-              disabled={aiSaving || skillWeight + experienceWeight + semanticWeight !== 100}
-            >
-              {aiSaving ? 'Saving...' : 'Save AI Settings'}
-            </Button>
-          </CardContent>
-        </Card>
-      )}
+            {[
+              { label: 'Skills Match', desc: 'How well candidate skills match requirements', value: skillWeight, onChange: setSkillWeight },
+              { label: 'Experience Match', desc: 'Relevance of work experience', value: experienceWeight, onChange: setExperienceWeight },
+              { label: 'Semantic Similarity', desc: 'AI embedding-based profile-job similarity', value: semanticWeight, onChange: setSemanticWeight },
+            ].map((w) => (
+              <div key={w.label} className="flex items-center justify-between">
+                <div>
+                  <p className="text-[13px] text-gray-700">{w.label}</p>
+                  <p className="text-[11px] text-gray-400">{w.desc}</p>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <Input
+                    type="number"
+                    min={0}
+                    max={100}
+                    value={w.value}
+                    onChange={(e) => w.onChange(Number(e.target.value))}
+                    className="w-16 h-8 text-sm text-center"
+                  />
+                  <span className="text-[12px] text-gray-400 w-4">%</span>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <Button size="sm" onClick={handleSaveAiConfig} disabled={aiSaving || weightTotal !== 100}>
+            {aiSaving ? 'Saving...' : 'Save AI Settings'}
+          </Button>
+        </div>
+      </SectionCard>
     </div>
   )
 }

@@ -11,9 +11,14 @@ import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Switch } from '@/components/ui/switch'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
-import { Plus, Pencil, Trash2, Copy, ArrowLeft, X } from 'lucide-react'
+import {
+  Plus, Pencil, Trash2, Copy, ArrowLeft, X,
+  TrendingUp, Building2, ArrowDownCircle, Star, MoreHorizontal,
+} from 'lucide-react'
+import {
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 
 const CALC_TYPES: { value: SalaryComponentCalcType; label: string }[] = [
   { value: 'percentage_of_ctc', label: '% of CTC' },
@@ -26,6 +31,12 @@ const SECTIONS: { value: SalaryComponentSection; label: string }[] = [
   { value: 'deduction', label: 'Deduction' },
   { value: 'employer', label: 'Employer Contribution' },
 ]
+
+const SECTION_CONFIG: Record<string, { label: string; icon: typeof TrendingUp; color: string; dotColor: string }> = {
+  earnings: { label: 'Earnings', icon: TrendingUp, color: 'text-emerald-600', dotColor: 'bg-emerald-500' },
+  employer: { label: 'Employer Contributions', icon: Building2, color: 'text-blue-600', dotColor: 'bg-blue-500' },
+  deduction: { label: 'Deductions', icon: ArrowDownCircle, color: 'text-amber-600', dotColor: 'bg-amber-500' },
+}
 
 function emptyComponent(): SalaryStructureComponent {
   return { name: '', type: 'percentage_of_ctc', value: 0, section: 'earnings' }
@@ -172,7 +183,7 @@ export default function SalaryStructuresPage() {
   // ── EDIT / CREATE VIEW ──
   if (isNew || editing) {
     return (
-      <div className="max-w-5xl mx-auto p-6 space-y-6">
+      <div className="max-w-5xl mx-auto space-y-6">
         <div className="flex items-center gap-3">
           <Button variant="ghost" size="sm" onClick={cancelEdit}>
             <ArrowLeft className="w-4 h-4 mr-1" /> Back
@@ -389,78 +400,162 @@ export default function SalaryStructuresPage() {
 
   // ── LIST VIEW ──
   return (
-    <div className="max-w-4xl mx-auto p-6 space-y-6">
+    <div className="space-y-6">
+      {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold">Salary Structures</h1>
-          <p className="text-sm text-gray-500 mt-1">Define salary breakdown templates used when creating offer letters</p>
+          <p className="text-sm text-gray-500">
+            Define salary breakdown templates used when creating offer letters
+          </p>
         </div>
-        <Button onClick={openNew}>
-          <Plus className="w-4 h-4 mr-1" /> New Structure
+        <Button onClick={openNew} size="sm" className="gap-1.5">
+          <Plus className="w-4 h-4" /> New Structure
         </Button>
       </div>
 
       {loading ? (
-        <div className="space-y-4">
-          {[1, 2, 3].map(i => <Skeleton key={i} className="h-28" />)}
+        <div className="grid gap-5">
+          {[1, 2].map(i => (
+            <div key={i} className="rounded-xl border border-gray-200 p-6">
+              <Skeleton className="h-5 w-48 mb-3" />
+              <Skeleton className="h-4 w-72 mb-5" />
+              <div className="flex gap-8">
+                <Skeleton className="h-24 w-1/3" />
+                <Skeleton className="h-24 w-1/3" />
+                <Skeleton className="h-24 w-1/3" />
+              </div>
+            </div>
+          ))}
         </div>
       ) : structures.length === 0 ? (
-        <Card>
-          <CardContent className="py-12 text-center text-gray-400">
-            No salary structures yet. Click &quot;New Structure&quot; to create one.
-          </CardContent>
-        </Card>
+        <div className="rounded-xl border-2 border-dashed border-gray-200 py-16 text-center">
+          <div className="mx-auto w-12 h-12 rounded-full bg-gray-100 flex items-center justify-center mb-4">
+            <Plus className="w-5 h-5 text-gray-400" />
+          </div>
+          <p className="text-gray-500 font-medium mb-1">No salary structures yet</p>
+          <p className="text-sm text-gray-400 mb-4">Create your first template to use in offer letters</p>
+          <Button onClick={openNew} variant="outline" size="sm" className="gap-1.5">
+            <Plus className="w-4 h-4" /> Create Structure
+          </Button>
+        </div>
       ) : (
-        <div className="space-y-4">
+        <div className="grid gap-5">
           {structures.map(structure => {
             const earnings = structure.components.filter(c => c.section === 'earnings')
             const deductions = structure.components.filter(c => c.section === 'deduction')
             const employer = structure.components.filter(c => c.section === 'employer')
 
+            const sections = [
+              { key: 'earnings', items: earnings },
+              { key: 'employer', items: employer },
+              { key: 'deduction', items: deductions },
+            ].filter(s => s.items.length > 0)
+
             return (
-              <Card key={structure.id} className="hover:border-blue-200 transition-colors">
-                <CardContent className="py-5">
-                  <div className="flex items-start justify-between">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2 mb-1">
-                        <h3 className="font-semibold text-lg">{structure.name}</h3>
-                        {structure.is_default && <Badge variant="secondary" className="bg-blue-100 text-blue-700">Default</Badge>}
-                      </div>
-                      {structure.description && (
-                        <p className="text-sm text-gray-500 mb-3">{structure.description}</p>
-                      )}
-                      <div className="flex gap-4 text-xs text-gray-400">
-                        <span>{earnings.length} earnings</span>
-                        {employer.length > 0 && <span>{employer.length} employer contributions</span>}
-                        {deductions.length > 0 && <span>{deductions.length} deductions</span>}
-                      </div>
-                      {/* Component names summary */}
-                      <div className="flex flex-wrap gap-1.5 mt-2">
-                        {structure.components.map((c, i) => (
-                          <span key={i} className="px-2 py-0.5 bg-gray-100 text-gray-600 rounded text-xs">
-                            {c.name}
-                            {c.type === 'fixed' ? ` (Rs.${c.value}/mo)` : ` (${c.value}%)`}
-                            {c.is_balancing ? ' *' : ''}
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-                    <div className="flex gap-1 ml-4">
-                      <Button variant="ghost" size="sm" onClick={() => openClone(structure)} title="Clone">
-                        <Copy className="w-4 h-4" />
-                      </Button>
-                      <Button variant="ghost" size="sm" onClick={() => openEdit(structure)} title="Edit">
-                        <Pencil className="w-4 h-4" />
-                      </Button>
-                      {!structure.is_default && (
-                        <Button variant="ghost" size="sm" onClick={() => handleDelete(structure.id)} title="Delete" className="text-red-500 hover:text-red-700">
-                          <Trash2 className="w-4 h-4" />
-                        </Button>
-                      )}
-                    </div>
+              <div
+                key={structure.id}
+                className="group rounded-xl border border-gray-200 bg-white hover:border-gray-300 hover:shadow-sm transition-all duration-200"
+              >
+                {/* Card Header */}
+                <div className="flex items-center justify-between px-6 pt-5 pb-4">
+                  <div className="flex items-center gap-3">
+                    <h3 className="text-[15px] font-semibold text-gray-900">{structure.name}</h3>
+                    {structure.is_default && (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium bg-blue-50 text-blue-600 border border-blue-100">
+                        <Star className="w-3 h-3 fill-blue-500 text-blue-500" />
+                        Default
+                      </span>
+                    )}
                   </div>
-                </CardContent>
-              </Card>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-8 w-8 p-0 opacity-0 group-hover:opacity-100 transition-opacity"
+                      >
+                        <MoreHorizontal className="w-4 h-4" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end" className="w-36">
+                      <DropdownMenuItem onClick={() => openEdit(structure)} className="gap-2 text-sm">
+                        <Pencil className="w-3.5 h-3.5" /> Edit
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => openClone(structure)} className="gap-2 text-sm">
+                        <Copy className="w-3.5 h-3.5" /> Duplicate
+                      </DropdownMenuItem>
+                      {!structure.is_default && (
+                        <DropdownMenuItem
+                          onClick={() => handleDelete(structure.id)}
+                          className="gap-2 text-sm text-red-600 focus:text-red-600"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" /> Delete
+                        </DropdownMenuItem>
+                      )}
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </div>
+
+                {structure.description && (
+                  <p className="px-6 -mt-2 pb-4 text-sm text-gray-500">{structure.description}</p>
+                )}
+
+                {/* Component Sections */}
+                <div className="px-6 pb-5">
+                  <div className={`grid gap-4 ${sections.length === 3 ? 'grid-cols-3' : sections.length === 2 ? 'grid-cols-2' : 'grid-cols-1'}`}>
+                    {sections.map(({ key, items }) => {
+                      const config = SECTION_CONFIG[key]
+                      const SectionIcon = config.icon
+                      return (
+                        <div key={key} className="rounded-lg bg-gray-50/80 border border-gray-100 p-4">
+                          <div className="flex items-center gap-2 mb-3">
+                            <SectionIcon className={`w-3.5 h-3.5 ${config.color}`} />
+                            <span className="text-[11px] font-semibold uppercase tracking-wider text-gray-400">
+                              {config.label}
+                            </span>
+                            <span className="ml-auto text-[11px] text-gray-400 font-medium tabular-nums">
+                              {items.length}
+                            </span>
+                          </div>
+                          <div className="space-y-2">
+                            {items.map((c, i) => (
+                              <div key={i} className="flex items-center justify-between gap-2">
+                                <div className="flex items-center gap-2 min-w-0">
+                                  <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${config.dotColor}`} />
+                                  <span className="text-[13px] text-gray-700 truncate">{c.name}</span>
+                                  {c.is_balancing && (
+                                    <span className="text-[10px] font-medium text-gray-400 bg-gray-200/60 px-1.5 py-0.5 rounded">
+                                      BAL
+                                    </span>
+                                  )}
+                                </div>
+                                <span className="text-[12px] font-medium text-gray-500 tabular-nums shrink-0">
+                                  {c.is_balancing
+                                    ? 'Auto'
+                                    : c.type === 'fixed'
+                                      ? `Rs.${c.value.toLocaleString('en-IN')}/mo`
+                                      : `${c.value}%`}
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+
+                {/* Footer Stats */}
+                <div className="border-t border-gray-100 px-6 py-3 flex items-center gap-6 text-[12px] text-gray-400">
+                  <span className="tabular-nums">{structure.components.length} components</span>
+                  <span className="w-px h-3 bg-gray-200" />
+                  <span>
+                    {structure.components.filter(c => c.is_balancing).length > 0
+                      ? `${structure.components.filter(c => c.is_balancing).length} balancing`
+                      : 'No balancing component'}
+                  </span>
+                </div>
+              </div>
             )
           })}
         </div>
