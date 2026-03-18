@@ -64,14 +64,18 @@ export const INTERVIEW_TYPES = [
 ] as const
 
 export const RECOMMENDATION_OPTIONS = [
-  { value: 'strong_yes', label: 'Strong Yes', color: 'text-green-700 bg-green-50' },
-  { value: 'yes', label: 'Yes', color: 'text-green-600 bg-green-50' },
-  { value: 'neutral', label: 'Neutral', color: 'text-yellow-600 bg-yellow-50' },
-  { value: 'no', label: 'No', color: 'text-red-500 bg-red-50' },
-  { value: 'strong_no', label: 'Strong No', color: 'text-red-700 bg-red-50' },
+  { value: 'select', label: 'Select', color: 'text-green-700 bg-green-50' },
+  { value: 'reject', label: 'Reject', color: 'text-red-600 bg-red-50' },
+  { value: 'hold', label: 'Hold', color: 'text-yellow-600 bg-yellow-50' },
 ] as const
 
 export const RATING_LABELS = ['', 'Poor', 'Below Average', 'Average', 'Good', 'Excellent'] as const
+
+export const SCORECARD_RATING_TYPES = [
+  { value: 'rating', label: '1–5 Scale', description: 'Numeric rating from 1 (Poor) to 5 (Excellent)' },
+  { value: 'yes_no', label: 'Yes / No', description: 'Simple yes or no evaluation' },
+  { value: 'text', label: 'Text Feedback', description: 'Free-form written feedback' },
+] as const
 
 export const JOB_STATUS_CONFIG = {
   draft: { label: 'Draft', variant: 'secondary' as const, className: '' },

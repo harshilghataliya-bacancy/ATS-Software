@@ -47,7 +47,6 @@ export async function getApplicationsForJob(
     )
     .eq('job_id', jobId)
     .eq('organization_id', orgId)
-    .is('deleted_at', null)
 
   if (statusFilter !== 'all') {
     query = query.eq('status', statusFilter)
@@ -87,7 +86,7 @@ export async function getApplicationById(
       interviews(
         *,
         interview_panelists(*),
-        interview_feedback(id, user_id, overall_rating, recommendation, strengths, weaknesses, notes, submitted_at, created_at, scorecard_ratings(id, criteria_id, rating, criteria:scorecard_criteria(name, weight)))
+        interview_feedback(id, user_id, overall_rating, recommendation, strengths, weaknesses, notes, submitted_at, created_at, scorecard_ratings(id, criteria_id, rating, notes, text_value, rating_type))
       ),
       feedback:interview_feedback(*),
       offer_letters(id, status, salary, salary_currency, sent_at, responded_at),
@@ -96,7 +95,6 @@ export async function getApplicationById(
     )
     .eq('id', applicationId)
     .eq('organization_id', orgId)
-    .is('deleted_at', null)
     .single()
 
   return { data, error }
@@ -136,7 +134,6 @@ export async function createApplication(
     .eq('job_id', data.job_id)
     .eq('organization_id', orgId)
     .eq('status', 'active')
-    .is('deleted_at', null)
     .maybeSingle()
 
   if (existing) {
@@ -198,7 +195,6 @@ export async function assignRecruiter(
     })
     .eq('id', applicationId)
     .eq('organization_id', orgId)
-    .is('deleted_at', null)
     .select()
     .single()
 
@@ -219,7 +215,6 @@ export async function moveApplication(
     .eq('id', applicationId)
     .eq('organization_id', orgId)
     .eq('status', 'active')
-    .is('deleted_at', null)
     .single()
 
   if (fetchError || !app) {
@@ -297,7 +292,6 @@ export async function checkReapplyRestriction(
     .eq('candidate_id', candidateId)
     .eq('organization_id', orgId)
     .eq('status', 'rejected')
-    .is('deleted_at', null)
     .gte('updated_at', cutoffDate.toISOString())
     .order('updated_at', { ascending: false })
     .limit(1)
@@ -321,7 +315,6 @@ export async function checkReapplyRestriction(
     .eq('candidate_id', candidateId)
     .eq('organization_id', orgId)
     .eq('status', 'declined')
-    .is('deleted_at', null)
     .gte('responded_at', cutoffDate.toISOString())
     .order('responded_at', { ascending: false })
     .limit(1)
@@ -429,7 +422,6 @@ export async function moveApplicationToJob(
     .eq('id', applicationId)
     .eq('organization_id', orgId)
     .eq('status', 'active')
-    .is('deleted_at', null)
     .single()
 
   if (fetchError || !app) {
@@ -448,7 +440,6 @@ export async function moveApplicationToJob(
     .eq('job_id', targetJobId)
     .eq('organization_id', orgId)
     .eq('status', 'active')
-    .is('deleted_at', null)
     .maybeSingle()
 
   if (existing) {
@@ -493,10 +484,10 @@ export async function moveApplicationToJob(
     .eq('application_id', applicationId)
     .eq('organization_id', orgId)
 
-  // Soft-delete draft offer letters for this application
+  // Delete draft offer letters for this application
   await supabase
     .from('offer_letters')
-    .update({ deleted_at: new Date().toISOString() })
+    .delete()
     .eq('application_id', applicationId)
     .eq('organization_id', orgId)
     .eq('status', 'draft')

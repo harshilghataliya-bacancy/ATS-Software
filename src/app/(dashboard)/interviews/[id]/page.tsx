@@ -10,14 +10,15 @@ import { logActivity } from '@/lib/services/activity'
 import { resolveUserNames, resolveUserDetails } from '../actions'
 import { submitFeedback, updateFeedback } from '@/lib/services/feedback'
 import { getScorecardCriteria } from '@/lib/services/jobs'
-import { INTERVIEW_TYPES, RECOMMENDATION_OPTIONS, RATING_LABELS } from '@/lib/constants'
+import { getScorecardCriteriaByInterviewId } from '@/lib/services/scorecards'
+import { INTERVIEW_TYPES, RECOMMENDATION_OPTIONS, RATING_LABELS, SCORECARD_RATING_TYPES } from '@/lib/constants'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Skeleton } from '@/components/ui/skeleton'
-import { ArrowLeft, ExternalLink, PenLine, X, Ban, CheckCircle2, MessageSquare, Eye, Download } from 'lucide-react'
+import { ArrowLeft, ExternalLink, PenLine, X, Ban, CheckCircle2, MessageSquare, Eye, Download, ClipboardList } from 'lucide-react'
 
 interface InterviewDetail {
   id: string
@@ -89,18 +90,20 @@ export default function InterviewDetailPage() {
 
   const [showFeedback, setShowFeedback] = useState(false)
   const [fbRating, setFbRating] = useState(3)
-  const [fbRecommendation, setFbRecommendation] = useState('neutral')
+  const [fbRecommendation, setFbRecommendation] = useState('hold')
   const [fbStrengths, setFbStrengths] = useState('')
   const [fbWeaknesses, setFbWeaknesses] = useState('')
   const [fbNotes, setFbNotes] = useState('')
   const [fbSaving, setFbSaving] = useState(false)
 
   const [editingFeedbackId, setEditingFeedbackId] = useState<string | null>(null)
-  const [scorecardCriteria, setScorecardCriteria] = useState<Array<{ id: string; name: string; description?: string; weight: number }>>([])
+  const [scorecardCriteria, setScorecardCriteria] = useState<Array<{ id: string; name: string; description?: string; weight: number; rating_type?: string }>>([])
   const [criteriaRatings, setCriteriaRatings] = useState<Record<string, number>>({})
+  const [criteriaTextValues, setCriteriaTextValues] = useState<Record<string, string>>({})
   const [userNames, setUserNames] = useState<Record<string, string>>({})
   const [userDetails, setUserDetails] = useState<Record<string, { name: string; email: string }>>({})
-  const [feedbackCriteriaRatings, setFeedbackCriteriaRatings] = useState<Record<string, Array<{ criteria_id: string; rating: number }>>>({})
+  const [feedbackCriteriaRatings, setFeedbackCriteriaRatings] = useState<Record<string, Array<{ criteria_id: string; rating: number; notes?: string }>>>({})
+  const [scorecardName, setScorecardName] = useState<string | null>(null)
 
   const loadInterview = useCallback(async () => {
     if (!organization) return
@@ -119,23 +122,42 @@ export default function InterviewDetailPage() {
         resolveUserNames(allUserIds).then(setUserNames)
         resolveUserDetails(allUserIds).then(setUserDetails)
       }
-      const jobId = d.application?.job?.id
-      if (jobId) {
-        const { data: criteriaData } = await getScorecardCriteria(supabase, jobId, organization.id)
-        if (criteriaData) setScorecardCriteria(criteriaData as Array<{ id: string; name: string; description?: string; weight: number }>)
+      // Load criteria: prefer interview-linked scorecard, fall back to job-level
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const interviewScorecardId = (d as any).scorecard_id
+      if (interviewScorecardId) {
+        // Fetch scorecard name
+        const { data: scData } = await supabase
+          .from('scorecards')
+          .select('title')
+          .eq('id', interviewScorecardId)
+          .single()
+        if (scData) setScorecardName(scData.title)
+
+        const { data: templateCriteria } = await getScorecardCriteriaByInterviewId(supabase, d.id, organization.id)
+        if (templateCriteria && templateCriteria.length > 0) {
+          setScorecardCriteria(templateCriteria as Array<{ id: string; name: string; description?: string; weight: number; rating_type?: string }>)
+        }
+      } else {
+        setScorecardName(null)
+        const jobId = d.application?.job?.id
+        if (jobId) {
+          const { data: criteriaData } = await getScorecardCriteria(supabase, jobId, organization.id)
+          if (criteriaData) setScorecardCriteria(criteriaData as Array<{ id: string; name: string; description?: string; weight: number; rating_type?: string }>)
+        }
       }
       // Fetch criteria ratings for each feedback
       if (d.feedback?.length > 0) {
         const feedbackIds = d.feedback.map((f: { id: string }) => f.id)
         const { data: ratingsData } = await supabase
           .from('scorecard_ratings')
-          .select('feedback_id, criteria_id, rating')
+          .select('feedback_id, criteria_id, rating, notes, rating_type, text_value')
           .in('feedback_id', feedbackIds)
         if (ratingsData) {
-          const grouped: Record<string, Array<{ criteria_id: string; rating: number }>> = {}
-          ratingsData.forEach((r: { feedback_id: string; criteria_id: string; rating: number }) => {
+          const grouped: Record<string, Array<{ criteria_id: string; rating: number; notes?: string }>> = {}
+          ratingsData.forEach((r: { feedback_id: string; criteria_id: string; rating: number; notes?: string; text_value?: string }) => {
             if (!grouped[r.feedback_id]) grouped[r.feedback_id] = []
-            grouped[r.feedback_id].push({ criteria_id: r.criteria_id, rating: r.rating })
+            grouped[r.feedback_id].push({ criteria_id: r.criteria_id, rating: r.rating ?? 0, notes: r.text_value || r.notes || undefined })
           })
           setFeedbackCriteriaRatings(grouped)
         }
@@ -219,7 +241,46 @@ export default function InterviewDetailPage() {
     setFbWeaknesses(fb.weaknesses ?? '')
     setFbNotes(fb.notes ?? '')
     setEditingFeedbackId(fb.id)
+    // Load existing criteria ratings for this feedback
+    const existingRatings = feedbackCriteriaRatings[fb.id]
+    if (existingRatings) {
+      const ratingsMap: Record<string, number> = {}
+      const textMap: Record<string, string> = {}
+      existingRatings.forEach((cr: { criteria_id: string; rating: number; notes?: string }) => {
+        // Find the criteria to determine rating_type
+        const criteria = scorecardCriteria.find((sc) => sc.id === cr.criteria_id)
+        const rt = criteria?.rating_type || 'rating'
+        if (rt === 'text') {
+          textMap[cr.criteria_id] = cr.notes || ''
+        } else {
+          ratingsMap[cr.criteria_id] = cr.rating
+        }
+      })
+      setCriteriaRatings(ratingsMap)
+      setCriteriaTextValues(textMap)
+    } else {
+      setCriteriaRatings({})
+      setCriteriaTextValues({})
+    }
     setShowFeedback(true)
+  }
+
+  function buildCriteriaRatingsPayload() {
+    const ratings: Array<{ criteria_id: string; rating: number; notes?: string }> = []
+    for (const c of scorecardCriteria) {
+      const rt = c.rating_type || 'rating'
+      if (rt === 'text') {
+        const textVal = criteriaTextValues[c.id]?.trim()
+        if (textVal) ratings.push({ criteria_id: c.id, rating: 0, notes: textVal })
+      } else if (rt === 'yes_no') {
+        const val = criteriaRatings[c.id]
+        if (val) ratings.push({ criteria_id: c.id, rating: val, notes: val === 5 ? 'Yes' : 'No' })
+      } else {
+        const val = criteriaRatings[c.id]
+        if (val && val > 0) ratings.push({ criteria_id: c.id, rating: val })
+      }
+    }
+    return ratings
   }
 
   async function handleSubmitFeedback() {
@@ -228,27 +289,34 @@ export default function InterviewDetailPage() {
     if (!fbWeaknesses.trim()) { setError('Weaknesses is required'); return }
     if (!fbNotes.trim()) { setError('Notes is required'); return }
     if (scorecardCriteria.length > 0) {
-      const unrated = scorecardCriteria.filter((c) => !criteriaRatings[c.id] || criteriaRatings[c.id] === 0)
-      if (unrated.length > 0) { setError(`Please rate: ${unrated.map((c) => c.name).join(', ')}`); return }
+      const unrated = scorecardCriteria.filter((c) => {
+        const rt = c.rating_type || 'rating'
+        if (rt === 'text') return !criteriaTextValues[c.id]?.trim()
+        return !criteriaRatings[c.id] || criteriaRatings[c.id] === 0
+      })
+      if (unrated.length > 0) { setError(`Please complete: ${unrated.map((c) => c.name).join(', ')}`); return }
     }
     setFbSaving(true); setError(null)
     const supabase = createClient()
 
     if (editingFeedbackId) {
       // Update existing feedback
-      const { error: fbError } = await updateFeedback(supabase, editingFeedbackId, organization.id, {
+      const updateData: Record<string, unknown> = {
         overall_rating: fbRating,
         recommendation: fbRecommendation,
         strengths: fbStrengths,
         weaknesses: fbWeaknesses,
         notes: fbNotes,
-      })
+      }
+      const filledCriteriaRatings = buildCriteriaRatingsPayload()
+      if (filledCriteriaRatings.length > 0) updateData.criteria_ratings = filledCriteriaRatings
+      const { error: fbError } = await updateFeedback(supabase, editingFeedbackId, organization.id, updateData)
       if (fbError) {
         setError(fbError.message)
       } else {
         setShowFeedback(false); setEditingFeedbackId(null)
-        setFbRating(3); setFbRecommendation('neutral')
-        setFbStrengths(''); setFbWeaknesses(''); setFbNotes(''); setCriteriaRatings({})
+        setFbRating(3); setFbRecommendation('hold')
+        setFbStrengths(''); setFbWeaknesses(''); setFbNotes(''); setCriteriaRatings({}); setCriteriaTextValues({})
         loadInterview()
       }
     } else {
@@ -262,9 +330,7 @@ export default function InterviewDetailPage() {
         weaknesses: fbWeaknesses,
         notes: fbNotes,
       }
-      const filledRatings = Object.entries(criteriaRatings)
-        .filter(([, r]) => r > 0)
-        .map(([criteria_id, rating]) => ({ criteria_id, rating }))
+      const filledRatings = buildCriteriaRatingsPayload()
       if (filledRatings.length > 0) feedbackData.criteria_ratings = filledRatings
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const { error: fbError } = await submitFeedback(supabase, organization.id, feedbackData as any, user.id)
@@ -276,8 +342,8 @@ export default function InterviewDetailPage() {
           recommendation: fbRecommendation,
           overall_rating: fbRating,
         }).catch(() => {})
-        setShowFeedback(false); setFbRating(3); setFbRecommendation('neutral')
-        setFbStrengths(''); setFbWeaknesses(''); setFbNotes(''); setCriteriaRatings({})
+        setShowFeedback(false); setFbRating(3); setFbRecommendation('hold')
+        setFbStrengths(''); setFbWeaknesses(''); setFbNotes(''); setCriteriaRatings({}); setCriteriaTextValues({})
         loadInterview()
       }
     }
@@ -332,7 +398,9 @@ export default function InterviewDetailPage() {
     : '??'
 
   return (
-    <div className="max-w-5xl space-y-4">
+    <div className="flex gap-4">
+    {/* Main content — shrinks when resume panel is open */}
+    <div className={`space-y-4 ${showResume && candidate?.resume_url ? 'max-w-3xl flex-1 min-w-0' : 'max-w-5xl w-full'}`}>
 
       {/* ── BACK ── */}
       <Button type="button" variant="ghost" size="sm" className="gap-1.5 text-gray-500 hover:text-gray-900" onClick={() => router.back()}>
@@ -426,19 +494,19 @@ export default function InterviewDetailPage() {
                 </button>
               </>
             )}
-            {interview.status === 'completed' && isPanelist && !hasSubmittedFeedback && (
+            {interview.status === 'completed' && !hasSubmittedFeedback && (
               <button onClick={() => setShowFeedback(true)} className="inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg bg-blue-600 text-white hover:bg-blue-700 transition-colors">
                 <PenLine className="w-3.5 h-3.5" />
                 Submit Feedback
               </button>
             )}
-            {interview.status === 'completed' && hasSubmittedFeedback && isPanelist && (
+            {interview.status === 'completed' && hasSubmittedFeedback && (
               <button onClick={() => {
                 const myFeedback = interview.feedback?.find((f) => f.user_id === user?.id)
                 if (myFeedback) startEditFeedback(myFeedback)
               }} className="inline-flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg bg-white border border-gray-200 text-gray-600 hover:bg-gray-50 hover:text-gray-900 transition-colors">
                 <PenLine className="w-3.5 h-3.5" />
-                Edit Feedback
+                Edit My Feedback
               </button>
             )}
           </div>
@@ -535,6 +603,14 @@ export default function InterviewDetailPage() {
                       {statusMeta.label}
                     </span>
                   } />
+                  {scorecardName && (
+                    <DetailRow label="Scorecard" value={
+                      <span className="inline-flex items-center gap-1.5 text-sm font-medium text-blue-700">
+                        <ClipboardList className="w-3.5 h-3.5" />
+                        {scorecardName}
+                      </span>
+                    } />
+                  )}
                   {interview.location && <DetailRow label="Location" value={interview.location} />}
                   {interview.meeting_link && interview.status === 'scheduled' && (
                     <DetailRow label="Meeting" value={
@@ -565,7 +641,7 @@ export default function InterviewDetailPage() {
                   </span>
                 )}
               </div>
-              {interview.status === 'completed' && !hasSubmittedFeedback && isPanelist && !showFeedback && (
+              {interview.status === 'completed' && !hasSubmittedFeedback && !showFeedback && (
                 <button onClick={() => setShowFeedback(true)} className="text-xs text-gray-400 hover:text-gray-700 font-medium transition-colors">
                   + Add Feedback
                 </button>
@@ -605,27 +681,70 @@ export default function InterviewDetailPage() {
                   {scorecardCriteria.length > 0 && (
                     <div className="rounded-xl border border-gray-100 bg-gray-50 p-4 space-y-3">
                       <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Evaluation Criteria <span className="text-red-400">*</span></p>
-                      {scorecardCriteria.map((c) => (
-                        <div key={c.id} className="flex items-center justify-between gap-3">
-                          <div className="flex-1 min-w-0">
-                            <span className="text-sm text-gray-700 font-medium">{c.name}</span>
-                            <span className="ml-2 text-[10px] text-gray-400 bg-gray-200 px-1.5 py-0.5 rounded">w:{c.weight}</span>
+                      {scorecardCriteria.map((c) => {
+                        const rt = c.rating_type || 'rating'
+                        const ratingTypeLabel = SCORECARD_RATING_TYPES.find((t) => t.value === rt)?.label
+                        return (
+                          <div key={c.id} className="space-y-1.5">
+                            <div className="flex items-center justify-between gap-3">
+                              <div className="flex-1 min-w-0">
+                                <span className="text-sm text-gray-700 font-medium">{c.name}</span>
+                                <span className="ml-2 text-[10px] text-gray-400 bg-gray-200 px-1.5 py-0.5 rounded">w:{c.weight}</span>
+                                {rt !== 'rating' && (
+                                  <span className="ml-1 text-[10px] text-blue-500 bg-blue-50 px-1.5 py-0.5 rounded">{ratingTypeLabel}</span>
+                                )}
+                              </div>
+                              {rt === 'rating' && (
+                                <div className="flex items-center gap-1 shrink-0">
+                                  {[1,2,3,4,5].map((r) => (
+                                    <button
+                                      key={r}
+                                      onClick={() => setCriteriaRatings((prev) => ({ ...prev, [c.id]: r }))}
+                                      className={`w-6 h-6 rounded text-xs font-bold transition-all ${
+                                        criteriaRatings[c.id] === r
+                                          ? 'bg-blue-600 text-white'
+                                          : 'bg-gray-200 text-gray-500 hover:bg-gray-300'
+                                      }`}
+                                    >{r}</button>
+                                  ))}
+                                </div>
+                              )}
+                              {rt === 'yes_no' && (
+                                <div className="flex items-center gap-1.5 shrink-0">
+                                  <button
+                                    onClick={() => setCriteriaRatings((prev) => ({ ...prev, [c.id]: 5 }))}
+                                    className={`px-3 py-1 rounded text-xs font-semibold transition-all ${
+                                      criteriaRatings[c.id] === 5
+                                        ? 'bg-emerald-600 text-white'
+                                        : 'bg-gray-200 text-gray-500 hover:bg-gray-300'
+                                    }`}
+                                  >Yes</button>
+                                  <button
+                                    onClick={() => setCriteriaRatings((prev) => ({ ...prev, [c.id]: 1 }))}
+                                    className={`px-3 py-1 rounded text-xs font-semibold transition-all ${
+                                      criteriaRatings[c.id] === 1
+                                        ? 'bg-red-600 text-white'
+                                        : 'bg-gray-200 text-gray-500 hover:bg-gray-300'
+                                    }`}
+                                  >No</button>
+                                </div>
+                              )}
+                            </div>
+                            {rt === 'text' && (
+                              <Textarea
+                                rows={2}
+                                value={criteriaTextValues[c.id] || ''}
+                                onChange={(e) => setCriteriaTextValues((prev) => ({ ...prev, [c.id]: e.target.value }))}
+                                placeholder={`Feedback for ${c.name}...`}
+                                className="text-sm resize-none"
+                              />
+                            )}
+                            {c.description && (
+                              <p className="text-[10px] text-gray-400 pl-0.5">{c.description}</p>
+                            )}
                           </div>
-                          <div className="flex items-center gap-1 shrink-0">
-                            {[1,2,3,4,5].map((r) => (
-                              <button
-                                key={r}
-                                onClick={() => setCriteriaRatings((prev) => ({ ...prev, [c.id]: r }))}
-                                className={`w-6 h-6 rounded text-xs font-bold transition-all ${
-                                  criteriaRatings[c.id] === r
-                                    ? 'bg-blue-600 text-white'
-                                    : 'bg-gray-200 text-gray-500 hover:bg-gray-300'
-                                }`}
-                              >{r}</button>
-                            ))}
-                          </div>
-                        </div>
-                      ))}
+                        )
+                      })}
                     </div>
                   )}
 
@@ -674,14 +793,12 @@ export default function InterviewDetailPage() {
                             {rec && (
                               <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${rec.color}`}>{rec.label}</span>
                             )}
-                            {fb.user_id === user?.id && (
-                              <button
-                                onClick={() => startEditFeedback(fb)}
-                                className="text-[10px] font-medium text-gray-400 hover:text-gray-700 transition-colors ml-1"
-                              >
-                                Edit
-                              </button>
-                            )}
+                            <button
+                              onClick={() => startEditFeedback(fb)}
+                              className="text-[10px] font-medium text-gray-400 hover:text-gray-700 transition-colors ml-1"
+                            >
+                              Edit
+                            </button>
                           </div>
                         </div>
                         <div className="px-4 py-3 space-y-2.5">
@@ -691,16 +808,34 @@ export default function InterviewDetailPage() {
                               <div className="space-y-1.5">
                                 {feedbackCriteriaRatings[fb.id].map((cr) => {
                                   const criteria = scorecardCriteria.find((c) => c.id === cr.criteria_id)
+                                  const rt = criteria?.rating_type || 'rating'
                                   return (
-                                    <div key={cr.criteria_id} className="flex items-center justify-between gap-2">
-                                      <span className="text-xs text-gray-600">{criteria?.name ?? 'Unknown'}</span>
-                                      <div className="flex items-center gap-0.5">
-                                        {[1,2,3,4,5].map((r) => (
-                                          <span key={r} className={`w-5 h-5 rounded text-[10px] font-bold flex items-center justify-center ${
-                                            r === cr.rating ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-300'
-                                          }`}>{r}</span>
-                                        ))}
+                                    <div key={cr.criteria_id}>
+                                      <div className="flex items-center justify-between gap-2">
+                                        <span className="text-xs text-gray-600">{criteria?.name ?? 'Unknown'}</span>
+                                        {rt === 'rating' && (
+                                          <div className="flex items-center gap-0.5">
+                                            {[1,2,3,4,5].map((r) => (
+                                              <span key={r} className={`w-5 h-5 rounded text-[10px] font-bold flex items-center justify-center ${
+                                                r === cr.rating ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-300'
+                                              }`}>{r}</span>
+                                            ))}
+                                          </div>
+                                        )}
+                                        {rt === 'yes_no' && (
+                                          <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${
+                                            cr.rating === 5 ? 'bg-emerald-50 text-emerald-600' : 'bg-red-50 text-red-600'
+                                          }`}>
+                                            {cr.rating === 5 ? 'Yes' : 'No'}
+                                          </span>
+                                        )}
+                                        {rt === 'text' && !cr.notes && (
+                                          <span className="text-[10px] text-gray-400">No response</span>
+                                        )}
                                       </div>
+                                      {rt === 'text' && cr.notes && (
+                                        <p className="text-xs text-gray-600 mt-0.5 pl-2 border-l-2 border-gray-200">{cr.notes}</p>
+                                      )}
                                     </div>
                                   )
                                 })}
@@ -795,34 +930,7 @@ export default function InterviewDetailPage() {
             )}
           </div>
 
-          {/* Resume Preview */}
-          {showResume && candidate?.resume_url && (
-            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-              <div className="px-5 py-3.5 border-b border-gray-50 flex items-center justify-between">
-                <h2 className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Resume Preview</h2>
-                <button onClick={() => setShowResume(false)} className="text-xs text-gray-400 hover:text-gray-700 font-medium transition-colors">
-                  Close
-                </button>
-              </div>
-              <div className="p-2">
-                {candidate.resume_url.toLowerCase().endsWith('.pdf') ? (
-                  <iframe
-                    src={candidate.resume_url}
-                    title="Candidate Resume"
-                    className="w-full rounded-lg border border-gray-100"
-                    style={{ height: '500px' }}
-                  />
-                ) : (
-                  <div className="py-6 text-center">
-                    <p className="text-sm text-gray-500">Preview is only available for PDF files.</p>
-                    <a href={candidate.resume_url} target="_blank" rel="noopener noreferrer" className="text-sm text-blue-600 hover:underline mt-1 inline-block">
-                      Open in new tab
-                    </a>
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
+          {/* Resume Preview moved to right sidebar panel */}
 
           {/* Position */}
           {job && (
@@ -898,6 +1006,64 @@ export default function InterviewDetailPage() {
 
         </div>
       </div>
+    </div>
+
+    {/* ── RESUME PANEL — fixed right side ── */}
+    {showResume && candidate?.resume_url && (
+      <div className="fixed top-0 right-0 h-screen bg-white border-l border-gray-200 shadow-xl z-50" style={{ width: '42vw' }}>
+        <div className="px-5 py-3 border-b border-gray-200 flex items-center justify-between bg-gray-50">
+          <div className="flex items-center gap-2">
+            <Eye className="w-4 h-4 text-gray-500" />
+            <h2 className="text-sm font-semibold text-gray-700">Resume</h2>
+          </div>
+          <div className="flex items-center gap-3">
+            <a
+              href={candidate.resume_url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1 text-xs text-gray-500 hover:text-gray-800 font-medium"
+            >
+              <Download className="w-3.5 h-3.5" />
+              Download
+            </a>
+            <a
+              href={candidate.resume_url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1 text-xs text-gray-500 hover:text-gray-800 font-medium"
+            >
+              <ExternalLink className="w-3.5 h-3.5" />
+              Open
+            </a>
+            <button
+              onClick={() => setShowResume(false)}
+              className="p-1 rounded-md hover:bg-gray-200 text-gray-400 hover:text-gray-700"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+        <div style={{ height: 'calc(100vh - 49px)' }}>
+          {candidate.resume_url.toLowerCase().endsWith('.pdf') ? (
+            <iframe
+              src={`${candidate.resume_url}#toolbar=0&navpanes=0`}
+              title="Candidate Resume"
+              className="w-full h-full border-0"
+            />
+          ) : (
+            <div className="flex items-center justify-center h-full">
+              <div className="text-center">
+                <p className="text-sm text-gray-500">Preview is only available for PDF files.</p>
+                <a href={candidate.resume_url} target="_blank" rel="noopener noreferrer" className="text-sm text-blue-600 hover:underline mt-2 inline-block">
+                  Open in new tab
+                </a>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    )}
+
     </div>
   )
 }

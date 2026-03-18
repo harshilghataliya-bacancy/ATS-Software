@@ -1,6 +1,6 @@
 import { z } from 'zod'
 
-const recommendationEnum = z.enum(['strong_yes', 'yes', 'neutral', 'no', 'strong_no'])
+const recommendationEnum = z.enum(['select', 'reject', 'hold'])
 
 export const submitFeedbackSchema = z.object({
   interview_id: z.string().uuid('Invalid interview ID'),

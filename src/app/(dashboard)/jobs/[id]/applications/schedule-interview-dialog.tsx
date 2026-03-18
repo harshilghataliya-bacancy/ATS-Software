@@ -1,14 +1,18 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
+import { createClient } from '@/lib/supabase/client'
+import { getScorecards } from '@/lib/services/scorecards'
 import { INTERVIEW_TYPES } from '@/lib/constants'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import {
   Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle,
 } from '@/components/ui/dialog'
+import { ClipboardList } from 'lucide-react'
 
 interface ScheduleInterviewDialogProps {
   open: boolean
@@ -18,6 +22,13 @@ interface ScheduleInterviewDialogProps {
   candidateEmail: string
   jobTitle: string
   onSuccess?: () => void
+}
+
+interface ScorecardOption {
+  id: string
+  title: string
+  description: string | null
+  scorecard_template_criteria: Array<{ name: string; rating_type: string }>
 }
 
 interface Member {
@@ -59,6 +70,8 @@ export function ScheduleInterviewDialog({
   const [interviewerEmail, setInterviewerEmail] = useState('')
   const [location, setLocation] = useState('')
   const [notes, setNotes] = useState('')
+  const [scorecardId, setScorecardId] = useState<string>('')
+  const [scorecards, setScorecards] = useState<ScorecardOption[]>([])
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -76,6 +89,24 @@ export function ScheduleInterviewDialog({
       .then((r) => r.json())
       .then(({ data }) => { if (data) setMembers(data) })
       .catch(() => {})
+  }, [open])
+
+  // Load available scorecards
+  useEffect(() => {
+    if (!open) return
+    const supabase = createClient()
+    supabase
+      .from('organization_members')
+      .select('organization_id')
+      .limit(1)
+      .single()
+      .then(({ data: mem }: { data: { organization_id: string } | null }) => {
+        if (mem) {
+          getScorecards(supabase, mem.organization_id, true).then(({ data }) => {
+            if (data) setScorecards(data as ScorecardOption[])
+          })
+        }
+      })
   }, [open])
 
   const activeDuration = customDuration ? Number(customDuration) : duration
@@ -148,6 +179,7 @@ export function ScheduleInterviewDialog({
           job_title: jobTitle,
           location: type === 'onsite' ? location.trim() : undefined,
           notes: notes || undefined,
+          scorecard_id: scorecardId && scorecardId !== 'none' ? scorecardId : undefined,
         }),
       })
       const data = await res.json()
@@ -174,6 +206,7 @@ export function ScheduleInterviewDialog({
     setInterviewerEmail('')
     setLocation('')
     setNotes('')
+    setScorecardId('')
     setError(null)
     setShowSuggestions(false)
   }
@@ -334,6 +367,47 @@ export function ScheduleInterviewDialog({
               />
             </div>
           )}
+
+          {/* Scorecard Selection */}
+          <div className="space-y-2">
+            <Label className="flex items-center gap-1.5">
+              <ClipboardList className="w-3.5 h-3.5 text-gray-400" />
+              Evaluation Scorecard
+            </Label>
+            <Select value={scorecardId} onValueChange={setScorecardId}>
+              <SelectTrigger>
+                <SelectValue placeholder="Select a scorecard (optional)" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">No scorecard</SelectItem>
+                {scorecards.map((sc) => (
+                  <SelectItem key={sc.id} value={sc.id}>
+                    {sc.title}
+                    {sc.scorecard_template_criteria?.length > 0 && (
+                      <span className="text-gray-400 ml-1">
+                        ({sc.scorecard_template_criteria.length} criteria)
+                      </span>
+                    )}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {scorecardId && scorecardId !== 'none' && (() => {
+              const selected = scorecards.find((s) => s.id === scorecardId)
+              return selected?.scorecard_template_criteria?.length ? (
+                <div className="rounded-lg border border-blue-100 bg-blue-50/50 px-3 py-2">
+                  <p className="text-[10px] font-semibold text-blue-500 uppercase tracking-wider mb-1">Criteria Preview</p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {selected.scorecard_template_criteria.map((c, i) => (
+                      <span key={i} className="text-[10px] font-medium text-blue-700 bg-blue-100 px-2 py-0.5 rounded-full">
+                        {c.name}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              ) : null
+            })()}
+          </div>
 
           {/* Notes */}
           <div className="space-y-2">

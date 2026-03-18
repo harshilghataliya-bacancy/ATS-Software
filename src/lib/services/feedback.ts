@@ -123,8 +123,9 @@ export async function submitFeedback(
           feedback_id: feedback.id,
           criteria_id: cr.criteria_id,
           organization_id: orgId,
-          rating: cr.rating,
+          rating: cr.rating ?? null,
           notes: cr.notes || null,
+          text_value: cr.notes && cr.rating === 0 ? cr.notes : null,
         }))
       )
   }
@@ -159,11 +160,30 @@ export async function getAggregatedScorecard(
   // Fetch all scorecard ratings for these feedbacks
   const { data: ratings, error: ratingsError } = await supabase
     .from('scorecard_ratings')
-    .select('feedback_id, criteria_id, rating, criteria:scorecard_criteria(name, weight)')
+    .select('feedback_id, criteria_id, rating')
     .in('feedback_id', feedbackIds)
     .eq('organization_id', orgId)
 
   if (ratingsError) return { data: null, error: ratingsError }
+
+  // Collect unique criteria IDs and look up names from both tables
+  const criteriaIds = Array.from(new Set((ratings ?? []).map((r) => r.criteria_id)))
+  const criteriaLookup: Record<string, { name: string; weight: number }> = {}
+  if (criteriaIds.length > 0) {
+    // Try scorecard_criteria (job-level)
+    const { data: jobCriteria } = await supabase
+      .from('scorecard_criteria')
+      .select('id, name, weight')
+      .in('id', criteriaIds)
+    jobCriteria?.forEach((c) => { criteriaLookup[c.id] = { name: c.name, weight: c.weight } })
+
+    // Try scorecard_template_criteria (template-level)
+    const { data: templateCriteria } = await supabase
+      .from('scorecard_template_criteria')
+      .select('id, name, weight')
+      .in('id', criteriaIds)
+    templateCriteria?.forEach((c) => { criteriaLookup[c.id] = { name: c.name, weight: c.weight } })
+  }
 
   // Build per-criteria aggregation
   const criteriaMap = new Map<string, {
@@ -173,8 +193,7 @@ export async function getAggregatedScorecard(
   }>()
 
   ratings?.forEach((r) => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const criteria = r.criteria as any
+    const criteria = criteriaLookup[r.criteria_id]
     if (!criteria) return
 
     const fb = feedbackList.find((f) => f.id === r.feedback_id)
@@ -236,13 +255,41 @@ export async function updateFeedback(
   orgId: string,
   data: Record<string, unknown>
 ) {
+  // Extract criteria_ratings before updating feedback (DB doesn't have this column)
+  const criteriaRatings = data.criteria_ratings as CriteriaRating[] | undefined
+  const feedbackPayload = { ...data }
+  delete feedbackPayload.criteria_ratings
+
   const { data: feedback, error } = await supabase
     .from('interview_feedback')
-    .update({ ...data, updated_at: new Date().toISOString() })
+    .update({ ...feedbackPayload, updated_at: new Date().toISOString() })
     .eq('id', feedbackId)
     .eq('organization_id', orgId)
     .select()
     .single()
 
-  return { data: feedback, error }
+  if (error || !feedback) {
+    return { data: null, error }
+  }
+
+  // Update criteria ratings if provided — use upsert to avoid RLS delete restriction
+  if (criteriaRatings && criteriaRatings.length > 0) {
+    for (const cr of criteriaRatings) {
+      await supabase
+        .from('scorecard_ratings')
+        .upsert(
+          {
+            feedback_id: feedbackId,
+            criteria_id: cr.criteria_id,
+            organization_id: orgId,
+            rating: cr.rating ?? null,
+            notes: cr.notes || null,
+            text_value: cr.notes && cr.rating === 0 ? cr.notes : null,
+          },
+          { onConflict: 'feedback_id,criteria_id' }
+        )
+    }
+  }
+
+  return { data: feedback, error: null }
 }

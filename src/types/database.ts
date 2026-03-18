@@ -12,7 +12,7 @@ export type InterviewType = 'phone' | 'video' | 'onsite' | 'technical' | 'cultur
 export type InterviewStatus = 'scheduled' | 'completed' | 'cancelled' | 'no_show'
 export type PanelistRole = 'interviewer' | 'lead' | 'observer'
 export type PanelistStatus = 'pending' | 'accepted' | 'declined'
-export type Recommendation = 'strong_yes' | 'yes' | 'neutral' | 'no' | 'strong_no'
+export type Recommendation = 'select' | 'reject' | 'hold'
 export type EmailTemplateType = 'rejection' | 'offer' | 'interview_invite' | 'follow_up' | 'custom'
 export type EmailStatus = 'sent' | 'failed' | 'bounced'
 export type OfferStatus = 'draft' | 'sent' | 'accepted' | 'declined' | 'expired'
@@ -166,6 +166,7 @@ export interface Interview {
   interview_type: InterviewType
   status: InterviewStatus
   google_calendar_event_id: string | null
+  scorecard_id: string | null
   notes: string | null
   created_by: string
   created_at: string
@@ -501,6 +502,31 @@ export interface CandidateBankMember {
   organization_id: string
   added_by: string | null
   added_at: string
+}
+
+export type ScorecardRatingType = 'rating' | 'yes_no' | 'text'
+
+export interface Scorecard {
+  id: string
+  organization_id: string
+  title: string
+  description: string | null
+  is_active: boolean
+  created_by: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface ScorecardTemplateCriteria {
+  id: string
+  scorecard_id: string
+  organization_id: string
+  name: string
+  description: string | null
+  weight: number
+  rating_type: ScorecardRatingType
+  display_order: number
+  created_at: string
 }
 
 export interface JobRecruiter {

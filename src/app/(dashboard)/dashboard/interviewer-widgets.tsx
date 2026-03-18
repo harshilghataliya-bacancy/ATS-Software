@@ -140,19 +140,15 @@ interface FeedbackStat {
 }
 
 const RECOMMENDATION_COLORS: Record<string, string> = {
-  strong_yes: 'bg-green-100 text-green-700',
-  yes: 'bg-emerald-100 text-emerald-700',
-  neutral: 'bg-gray-100 text-gray-600',
-  no: 'bg-red-100 text-red-700',
-  strong_no: 'bg-red-200 text-red-800',
+  select: 'bg-green-100 text-green-700',
+  reject: 'bg-red-100 text-red-700',
+  hold: 'bg-yellow-100 text-yellow-700',
 }
 
 const RECOMMENDATION_LABELS: Record<string, string> = {
-  strong_yes: 'Strong Yes',
-  yes: 'Yes',
-  neutral: 'Neutral',
-  no: 'No',
-  strong_no: 'Strong No',
+  select: 'Select',
+  reject: 'Reject',
+  hold: 'Hold',
 }
 
 export function FeedbackStatsCard({ orgId, userId }: { orgId: string; userId: string }) {
@@ -222,7 +218,7 @@ export function FeedbackStatsCard({ orgId, userId }: { orgId: string; userId: st
             <div className="flex flex-wrap gap-1.5">
               {Object.entries(stats.recommendations)
                 .sort(([a], [b]) => {
-                  const order = ['strong_yes', 'yes', 'neutral', 'no', 'strong_no']
+                  const order = ['select', 'hold', 'reject']
                   return order.indexOf(a) - order.indexOf(b)
                 })
                 .map(([rec, count]) => (

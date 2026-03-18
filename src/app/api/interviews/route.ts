@@ -42,6 +42,7 @@ export async function POST(request: NextRequest) {
     job_title,
     location: interviewLocation,
     notes,
+    scorecard_id,
   } = body
 
   if (!application_id || !interview_type || !scheduled_at) {
@@ -296,6 +297,7 @@ export async function POST(request: NextRequest) {
       meeting_link: meetLink || undefined,
       notes: notes || undefined,
       interviewer_email: interviewer_email || undefined,
+      scorecard_id: scorecard_id || undefined,
       panelists,
     },
     user.id

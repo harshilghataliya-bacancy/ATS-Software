@@ -14,7 +14,7 @@ import {
 import {
   LayoutDashboard, Briefcase, CalendarClock, FileText, Landmark,
   BarChart3, Mail, FileSignature, Building2, Users, LogOut,
-  ChevronsLeft, ChevronsRight, Calculator,
+  ChevronsLeft, ChevronsRight, Calculator, ClipboardList,
 } from 'lucide-react'
 
 const mainNav = [
@@ -35,6 +35,7 @@ const settingsNav = [
   { href: '/settings/organization', label: 'Organization', icon: Building2 },
   { href: '/settings/members', label: 'Members', icon: Users },
   { href: '/settings/salary-structures', label: 'Salary Structures', icon: Calculator },
+  { href: '/settings/scorecards', label: 'Scorecards', icon: ClipboardList },
 ]
 
 function NavItem({ href, label, icon: Icon, active, collapsed }: { href: string; label: string; icon: React.ComponentType<{ className?: string }>; active: boolean; collapsed: boolean }) {

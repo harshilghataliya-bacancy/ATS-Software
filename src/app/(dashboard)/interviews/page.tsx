@@ -138,11 +138,9 @@ export default function InterviewsPage() {
   const [feedbackInterview, setFeedbackInterview] = useState<Interview | null>(null)
 
   const RECOMMENDATION_COLORS: Record<string, string> = {
-    strong_yes: 'bg-green-100 text-green-700',
-    yes: 'bg-green-50 text-green-600',
-    neutral: 'bg-gray-100 text-gray-600',
-    no: 'bg-red-50 text-red-600',
-    strong_no: 'bg-red-100 text-red-700',
+    select: 'bg-green-100 text-green-700',
+    reject: 'bg-red-100 text-red-700',
+    hold: 'bg-yellow-100 text-yellow-700',
   }
 
   const typeLabel = (val: string) => INTERVIEW_TYPES.find((t) => t.value === val)?.label ?? val
