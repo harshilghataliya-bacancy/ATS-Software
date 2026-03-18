@@ -8,14 +8,16 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Skeleton } from '@/components/ui/skeleton'
-import { Badge } from '@/components/ui/badge'
 import { Switch } from '@/components/ui/switch'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
 } from '@/components/ui/dialog'
 import { OFFER_PDF_DEFAULTS, OFFER_TEMPLATE_VARIABLE_CATEGORIES } from '@/lib/constants'
-import { ArrowLeft, Copy, Palette, FileText, PenTool, ToggleLeft, Mail, Eye, Loader2, X } from 'lucide-react'
+import {
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
+import { ArrowLeft, Copy, Palette, FileText, PenTool, ToggleLeft, Mail, Eye, Loader2, X, MoreHorizontal, Trash2, Pencil, Plus } from 'lucide-react'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type AnyData = Record<string, any>
@@ -394,7 +396,7 @@ export default function OfferTemplatesPage() {
               <ArrowLeft className="h-4 w-4 mr-1" /> Back
             </Button>
             <div>
-              <h1 className="text-2xl font-bold text-gray-900">
+              <h1 className="text-xl font-bold text-gray-900">
                 {editingId === 'create' ? 'Create Template' : 'Edit Template'}
               </h1>
               <p className="text-gray-500 text-sm mt-0.5">Configure your offer letter PDF template</p>
@@ -816,75 +818,153 @@ export default function OfferTemplatesPage() {
   // =========================================================================
   // List View
   // =========================================================================
+
+  const sectionItems = [
+    { key: 'show_salary_breakdown', label: 'Salary' },
+    { key: 'show_bonus_section', label: 'Bonus' },
+    { key: 'show_terms_section', label: 'T&C' },
+    { key: 'show_acceptance_section', label: 'Acceptance' },
+    { key: 'show_signature_block', label: 'Signatures' },
+  ] as const
+
   return (
     <div className="space-y-6">
+      {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Offer Templates</h1>
-          <p className="text-gray-500 mt-1">Manage your offer letter PDF templates</p>
+          <p className="text-sm text-gray-500">
+            Manage your offer letter PDF templates and email content
+          </p>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="outline" onClick={openCreateDefault}>Use Default</Button>
-          <Button onClick={openCreate}>Create Template</Button>
+          <Button variant="outline" size="sm" onClick={openCreateDefault} className="gap-1.5">
+            <Copy className="w-4 h-4" /> Use Default
+          </Button>
+          <Button size="sm" onClick={openCreate} className="gap-1.5">
+            <Plus className="w-4 h-4" /> New Template
+          </Button>
         </div>
       </div>
 
       {templates.length === 0 ? (
-        <Card>
-          <CardContent className="py-12 text-center space-y-4">
-            <div className="w-12 h-12 rounded-full bg-blue-50 flex items-center justify-center mx-auto">
-              <FileText className="h-6 w-6 text-blue-500" />
-            </div>
-            <div>
-              <p className="font-medium text-gray-900">No offer templates yet</p>
-              <p className="text-gray-500 text-sm mt-1">Create a template to customize your offer letter PDFs, or start with our pre-filled default.</p>
-            </div>
-            <div className="flex items-center justify-center gap-3 pt-2">
-              <Button variant="outline" onClick={openCreate}>Blank Template</Button>
-              <Button onClick={openCreateDefault}>Use Default Template</Button>
-            </div>
-          </CardContent>
-        </Card>
+        <div className="rounded-xl border-2 border-dashed border-gray-200 py-16 text-center">
+          <div className="mx-auto w-12 h-12 rounded-full bg-gray-100 flex items-center justify-center mb-4">
+            <FileText className="w-5 h-5 text-gray-400" />
+          </div>
+          <p className="text-gray-500 font-medium mb-1">No offer templates yet</p>
+          <p className="text-sm text-gray-400 mb-4">Create a template to customize your offer letter PDFs, or start with our pre-filled default.</p>
+          <div className="flex items-center justify-center gap-3">
+            <Button variant="outline" size="sm" onClick={openCreate} className="gap-1.5">
+              <Plus className="w-4 h-4" /> Blank Template
+            </Button>
+            <Button size="sm" onClick={openCreateDefault} className="gap-1.5">
+              <Copy className="w-4 h-4" /> Use Default Template
+            </Button>
+          </div>
+        </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {templates.map((t) => (
-            <Card
-              key={t.id}
-              className="shadow-sm cursor-pointer transition-shadow hover:shadow-md"
-              onClick={() => openEdit(t)}
-            >
-              <CardHeader className="pb-3">
-                <div className="flex items-center justify-between">
-                  <CardTitle className="text-base truncate">{t.name}</CardTitle>
-                  {t.is_active && <Badge className="bg-blue-100 text-blue-700 shrink-0">Active</Badge>}
+        <div className="grid gap-5">
+          {templates.map((t) => {
+            const enabledSections = sectionItems.filter((s) => t[s.key] !== false)
+            const disabledSections = sectionItems.filter((s) => t[s.key] === false)
+
+            return (
+              <div
+                key={t.id}
+                className="group rounded-xl border border-gray-200 bg-white hover:border-gray-300 hover:shadow-sm transition-all duration-200 cursor-pointer"
+                onClick={() => openEdit(t)}
+              >
+                {/* Card Header */}
+                <div className="flex items-center justify-between px-6 pt-5 pb-4">
+                  <div className="flex items-center gap-3">
+                    <h3 className="text-[15px] font-semibold text-gray-900">{t.name}</h3>
+                    {t.is_active ? (
+                      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-emerald-50 text-emerald-600 border border-emerald-100">
+                        Active
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-gray-50 text-gray-400 border border-gray-100">
+                        Inactive
+                      </span>
+                    )}
+                  </div>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-8 w-8 p-0 opacity-0 group-hover:opacity-100 transition-opacity"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <MoreHorizontal className="w-4 h-4" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end" className="w-36">
+                      <DropdownMenuItem onClick={(e) => { e.stopPropagation(); openEdit(t) }} className="gap-2 text-sm">
+                        <Pencil className="w-3.5 h-3.5" /> Edit
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        onClick={(e) => { e.stopPropagation(); setDeleteId(t.id) }}
+                        className="gap-2 text-sm text-red-600 focus:text-red-600"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" /> Delete
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
                 </div>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                {t.company_name && (
-                  <p className="text-sm text-gray-600">Company: {t.company_name}</p>
-                )}
-                {t.signatory_name && (
-                  <p className="text-xs text-gray-500">Signatory: {t.signatory_name}</p>
-                )}
-                {/* Toggle summary */}
-                <div className="flex flex-wrap gap-1">
-                  {!t.show_salary_breakdown && <Badge variant="outline" className="text-[10px]">No Salary</Badge>}
-                  {!t.show_bonus_section && <Badge variant="outline" className="text-[10px]">No Bonus</Badge>}
-                  {!t.show_terms_section && <Badge variant="outline" className="text-[10px]">No T&C</Badge>}
-                  {!t.show_acceptance_section && <Badge variant="outline" className="text-[10px]">No Acceptance</Badge>}
-                  {!t.show_signature_block && <Badge variant="outline" className="text-[10px]">No Signature</Badge>}
+
+                {/* Info rows */}
+                <div className="px-6 pb-4">
+                  <div className="flex flex-wrap items-center gap-x-6 gap-y-1 text-[13px] text-gray-500">
+                    {t.company_name && (
+                      <span>Company: <span className="text-gray-700 font-medium">{t.company_name}</span></span>
+                    )}
+                    {t.signatory_name && (
+                      <span>Signatory: <span className="text-gray-700 font-medium">{t.signatory_name}</span></span>
+                    )}
+                  </div>
+
+                  {/* Enabled sections as dots */}
+                  <div className="flex items-center gap-3 mt-3">
+                    <span className="text-[11px] font-semibold uppercase tracking-wider text-gray-400">Sections</span>
+                    <div className="flex items-center gap-2">
+                      {enabledSections.map((s) => (
+                        <span
+                          key={s.key}
+                          className="inline-flex items-center gap-1.5 text-[12px] text-gray-600"
+                        >
+                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                          {s.label}
+                        </span>
+                      ))}
+                      {disabledSections.map((s) => (
+                        <span
+                          key={s.key}
+                          className="inline-flex items-center gap-1.5 text-[12px] text-gray-400"
+                        >
+                          <span className="w-1.5 h-1.5 rounded-full bg-gray-300" />
+                          {s.label}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
                 </div>
-                <div className="flex gap-2 pt-2">
-                  <Button variant="outline" size="sm" onClick={(e) => { e.stopPropagation(); openEdit(t) }}>
-                    Edit
-                  </Button>
-                  <Button variant="ghost" size="sm" className="text-red-600 hover:text-red-700" onClick={(e) => { e.stopPropagation(); setDeleteId(t.id) }}>
-                    Delete
-                  </Button>
+
+                {/* Footer Stats */}
+                <div className="border-t border-gray-100 px-6 py-3 flex items-center gap-6 text-[12px] text-gray-400">
+                  <span className="tabular-nums">{enabledSections.length} of {sectionItems.length} sections enabled</span>
+                  <span className="w-px h-3 bg-gray-200" />
+                  <span>{t.email_subject ? 'Custom email' : 'Default email'}</span>
+                  {t.logo_url && (
+                    <>
+                      <span className="w-px h-3 bg-gray-200" />
+                      <span>Custom logo</span>
+                    </>
+                  )}
                 </div>
-              </CardContent>
-            </Card>
-          ))}
+              </div>
+            )
+          })}
         </div>
       )}
 
