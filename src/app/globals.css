@@ -80,3 +80,33 @@
     @apply bg-background text-foreground;
   }
 }
+
+/* Dashboard subtle grid + dot background with blue-white-blue gradient */
+.dashboard-bg {
+  position: relative;
+  background-color: #f8f9fb;
+  background-image:
+    linear-gradient(to right, rgba(224,228,234,0.4) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(224,228,234,0.4) 1px, transparent 1px),
+    radial-gradient(circle, rgba(200,205,213,0.5) 0.8px, transparent 0.8px);
+  background-size:
+    32px 32px,
+    32px 32px,
+    32px 32px;
+  background-position:
+    0 0,
+    0 0,
+    16px 16px;
+}
+.dashboard-bg::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  background: linear-gradient(135deg, rgba(219,234,254,0.5) 0%, rgba(255,255,255,0.1) 40%, rgba(255,255,255,0.1) 60%, rgba(219,234,254,0.5) 100%);
+}
+.dashboard-bg > * {
+  position: relative;
+  z-index: 1;
+}

@@ -8,15 +8,21 @@ import { createClient } from '@/lib/supabase/client'
 import { getOfferById } from '@/lib/services/offers'
 import { OFFER_STATUS_CONFIG, EMPLOYMENT_TYPE_OPTIONS, WORK_TYPE_OPTIONS } from '@/lib/constants'
 import { formatSalary } from '@/lib/offer-template'
-import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { Input } from '@/components/ui/input'
 import { Skeleton } from '@/components/ui/skeleton'
 import {
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
+import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
-import { ArrowLeft, Download, Loader2 } from 'lucide-react'
+import {
+  ArrowLeft, Download, Loader2, Send, MoreHorizontal,
+  CheckCircle2, XCircle, Ban, Trash2, User, Briefcase,
+  MapPin, Calendar, DollarSign, Building2, Clock,
+} from 'lucide-react'
 
 interface SalaryComponent {
   name: string
@@ -55,6 +61,51 @@ interface OfferDetail {
   } | null
 }
 
+/* ── Status styling ── */
+const STATUS_DOT: Record<string, string> = {
+  accepted: 'bg-emerald-500',
+  declined: 'bg-rose-400',
+  sent:     'bg-blue-500',
+  expired:  'bg-gray-300',
+  draft:    'bg-amber-400',
+  revoked:  'bg-orange-400',
+}
+
+const STATUS_PILL: Record<string, string> = {
+  accepted: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+  declined: 'bg-rose-50 text-rose-600 border-rose-200',
+  sent:     'bg-blue-50 text-blue-700 border-blue-200',
+  expired:  'bg-gray-50 text-gray-500 border-gray-200',
+  draft:    'bg-amber-50 text-amber-700 border-amber-200',
+  revoked:  'bg-orange-50 text-orange-600 border-orange-200',
+}
+
+/* ── Gradient avatars ── */
+const GRADIENTS = [
+  'from-blue-500 to-indigo-600',
+  'from-emerald-500 to-teal-600',
+  'from-violet-500 to-purple-600',
+  'from-rose-500 to-pink-600',
+  'from-amber-500 to-orange-600',
+  'from-cyan-500 to-blue-600',
+]
+
+function getGradient(name: string) {
+  let hash = 0
+  for (let i = 0; i < name.length; i++) hash = name.charCodeAt(i) + ((hash << 5) - hash)
+  return GRADIENTS[Math.abs(hash) % GRADIENTS.length]
+}
+
+/* ── Timeline dot color ── */
+const TIMELINE_DOT: Record<string, string> = {
+  created:  'bg-gray-400',
+  sent:     'bg-blue-500',
+  accepted: 'bg-emerald-500',
+  declined: 'bg-rose-500',
+  revoked:  'bg-orange-500',
+  expired:  'bg-gray-300',
+}
+
 function fmtNum(n: number) {
   return n.toLocaleString('en-IN')
 }
@@ -63,7 +114,7 @@ export default function OfferDetailPage() {
   const params = useParams()
   const router = useRouter()
   const { organization, isLoading: userLoading } = useUser()
-  const { canManageOffers } = useRole()
+  const { canManageOffers, role } = useRole()
   const { connected: gmailConnected, loading: gmailLoading } = useGmailStatus()
 
   const [offer, setOffer] = useState<OfferDetail | null>(null)
@@ -137,7 +188,7 @@ export default function OfferDetailPage() {
         setPdfPreviewUrl(url)
       }
     } catch {
-      // silently fail, user can retry
+      // silently fail
     } finally {
       setPdfLoading(false)
     }
@@ -148,16 +199,10 @@ export default function OfferDetailPage() {
     setSending(true)
     setError(null)
     setSuccess(null)
-
     try {
       const res = await fetch(`/api/offers/${offer.id}/send`, { method: 'POST' })
       const data = await res.json()
-
-      if (!res.ok) {
-        setError(data.error || 'Failed to send offer')
-        return
-      }
-
+      if (!res.ok) { setError(data.error || 'Failed to send offer'); return }
       setSuccess('Offer sent successfully!')
       setSendDialogOpen(false)
       await loadOffer()
@@ -173,7 +218,6 @@ export default function OfferDetailPage() {
     setResponding(true)
     setError(null)
     setSuccess(null)
-
     try {
       const res = await fetch(`/api/offers/${offer.id}/respond`, {
         method: 'POST',
@@ -181,12 +225,7 @@ export default function OfferDetailPage() {
         body: JSON.stringify({ status, notes }),
       })
       const data = await res.json()
-
-      if (!res.ok) {
-        setError(data.error || `Failed to mark offer as ${status}`)
-        return
-      }
-
+      if (!res.ok) { setError(data.error || `Failed to mark offer as ${status}`); return }
       setSuccess(`Offer marked as ${status}`)
       setDeclineDialogOpen(false)
       setAcceptDialogOpen(false)
@@ -203,7 +242,6 @@ export default function OfferDetailPage() {
 
   async function handleDelete() {
     if (!offer) return
-
     try {
       const res = await fetch(`/api/offers/${offer.id}`, { method: 'DELETE' })
       if (!res.ok) {
@@ -220,16 +258,13 @@ export default function OfferDetailPage() {
   async function handleDownloadPdf() {
     if (!offer) return
     setDownloadingPdf(true)
-
     try {
       const res = await fetch(`/api/offers/generate-pdf?id=${offer.id}`)
-
       if (!res.ok) {
         const data = await res.json()
         setError(data.error || 'Failed to generate PDF')
         return
       }
-
       const blob = await res.blob()
       const url = window.URL.createObjectURL(blob)
       const a = document.createElement('a')
@@ -249,24 +284,25 @@ export default function OfferDetailPage() {
   if (userLoading || loading) {
     return (
       <div className="space-y-6">
-        <Skeleton className="h-8 w-64" />
-        <Skeleton className="h-96" />
+        <Skeleton className="h-6 w-20 rounded-lg" />
+        <Skeleton className="h-28 rounded-xl" />
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <Skeleton className="lg:col-span-2 h-96 rounded-xl" />
+          <Skeleton className="h-64 rounded-xl" />
+        </div>
       </div>
     )
   }
 
   if (!offer) {
-    return <div className="text-center py-12 text-gray-500">Offer not found</div>
+    return (
+      <div className="text-center py-16">
+        <p className="text-[13px] text-gray-400">Offer not found</p>
+      </div>
+    )
   }
 
   const statusConfig = OFFER_STATUS_CONFIG[offer.status as keyof typeof OFFER_STATUS_CONFIG]
-  const statusBorder = offer.status === 'accepted' ? 'border-l-emerald-500'
-    : offer.status === 'declined' ? 'border-l-red-400'
-    : offer.status === 'sent' ? 'border-l-slate-500'
-    : offer.status === 'revoked' ? 'border-l-orange-400'
-    : offer.status === 'expired' ? 'border-l-gray-300'
-    : 'border-l-amber-400'
-
   const empLabel = EMPLOYMENT_TYPE_OPTIONS?.find((e) => e.value === offer.employment_type)?.label || offer.employment_type?.replace('_', ' ') || '-'
   const workLabel = WORK_TYPE_OPTIONS?.find((w) => w.value === offer.work_type)?.label || offer.work_type?.replace('_', '-') || '-'
 
@@ -282,166 +318,183 @@ export default function OfferDetailPage() {
   const totalCtc = earningsTotal + employerTotal
 
   return (
-    <div className="space-y-6">
-      {/* Back link */}
-      <Button type="button" variant="ghost" size="sm" className="gap-1.5 text-gray-500 hover:text-gray-900" onClick={() => router.back()}>
-        <ArrowLeft className="w-4 h-4" />Back
-      </Button>
+    <div className="space-y-5">
+      {/* ── Back + Actions bar ── */}
+      <div className="flex items-center justify-between">
+        <button
+          onClick={() => router.back()}
+          className="flex items-center gap-1.5 text-[12px] text-gray-400 hover:text-gray-600 transition-colors"
+        >
+          <ArrowLeft className="w-3.5 h-3.5" />
+          Back
+        </button>
 
-      {/* Header Card */}
-      <div className={`bg-white rounded-xl border border-gray-200 shadow-sm border-l-4 ${statusBorder}`}>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={handleDownloadPdf}
+            disabled={downloadingPdf}
+            className="flex items-center gap-1.5 h-8 px-3 rounded-lg border border-gray-200 bg-white text-[12px] font-medium text-gray-600 hover:border-gray-300 transition-all disabled:opacity-40"
+          >
+            <Download className="w-3.5 h-3.5" />
+            {downloadingPdf ? 'Generating...' : 'Download PDF'}
+          </button>
+
+          {canManageOffers && (isDraft || canResend) && (
+            <button
+              onClick={() => {
+                if (!gmailConnected && !gmailLoading) {
+                  setError('Please connect Gmail in Settings before sending offers.')
+                  return
+                }
+                setSendDialogOpen(true)
+              }}
+              className="flex items-center gap-1.5 h-8 px-3 rounded-lg bg-gray-900 text-white text-[12px] font-medium hover:bg-gray-800 transition-colors"
+            >
+              <Send className="w-3.5 h-3.5" />
+              {canResend ? 'Resend' : 'Send Offer'}
+            </button>
+          )}
+
+          {canManageOffers && isSent && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button className="flex items-center gap-1.5 h-8 px-3 rounded-lg bg-gray-900 text-white text-[12px] font-medium hover:bg-gray-800 transition-colors">
+                  <MoreHorizontal className="w-3.5 h-3.5" />
+                  Respond
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-48">
+                <DropdownMenuItem onClick={() => setAcceptDialogOpen(true)}>
+                  <CheckCircle2 className="w-3.5 h-3.5 mr-2 text-emerald-500" />
+                  <span className="text-[13px]">Mark Accepted</span>
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setDeclineDialogOpen(true)}>
+                  <XCircle className="w-3.5 h-3.5 mr-2 text-rose-500" />
+                  <span className="text-[13px]">Mark Declined</span>
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={() => setRevokeDialogOpen(true)} className="text-orange-600">
+                  <Ban className="w-3.5 h-3.5 mr-2" />
+                  <span className="text-[13px]">Revoke Offer</span>
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
+
+          {role === 'admin' && (
+            <button
+              onClick={() => setDeleteDialogOpen(true)}
+              className="flex items-center justify-center w-8 h-8 rounded-lg border border-gray-200 text-gray-400 hover:text-rose-600 hover:border-rose-200 transition-colors"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* ── Header Card ── */}
+      <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
+        <div className={`h-[2px] ${STATUS_DOT[offer.status] ?? 'bg-gray-200'}`} />
         <div className="p-5">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4">
-              <div className="w-12 h-12 rounded-full bg-gray-100 text-gray-700 flex items-center justify-center text-lg font-semibold">
-                {initials}
-              </div>
-              <div>
-                <div className="flex items-center gap-3">
-                  <h1 className="text-xl font-semibold text-gray-900">{candidateName}</h1>
-                  <span className="text-[11px] font-medium px-2 py-0.5 rounded-full bg-gray-100 text-gray-700">
-                    {statusConfig?.label ?? offer.status}
-                  </span>
-                </div>
-                <p className="text-gray-500 text-sm mt-0.5">
-                  {job?.title ?? 'Unknown Position'} {job?.department ? `\u00B7 ${job.department}` : ''} {offer.location ? `\u00B7 ${offer.location}` : ''}
-                </p>
-              </div>
+          <div className="flex items-center gap-4">
+            <div className={`w-12 h-12 rounded-full bg-gradient-to-br ${getGradient(candidateName)} flex items-center justify-center shrink-0`}>
+              <span className="text-sm font-semibold text-white">{initials}</span>
             </div>
-            <div className="flex items-center gap-2">
-              <Button variant="outline" size="sm" onClick={handleDownloadPdf} disabled={downloadingPdf}>
-                <Download className="w-4 h-4 mr-1.5" />
-                {downloadingPdf ? 'Generating...' : 'Download PDF'}
-              </Button>
-              {canManageOffers && isDraft && (
-                <Button
-                  size="sm"
-                  onClick={() => {
-                    if (!gmailConnected && !gmailLoading) {
-                      setError('Please connect Gmail in Settings before sending offers.')
-                      return
-                    }
-                    setSendDialogOpen(true)
-                  }}
-                >
-                  Send Offer
-                </Button>
-              )}
-              {canManageOffers && isSent && (
-                <>
-                  <Button size="sm" className="bg-green-600 hover:bg-green-700" onClick={() => setAcceptDialogOpen(true)}>
-                    Accepted
-                  </Button>
-                  <Button size="sm" variant="outline" onClick={() => setDeclineDialogOpen(true)}>
-                    Declined
-                  </Button>
-                  <Button size="sm" variant="destructive" onClick={() => setRevokeDialogOpen(true)}>
-                    Revoke
-                  </Button>
-                </>
-              )}
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2.5">
+                <h1 className="text-[18px] font-semibold text-gray-900 tracking-tight">{candidateName}</h1>
+                <span className={`flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full border ${STATUS_PILL[offer.status] ?? 'bg-gray-50 text-gray-600 border-gray-200'}`}>
+                  <span className={`w-1.5 h-1.5 rounded-full ${STATUS_DOT[offer.status] ?? 'bg-gray-300'}`} />
+                  {statusConfig?.label ?? offer.status}
+                </span>
+              </div>
+              <p className="text-[12px] text-gray-400 mt-0.5">
+                {job?.title ?? 'Unknown Position'}
+                {job?.department ? ` · ${job.department}` : ''}
+                {offer.location ? ` · ${offer.location}` : ''}
+              </p>
+            </div>
+            <div className="shrink-0 text-right">
+              <p className="text-[18px] font-bold text-gray-900">{formatSalary(offer.salary, offer.salary_currency)}</p>
+              <p className="text-[11px] text-gray-400">Annual CTC</p>
             </div>
           </div>
         </div>
       </div>
 
+      {/* ── Alerts ── */}
       {error && (
-        <div className="bg-red-50 text-red-700 text-sm p-3 rounded-md">{error}</div>
+        <div className="bg-rose-50 text-rose-700 text-[12px] p-3 rounded-lg border border-rose-200">{error}</div>
       )}
       {success && (
-        <div className="bg-green-50 text-green-700 text-sm p-3 rounded-md">{success}</div>
+        <div className="bg-emerald-50 text-emerald-700 text-[12px] p-3 rounded-lg border border-emerald-200">{success}</div>
       )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
         {/* ===== LEFT COLUMN (2/3) ===== */}
-        <div className="lg:col-span-2 space-y-6">
+        <div className="lg:col-span-2 space-y-5">
           {/* Position Details */}
-          <div className="bg-white rounded-xl border border-gray-200 shadow-sm">
-            <div className="px-6 py-4 border-b border-gray-100">
-              <h3 className="text-base font-semibold text-gray-900">Position Details</h3>
+          <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
+            <div className="px-5 py-3.5 border-b border-gray-50 flex items-center gap-2">
+              <Briefcase className="w-4 h-4 text-gray-400" />
+              <h3 className="text-[13px] font-semibold text-gray-900">Position Details</h3>
             </div>
-            <div className="p-6">
-              <div className="grid grid-cols-2 gap-x-8 gap-y-4 text-sm">
-                <div>
-                  <span className="text-gray-500">Designation</span>
-                  <p className="font-medium mt-0.5">{job?.title ?? '-'}</p>
-                </div>
-                <div>
-                  <span className="text-gray-500">Department</span>
-                  <p className="font-medium mt-0.5">{job?.department ?? '-'}</p>
-                </div>
-                <div>
-                  <span className="text-gray-500">Employment Type</span>
-                  <p className="font-medium mt-0.5 capitalize">{empLabel}</p>
-                </div>
-                <div>
-                  <span className="text-gray-500">Work Type</span>
-                  <p className="font-medium mt-0.5 capitalize">{workLabel}</p>
-                </div>
-                <div>
-                  <span className="text-gray-500">Location</span>
-                  <p className="font-medium mt-0.5">{offer.location || '-'}</p>
-                </div>
-                <div>
-                  <span className="text-gray-500">Reporting Manager</span>
-                  <p className="font-medium mt-0.5">{offer.reporting_manager || '-'}</p>
-                </div>
-                {offer.business_unit && (
-                  <div>
-                    <span className="text-gray-500">Business Unit</span>
-                    <p className="font-medium mt-0.5">{offer.business_unit}</p>
+            <div className="p-5">
+              <div className="grid grid-cols-2 gap-x-8 gap-y-4">
+                {[
+                  { icon: Briefcase, label: 'Designation', value: job?.title ?? '-' },
+                  { icon: Building2, label: 'Department', value: job?.department ?? '-' },
+                  { icon: User, label: 'Employment Type', value: empLabel },
+                  { icon: MapPin, label: 'Work Type', value: workLabel },
+                  { icon: MapPin, label: 'Location', value: offer.location || '-' },
+                  { icon: User, label: 'Reporting Manager', value: offer.reporting_manager || '-' },
+                  ...(offer.business_unit ? [{ icon: Building2, label: 'Business Unit', value: offer.business_unit }] : []),
+                  { icon: Calendar, label: 'Date of Joining', value: offer.start_date ? new Date(offer.start_date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '-' },
+                  { icon: DollarSign, label: 'Annual CTC', value: formatSalary(offer.salary, offer.salary_currency), bold: true },
+                  { icon: CheckCircle2, label: 'PF Applicable', value: offer.pf_applicable ? 'Yes' : 'No' },
+                ].map((item, idx) => (
+                  <div key={idx}>
+                    <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">{item.label}</p>
+                    <p className={`text-[13px] mt-0.5 capitalize ${(item as { bold?: boolean }).bold ? 'font-semibold text-gray-900' : 'text-gray-700'}`}>{item.value}</p>
                   </div>
-                )}
-                <div>
-                  <span className="text-gray-500">Date of Joining</span>
-                  <p className="font-medium mt-0.5">
-                    {offer.start_date ? new Date(offer.start_date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '-'}
-                  </p>
-                </div>
-                <div>
-                  <span className="text-gray-500">Annual CTC</span>
-                  <p className="font-semibold mt-0.5 text-gray-900">{formatSalary(offer.salary, offer.salary_currency)}</p>
-                </div>
-                <div>
-                  <span className="text-gray-500">PF Applicable</span>
-                  <p className="font-medium mt-0.5">{offer.pf_applicable ? 'Yes' : 'No'}</p>
-                </div>
+                ))}
               </div>
             </div>
           </div>
 
           {/* Salary Structure */}
           {salaryComponents.length > 0 && (
-            <div className="bg-white rounded-xl border border-gray-200 shadow-sm">
-              <div className="px-6 py-4 border-b border-gray-100">
-                <h3 className="text-base font-semibold text-gray-900">Salary Structure ({offer.salary_currency})</h3>
+            <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
+              <div className="px-5 py-3.5 border-b border-gray-50 flex items-center gap-2">
+                <DollarSign className="w-4 h-4 text-gray-400" />
+                <h3 className="text-[13px] font-semibold text-gray-900">Salary Structure ({offer.salary_currency})</h3>
               </div>
-              <div className="p-6">
-                <div className="border rounded-lg overflow-hidden">
-                  <table className="w-full text-sm">
+              <div className="p-5">
+                <div className="border border-gray-100 rounded-lg overflow-hidden">
+                  <table className="w-full text-[12px]">
                     <thead>
-                      <tr className="bg-gray-50 border-b">
-                        <th className="text-left py-2.5 px-3 font-semibold text-gray-700">Component</th>
-                        <th className="text-right py-2.5 px-3 font-semibold text-gray-700">Monthly</th>
-                        <th className="text-right py-2.5 px-3 font-semibold text-gray-700">Annual</th>
+                      <tr className="bg-gray-50/80 border-b border-gray-100">
+                        <th className="text-left py-2.5 px-3 text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Component</th>
+                        <th className="text-right py-2.5 px-3 text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Monthly</th>
+                        <th className="text-right py-2.5 px-3 text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Annual</th>
                       </tr>
                     </thead>
                     <tbody>
                       {/* Earnings */}
                       {earnings.length > 0 && (
                         <>
-                          <tr><td colSpan={3} className="py-2 px-3 font-semibold text-gray-700 bg-gray-50 text-xs uppercase tracking-wide">A. Earnings</td></tr>
+                          <tr><td colSpan={3} className="py-2 px-3 text-[10px] font-semibold text-gray-500 uppercase tracking-wider bg-gray-50/50">A. Earnings</td></tr>
                           {earnings.map((comp, idx) => (
-                            <tr key={`e-${idx}`} className="border-b border-gray-100">
-                              <td className="py-2 px-3 pl-5">{comp.name}</td>
-                              <td className="text-right py-2 px-3 tabular-nums">{fmtNum(comp.monthly)}</td>
-                              <td className="text-right py-2 px-3 tabular-nums">{fmtNum(comp.annual)}</td>
+                            <tr key={`e-${idx}`} className="border-b border-gray-50">
+                              <td className="py-2 px-3 pl-5 text-gray-600">{comp.name}</td>
+                              <td className="text-right py-2 px-3 tabular-nums text-gray-700">{fmtNum(comp.monthly)}</td>
+                              <td className="text-right py-2 px-3 tabular-nums text-gray-700">{fmtNum(comp.annual)}</td>
                             </tr>
                           ))}
-                          <tr className="bg-gray-50 border-b font-semibold">
-                            <td className="py-2 px-3">Gross Salary</td>
-                            <td className="text-right py-2 px-3 tabular-nums">{fmtNum(Math.round(earningsTotal / 12))}</td>
-                            <td className="text-right py-2 px-3 tabular-nums">{fmtNum(earningsTotal)}</td>
+                          <tr className="bg-gray-50/80 border-b border-gray-100">
+                            <td className="py-2 px-3 font-semibold text-gray-700">Gross Salary</td>
+                            <td className="text-right py-2 px-3 tabular-nums font-semibold text-gray-700">{fmtNum(Math.round(earningsTotal / 12))}</td>
+                            <td className="text-right py-2 px-3 tabular-nums font-semibold text-gray-700">{fmtNum(earningsTotal)}</td>
                           </tr>
                         </>
                       )}
@@ -449,18 +502,18 @@ export default function OfferDetailPage() {
                       {/* Deductions */}
                       {deductions.length > 0 && (
                         <>
-                          <tr><td colSpan={3} className="py-2 px-3 font-semibold text-red-700 bg-red-50 text-xs uppercase tracking-wide">B. Deductions (from Gross)</td></tr>
+                          <tr><td colSpan={3} className="py-2 px-3 text-[10px] font-semibold text-rose-500 uppercase tracking-wider bg-rose-50/30">B. Deductions</td></tr>
                           {deductions.map((comp, idx) => (
-                            <tr key={`d-${idx}`} className="border-b border-gray-100">
-                              <td className="py-2 px-3 pl-5">{comp.name}</td>
-                              <td className="text-right py-2 px-3 tabular-nums">{fmtNum(comp.monthly)}</td>
-                              <td className="text-right py-2 px-3 tabular-nums">{fmtNum(comp.annual)}</td>
+                            <tr key={`d-${idx}`} className="border-b border-gray-50">
+                              <td className="py-2 px-3 pl-5 text-gray-600">{comp.name}</td>
+                              <td className="text-right py-2 px-3 tabular-nums text-gray-700">{fmtNum(comp.monthly)}</td>
+                              <td className="text-right py-2 px-3 tabular-nums text-gray-700">{fmtNum(comp.annual)}</td>
                             </tr>
                           ))}
-                          <tr className="bg-green-50 border-b font-semibold text-green-800">
-                            <td className="py-2 px-3">Net Pay (Take Home)</td>
-                            <td className="text-right py-2 px-3 tabular-nums">{fmtNum(Math.round(netPay / 12))}</td>
-                            <td className="text-right py-2 px-3 tabular-nums">{fmtNum(netPay)}</td>
+                          <tr className="bg-emerald-50/50 border-b border-gray-100">
+                            <td className="py-2 px-3 font-semibold text-emerald-700">Net Pay (Take Home)</td>
+                            <td className="text-right py-2 px-3 tabular-nums font-semibold text-emerald-700">{fmtNum(Math.round(netPay / 12))}</td>
+                            <td className="text-right py-2 px-3 tabular-nums font-semibold text-emerald-700">{fmtNum(netPay)}</td>
                           </tr>
                         </>
                       )}
@@ -468,22 +521,22 @@ export default function OfferDetailPage() {
                       {/* Employer Contributions */}
                       {employer.length > 0 && (
                         <>
-                          <tr><td colSpan={3} className="py-2 px-3 font-semibold text-gray-600 bg-gray-50 text-xs uppercase tracking-wide">C. Employer Contributions</td></tr>
+                          <tr><td colSpan={3} className="py-2 px-3 text-[10px] font-semibold text-gray-500 uppercase tracking-wider bg-gray-50/50">C. Employer Contributions</td></tr>
                           {employer.map((comp, idx) => (
-                            <tr key={`em-${idx}`} className="border-b border-gray-100">
-                              <td className="py-2 px-3 pl-5">{comp.name}</td>
-                              <td className="text-right py-2 px-3 tabular-nums">{fmtNum(comp.monthly)}</td>
-                              <td className="text-right py-2 px-3 tabular-nums">{fmtNum(comp.annual)}</td>
+                            <tr key={`em-${idx}`} className="border-b border-gray-50">
+                              <td className="py-2 px-3 pl-5 text-gray-600">{comp.name}</td>
+                              <td className="text-right py-2 px-3 tabular-nums text-gray-700">{fmtNum(comp.monthly)}</td>
+                              <td className="text-right py-2 px-3 tabular-nums text-gray-700">{fmtNum(comp.annual)}</td>
                             </tr>
                           ))}
                         </>
                       )}
 
                       {/* Total CTC */}
-                      <tr className="bg-gray-900 text-white font-bold">
-                        <td className="py-2.5 px-3">Total CTC (A + C)</td>
-                        <td className="text-right py-2.5 px-3 tabular-nums">{fmtNum(Math.round(totalCtc / 12))}</td>
-                        <td className="text-right py-2.5 px-3 tabular-nums">{fmtNum(totalCtc)}</td>
+                      <tr className="bg-gray-900 text-white">
+                        <td className="py-2.5 px-3 font-semibold text-[12px]">Total CTC (A + C)</td>
+                        <td className="text-right py-2.5 px-3 tabular-nums font-semibold">{fmtNum(Math.round(totalCtc / 12))}</td>
+                        <td className="text-right py-2.5 px-3 tabular-nums font-semibold">{fmtNum(totalCtc)}</td>
                       </tr>
                     </tbody>
                   </table>
@@ -493,31 +546,35 @@ export default function OfferDetailPage() {
           )}
 
           {/* Offer Letter PDF Preview */}
-          <div className="bg-white rounded-xl border border-gray-200 shadow-sm">
-            <div className="px-6 py-4 border-b border-gray-100">
-              <h3 className="text-base font-semibold text-gray-900">Offer Letter PDF</h3>
+          <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
+            <div className="px-5 py-3.5 border-b border-gray-50 flex items-center gap-2">
+              <Download className="w-4 h-4 text-gray-400" />
+              <h3 className="text-[13px] font-semibold text-gray-900">Offer Letter PDF</h3>
             </div>
-            <div className="p-6">
+            <div className="p-5">
               {pdfLoading && (
                 <div className="flex items-center justify-center py-12">
-                  <Loader2 className="w-6 h-6 animate-spin text-gray-400" />
-                  <span className="ml-2 text-sm text-gray-500">Loading PDF preview...</span>
+                  <Loader2 className="w-5 h-5 animate-spin text-gray-300" />
+                  <span className="ml-2 text-[12px] text-gray-400">Loading PDF preview...</span>
                 </div>
               )}
               {pdfPreviewUrl && !pdfLoading && (
                 <iframe
                   src={`${pdfPreviewUrl}#navpanes=0`}
-                  className="w-full border rounded-lg"
+                  className="w-full border border-gray-100 rounded-lg"
                   style={{ height: '700px' }}
                   title="Offer Letter PDF Preview"
                 />
               )}
               {!pdfPreviewUrl && !pdfLoading && (
-                <div className="text-center py-8 text-gray-500 text-sm">
-                  <p>PDF preview not available.</p>
-                  <Button variant="outline" size="sm" className="mt-2" onClick={loadPdfPreview}>
+                <div className="text-center py-10">
+                  <p className="text-[12px] text-gray-400">PDF preview not available.</p>
+                  <button
+                    onClick={loadPdfPreview}
+                    className="mt-2 text-[12px] text-blue-600 hover:text-blue-700 font-medium transition-colors"
+                  >
                     Load Preview
-                  </Button>
+                  </button>
                 </div>
               )}
             </div>
@@ -525,150 +582,147 @@ export default function OfferDetailPage() {
         </div>
 
         {/* ===== RIGHT COLUMN (1/3) ===== */}
-        <div className="space-y-6">
+        <div className="space-y-5">
           {/* Candidate Card */}
-          <div className="bg-white rounded-xl border border-gray-200 shadow-sm">
-            <div className="px-6 py-4 border-b border-gray-100">
-              <h3 className="text-base font-semibold text-gray-900">Candidate</h3>
+          <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
+            <div className="px-5 py-3.5 border-b border-gray-50 flex items-center gap-2">
+              <User className="w-4 h-4 text-gray-400" />
+              <h3 className="text-[13px] font-semibold text-gray-900">Candidate</h3>
             </div>
-            <div className="p-6 space-y-3 text-sm">
+            <div className="p-5 space-y-3">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-full bg-gray-100 text-gray-700 flex items-center justify-center text-sm font-semibold">
-                  {initials}
+                <div className={`w-10 h-10 rounded-full bg-gradient-to-br ${getGradient(candidateName)} flex items-center justify-center shrink-0`}>
+                  <span className="text-[12px] font-semibold text-white">{initials}</span>
                 </div>
-                <div>
-                  <p className="font-semibold">{candidateName}</p>
-                  <p className="text-gray-500">{candidate?.email ?? '-'}</p>
+                <div className="min-w-0">
+                  <p className="text-[13px] font-semibold text-gray-900">{candidateName}</p>
+                  <p className="text-[11px] text-gray-400 truncate">{candidate?.email ?? '-'}</p>
                 </div>
               </div>
               {candidate?.phone && (
                 <div>
-                  <span className="text-gray-500">Phone</span>
-                  <p className="font-medium">{candidate.phone}</p>
+                  <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Phone</p>
+                  <p className="text-[12px] text-gray-700 mt-0.5">{candidate.phone}</p>
                 </div>
               )}
+              <button
+                onClick={() => router.push(`/candidates/${candidate?.id}`)}
+                className="w-full text-center text-[11px] text-blue-600 hover:text-blue-700 font-medium py-2 rounded-lg border border-gray-200 hover:border-gray-300 transition-colors"
+              >
+                View Profile
+              </button>
             </div>
           </div>
 
           {/* Offer Details */}
-          <div className="bg-white rounded-xl border border-gray-200 shadow-sm">
-            <div className="px-6 py-4 border-b border-gray-100">
-              <h3 className="text-base font-semibold text-gray-900">Offer Details</h3>
+          <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
+            <div className="px-5 py-3.5 border-b border-gray-50 flex items-center gap-2">
+              <DollarSign className="w-4 h-4 text-gray-400" />
+              <h3 className="text-[13px] font-semibold text-gray-900">Offer Details</h3>
             </div>
-            <div className="p-6 space-y-3 text-sm">
-              <div className="flex justify-between">
-                <span className="text-gray-500">Salary</span>
-                <span className="font-semibold text-gray-900">{formatSalary(offer.salary, offer.salary_currency)}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-gray-500">Start Date</span>
-                <span className="font-medium">
-                  {offer.start_date ? new Date(offer.start_date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '-'}
-                </span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-gray-500">Offer Valid Until</span>
-                <span className="font-medium">
-                  {offer.expiry_date ? new Date(offer.expiry_date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '-'}
-                </span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-gray-500">Remuneration</span>
-                <span className="font-medium capitalize">{offer.remuneration_type || 'Annual'}</span>
-              </div>
+            <div className="p-5 space-y-3">
+              {[
+                { label: 'Salary', value: formatSalary(offer.salary, offer.salary_currency), bold: true },
+                { label: 'Start Date', value: offer.start_date ? new Date(offer.start_date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '-' },
+                { label: 'Valid Until', value: offer.expiry_date ? new Date(offer.expiry_date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '-' },
+                { label: 'Remuneration', value: offer.remuneration_type || 'Annual' },
+              ].map((item, idx) => (
+                <div key={idx} className="flex justify-between items-center">
+                  <span className="text-[11px] text-gray-400">{item.label}</span>
+                  <span className={`text-[12px] ${item.bold ? 'font-semibold text-gray-900' : 'text-gray-700'}`}>{item.value}</span>
+                </div>
+              ))}
             </div>
           </div>
 
           {/* Timeline */}
-          <div className="bg-white rounded-xl border border-gray-200 shadow-sm">
-            <div className="px-6 py-4 border-b border-gray-100">
-              <h3 className="text-base font-semibold text-gray-900">Timeline</h3>
+          <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
+            <div className="px-5 py-3.5 border-b border-gray-50 flex items-center gap-2">
+              <Clock className="w-4 h-4 text-gray-400" />
+              <h3 className="text-[13px] font-semibold text-gray-900">Timeline</h3>
             </div>
-            <div className="p-6">
-              <div className="relative pl-6 space-y-4 text-sm">
+            <div className="p-5">
+              <div className="relative pl-5 space-y-4">
+                {/* Vertical line */}
+                <div className="absolute left-[3px] top-2 bottom-2 w-0.5 bg-gray-100" />
+
                 {/* Created */}
                 <div className="relative">
-                  <div className="absolute -left-6 top-0.5 w-3 h-3 rounded-full bg-gray-300 border-2 border-white" />
-                  <p className="font-medium">Offer Created</p>
-                  <p className="text-gray-500 text-xs">{new Date(offer.created_at).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</p>
+                  <div className={`absolute -left-5 top-0.5 w-2 h-2 rounded-full ${TIMELINE_DOT.created} ring-2 ring-white`} />
+                  <p className="text-[12px] font-medium text-gray-700">Offer Created</p>
+                  <p className="text-[10px] text-gray-400 tabular-nums">{new Date(offer.created_at).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</p>
                 </div>
 
                 {offer.sent_at && (
                   <div className="relative">
-                    <div className="absolute -left-6 top-0.5 w-3 h-3 rounded-full bg-slate-500 border-2 border-white" />
-                    <p className="font-medium">Sent to Candidate</p>
-                    <p className="text-gray-500 text-xs">{new Date(offer.sent_at).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</p>
+                    <div className={`absolute -left-5 top-0.5 w-2 h-2 rounded-full ${TIMELINE_DOT.sent} ring-2 ring-white`} />
+                    <p className="text-[12px] font-medium text-gray-700">Sent to Candidate</p>
+                    <p className="text-[10px] text-gray-400 tabular-nums">{new Date(offer.sent_at).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</p>
                   </div>
                 )}
 
                 {offer.responded_at && (
                   <div className="relative">
-                    <div className={`absolute -left-6 top-0.5 w-3 h-3 rounded-full border-2 border-white ${offer.status === 'accepted' ? 'bg-green-500' : offer.status === 'declined' ? 'bg-red-500' : offer.status === 'revoked' ? 'bg-orange-500' : 'bg-gray-400'}`} />
-                    <p className="font-medium capitalize">{offer.status === 'revoked' ? 'Revoked by Company' : `${offer.status} by Candidate`}</p>
-                    <p className="text-gray-500 text-xs">{new Date(offer.responded_at).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</p>
+                    <div className={`absolute -left-5 top-0.5 w-2 h-2 rounded-full ${TIMELINE_DOT[offer.status] ?? 'bg-gray-400'} ring-2 ring-white`} />
+                    <p className="text-[12px] font-medium text-gray-700 capitalize">{offer.status === 'revoked' ? 'Revoked by Company' : `${offer.status} by Candidate`}</p>
+                    <p className="text-[10px] text-gray-400 tabular-nums">{new Date(offer.responded_at).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</p>
                     {offer.response_notes && (
-                      <p className="text-gray-600 text-xs mt-1 italic">&quot;{offer.response_notes}&quot;</p>
+                      <p className="text-[11px] text-gray-500 mt-1 italic">&quot;{offer.response_notes}&quot;</p>
                     )}
                   </div>
                 )}
-
-                {/* Vertical line connector */}
-                <div className="absolute left-[-18px] top-3 bottom-3 w-0.5 bg-gray-200" />
               </div>
             </div>
           </div>
-
-          <Button variant="outline" className="w-full" onClick={() => router.push(`/candidates/${candidate?.id}`)}>
-            View Candidate Profile
-          </Button>
         </div>
       </div>
 
-      {/* Send / Resend Confirmation Dialog */}
+      {/* ── Dialogs ── */}
+      {/* Send / Resend */}
       <AlertDialog open={sendDialogOpen} onOpenChange={setSendDialogOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>{canResend ? 'Resend Offer?' : 'Send Offer?'}</AlertDialogTitle>
-            <AlertDialogDescription>
+            <AlertDialogTitle className="text-[15px]">{canResend ? 'Resend Offer?' : 'Send Offer?'}</AlertDialogTitle>
+            <AlertDialogDescription className="text-[12px]">
               {canResend
-                ? `The offer was previously ${offer?.status}. This will resend the offer letter to ${candidate?.email} via Gmail with a fresh PDF attachment. The offer status will be reset to "Sent".`
-                : `This will send the offer letter to ${candidate?.email} via Gmail with PDF attachment. The offer status will change to "Sent".`
+                ? `The offer was previously ${offer?.status}. This will resend to ${candidate?.email} via Gmail with a fresh PDF attachment.`
+                : `This will send the offer letter to ${candidate?.email} via Gmail with PDF attachment.`
               }
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={handleSend} disabled={sending}>
+            <AlertDialogCancel className="text-[12px]">Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleSend} disabled={sending} className="text-[12px] bg-gray-900 hover:bg-gray-800">
               {sending ? 'Sending...' : canResend ? 'Resend Offer' : 'Send Offer'}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* Accept Dialog */}
+      {/* Accept */}
       <AlertDialog open={acceptDialogOpen} onOpenChange={setAcceptDialogOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Mark as Accepted?</AlertDialogTitle>
-            <AlertDialogDescription>
+            <AlertDialogTitle className="text-[15px]">Mark as Accepted?</AlertDialogTitle>
+            <AlertDialogDescription className="text-[12px]">
               Confirm that {candidateName} has accepted this offer.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={() => handleRespond('accepted')} disabled={responding}>
+            <AlertDialogCancel className="text-[12px]">Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={() => handleRespond('accepted')} disabled={responding} className="text-[12px] bg-emerald-600 hover:bg-emerald-700">
               {responding ? 'Updating...' : 'Confirm Accepted'}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* Decline Dialog */}
+      {/* Decline */}
       <AlertDialog open={declineDialogOpen} onOpenChange={setDeclineDialogOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Mark as Declined?</AlertDialogTitle>
-            <AlertDialogDescription>
+            <AlertDialogTitle className="text-[15px]">Mark as Declined?</AlertDialogTitle>
+            <AlertDialogDescription className="text-[12px]">
               Record that {candidateName} has declined this offer.
             </AlertDialogDescription>
           </AlertDialogHeader>
@@ -677,14 +731,15 @@ export default function OfferDetailPage() {
               placeholder="Reason for declining (optional)"
               value={declineNotes}
               onChange={(e) => setDeclineNotes(e.target.value)}
+              className="h-8 text-[12px]"
             />
           </div>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogCancel className="text-[12px]">Cancel</AlertDialogCancel>
             <AlertDialogAction
               onClick={() => handleRespond('declined', declineNotes || undefined)}
               disabled={responding}
-              className="bg-red-600 hover:bg-red-700"
+              className="text-[12px] bg-rose-600 hover:bg-rose-700"
             >
               {responding ? 'Updating...' : 'Confirm Declined'}
             </AlertDialogAction>
@@ -692,13 +747,13 @@ export default function OfferDetailPage() {
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* Revoke Dialog */}
+      {/* Revoke */}
       <AlertDialog open={revokeDialogOpen} onOpenChange={setRevokeDialogOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Revoke Offer?</AlertDialogTitle>
-            <AlertDialogDescription>
-              This will revoke the offer on behalf of the company. The candidate will no longer be able to accept it.
+            <AlertDialogTitle className="text-[15px]">Revoke Offer?</AlertDialogTitle>
+            <AlertDialogDescription className="text-[12px]">
+              This will revoke the offer on behalf of the company.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <div className="py-2">
@@ -707,12 +762,13 @@ export default function OfferDetailPage() {
               value={revokeNotes}
               onChange={(e) => setRevokeNotes(e.target.value)}
               rows={3}
+              className="text-[12px]"
             />
           </div>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogCancel className="text-[12px]">Cancel</AlertDialogCancel>
             <AlertDialogAction
-              className="bg-red-600 hover:bg-red-700"
+              className="text-[12px] bg-orange-600 hover:bg-orange-700"
               onClick={() => handleRespond('revoked', revokeNotes || undefined)}
               disabled={responding}
             >
@@ -722,18 +778,18 @@ export default function OfferDetailPage() {
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* Delete Dialog */}
+      {/* Delete */}
       <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete Offer?</AlertDialogTitle>
-            <AlertDialogDescription>
+            <AlertDialogTitle className="text-[15px]">Delete Offer?</AlertDialogTitle>
+            <AlertDialogDescription className="text-[12px]">
               This will permanently delete this offer. This action cannot be undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={handleDelete} className="bg-red-600 hover:bg-red-700">
+            <AlertDialogCancel className="text-[12px]">Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDelete} className="text-[12px] bg-rose-600 hover:bg-rose-700">
               Delete
             </AlertDialogAction>
           </AlertDialogFooter>

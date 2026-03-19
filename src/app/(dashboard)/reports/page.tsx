@@ -13,24 +13,17 @@ import {
   getSourceBreakdown,
 } from '@/lib/services/reports'
 import { getJobs } from '@/lib/services/jobs'
-import { Card, CardContent } from '@/components/ui/card'
-import { Button } from '@/components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Skeleton } from '@/components/ui/skeleton'
-import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
-import { CheckCircle2, Clock, Mail, Users, BarChart3, CalendarDays, FileSpreadsheet } from 'lucide-react'
+import { CheckCircle2, Clock, Mail, Users, BarChart3, CalendarDays, FileSpreadsheet, Filter } from 'lucide-react'
 import * as XLSX from 'xlsx'
 
 const ReportCharts = dynamic(() => import('./report-charts'), {
   loading: () => (
-    <div className="space-y-6">
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <Skeleton className="h-[400px] rounded-xl" />
-        <Skeleton className="h-[400px] rounded-xl" />
-      </div>
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <Skeleton className="h-[400px] rounded-xl" />
-        <Skeleton className="h-[400px] rounded-xl" />
+    <div className="space-y-4">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <Skeleton className="h-[360px] rounded-xl" />
+        <Skeleton className="h-[360px] rounded-xl" />
       </div>
     </div>
   ),
@@ -39,11 +32,11 @@ const ReportCharts = dynamic(() => import('./report-charts'), {
 
 const RecruiterPerformance = dynamic(() => import('./recruiter-performance'), {
   loading: () => (
-    <div className="space-y-6">
+    <div className="space-y-4">
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        {[1, 2, 3, 4].map((i) => <Skeleton key={i} className="h-[110px] rounded-xl" />)}
+        {[1, 2, 3, 4].map((i) => <Skeleton key={i} className="h-[100px] rounded-xl" />)}
       </div>
-      <Skeleton className="h-[380px] rounded-xl" />
+      <Skeleton className="h-[360px] rounded-xl" />
     </div>
   ),
   ssr: false,
@@ -157,45 +150,12 @@ const DATE_PRESETS: { label: string; value: string; getRange: () => { from: stri
   },
 ]
 
+/* ── KPI gradient accents ── */
 const KPI_CONFIG = [
-  {
-    key: 'total_hires',
-    label: 'Total Hires',
-    sub: 'All-time completed hires',
-    icon: <CheckCircle2 className="w-5 h-5" />,
-    bg: 'bg-emerald-50',
-    iconColor: 'text-emerald-600',
-    accent: 'border-l-emerald-500',
-  },
-  {
-    key: 'avg_days',
-    label: 'Avg Time-to-Hire',
-    sub: 'From application to hire',
-    suffix: 'days',
-    icon: <Clock className="w-5 h-5" />,
-    bg: 'bg-blue-50',
-    iconColor: 'text-blue-600',
-    accent: 'border-l-blue-500',
-  },
-  {
-    key: 'acceptance_pct',
-    label: 'Offer Acceptance',
-    sub: '',
-    suffix: '%',
-    icon: <Mail className="w-5 h-5" />,
-    bg: 'bg-purple-50',
-    iconColor: 'text-purple-600',
-    accent: 'border-l-purple-500',
-  },
-  {
-    key: 'active_pipeline',
-    label: 'Active Pipeline',
-    sub: '',
-    icon: <Users className="w-5 h-5" />,
-    bg: 'bg-amber-50',
-    iconColor: 'text-amber-600',
-    accent: 'border-l-amber-500',
-  },
+  { key: 'total_hires', label: 'Total Hires', suffix: '', icon: <CheckCircle2 className="w-4 h-4" />, gradient: 'from-emerald-500 to-teal-600', iconBg: 'bg-emerald-50 text-emerald-600' },
+  { key: 'avg_days', label: 'Avg Time-to-Hire', suffix: 'days', icon: <Clock className="w-4 h-4" />, gradient: 'from-blue-500 to-indigo-600', iconBg: 'bg-blue-50 text-blue-600' },
+  { key: 'acceptance_pct', label: 'Offer Acceptance', suffix: '%', icon: <Mail className="w-4 h-4" />, gradient: 'from-violet-500 to-purple-600', iconBg: 'bg-violet-50 text-violet-600' },
+  { key: 'active_pipeline', label: 'Active Pipeline', suffix: '', icon: <Users className="w-4 h-4" />, gradient: 'from-amber-500 to-orange-600', iconBg: 'bg-amber-50 text-amber-600' },
 ]
 
 export default function ReportsPage() {
@@ -214,12 +174,14 @@ export default function ReportsPage() {
   const [selectedJobId, setSelectedJobId] = useState<string>('all')
   const [datePreset, setDatePreset] = useState<string>('all')
   const [sourceData, setSourceData] = useState<SourceData[]>([])
+  const [showFilters, setShowFilters] = useState(false)
+
+  const activeFilterCount = [selectedJobId !== 'all' ? selectedJobId : '', datePreset !== 'all' ? datePreset : ''].filter(Boolean).length
 
   const loadReports = useCallback(async () => {
     if (!organization) return
     setLoading(true)
 
-    // Recruiters only see their own performance tab — skip overview data
     if (!canViewFullReports) {
       setLoading(false)
       return
@@ -257,7 +219,6 @@ export default function ReportsPage() {
     if (jobsRes.data) setJobs(jobsRes.data.map((j: Record<string, unknown>) => ({ id: j.id as string, title: j.title as string })))
     if (sourceRes.data) setSourceData(sourceRes.data)
 
-    // Build job status data
     if (appsRes.data) {
       const jobMap = new Map<string, { active: number; hired: number; rejected: number }>()
       for (const app of appsRes.data) {
@@ -286,22 +247,23 @@ export default function ReportsPage() {
 
   if (!userLoading && !canViewReports) {
     return (
-      <div className="text-center py-12">
-        <h2 className="text-lg font-semibold text-gray-900">Access Denied</h2>
-        <p className="text-gray-500 mt-1">Only administrators and recruiters can view reports.</p>
+      <div className="text-center py-16">
+        <BarChart3 className="w-8 h-8 text-gray-300 mx-auto mb-3" />
+        <h2 className="text-[13px] font-semibold text-gray-900">Access Denied</h2>
+        <p className="text-[11px] text-gray-400 mt-1">Only administrators and recruiters can view reports.</p>
       </div>
     )
   }
 
   if (userLoading || loading) {
     return (
-      <div className="space-y-6">
+      <div className="space-y-5">
         <Skeleton className="h-10 w-72" />
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          {[1, 2, 3, 4].map((i) => <Skeleton key={i} className="h-[110px] rounded-xl" />)}
+          {[1, 2, 3, 4].map((i) => <Skeleton key={i} className="h-[100px] rounded-xl" />)}
         </div>
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {[1, 2, 3, 4].map((i) => <Skeleton key={i} className="h-[380px] rounded-xl" />)}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          {[1, 2].map((i) => <Skeleton key={i} className="h-[360px] rounded-xl" />)}
         </div>
       </div>
     )
@@ -329,7 +291,6 @@ export default function ReportsPage() {
 
     const wb = XLSX.utils.book_new()
 
-    // Sheet 1: KPI Summary
     const kpiData = [
       ['HireFlow - Overview Report'],
       ['Generated', new Date().toLocaleDateString()],
@@ -352,7 +313,6 @@ export default function ReportsPage() {
     wsKpi['!cols'] = [{ wch: 25 }, { wch: 15 }]
     XLSX.utils.book_append_sheet(wb, wsKpi, 'KPI Summary')
 
-    // Sheet 2: Job Status
     if (jobStatusData.length > 0) {
       const jobData = [
         ['Job Title', 'Active', 'Hired', 'Rejected', 'Total'],
@@ -363,7 +323,6 @@ export default function ReportsPage() {
       XLSX.utils.book_append_sheet(wb, wsJobs, 'Job Status')
     }
 
-    // Sheet 3: Pipeline Conversion
     if (pipeline.length > 0) {
       const pipeData = [
         ['Stage', 'Current Count', 'Total Reached', 'Conversion Rate (%)'],
@@ -374,7 +333,6 @@ export default function ReportsPage() {
       XLSX.utils.book_append_sheet(wb, wsPipe, 'Pipeline')
     }
 
-    // Sheet 4: Source Effectiveness
     if (sourceData.length > 0) {
       const srcData = [
         ['Source', 'Total', 'Hired', 'Rejected', 'Active', 'Hire Rate (%)'],
@@ -385,7 +343,6 @@ export default function ReportsPage() {
       XLSX.utils.book_append_sheet(wb, wsSrc, 'Source Effectiveness')
     }
 
-    // Sheet 5: Hiring Velocity
     if (velocity.length > 0) {
       const velData = [
         ['Month', 'Hires'],
@@ -396,7 +353,6 @@ export default function ReportsPage() {
       XLSX.utils.book_append_sheet(wb, wsVel, 'Hiring Velocity')
     }
 
-    // Sheet 6: Time-to-Hire
     if (timeToHire?.breakdown && timeToHire.breakdown.length > 0) {
       const tthData = [
         ['Department', 'Avg Days', 'Total Hires'],
@@ -407,7 +363,6 @@ export default function ReportsPage() {
       XLSX.utils.book_append_sheet(wb, wsTth, 'Time-to-Hire')
     }
 
-    // Offer Acceptance sheet
     if (offerRate) {
       const offerData = [
         ['Total Sent', 'Accepted', 'Declined', 'Acceptance Rate (%)'],
@@ -431,108 +386,159 @@ export default function ReportsPage() {
   }
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
+    <div className="space-y-5">
+      {/* ── Header ── */}
       <div className="flex items-end justify-between">
-        <div className="flex items-center gap-3">
-          <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-violet-500 to-purple-600 text-white flex items-center justify-center shadow-sm shadow-violet-200">
-            <BarChart3 className="w-5 h-5" />
-          </div>
-          <div>
-            <h1 className="text-xl font-semibold text-gray-900">Reports</h1>
-            <p className="text-sm text-gray-400 mt-0.5">Hiring analytics and metrics</p>
-          </div>
+        <div>
+          <h1 className="text-[15px] font-semibold text-gray-900">Reports</h1>
+          <p className="text-[11px] text-gray-400 mt-0.5">Hiring analytics and performance metrics</p>
         </div>
         <div className="flex items-center gap-2">
           {activeTab === 'overview' && (
-            <Button variant="outline" size="sm" className="h-9 gap-1.5" onClick={exportExcel}>
+            <button onClick={exportExcel} className="flex items-center gap-1.5 h-8 px-3 rounded-lg border border-gray-200 text-[12px] font-medium text-gray-600 hover:bg-gray-50 transition-colors">
               <FileSpreadsheet className="w-3.5 h-3.5" />
-              Export Report
-            </Button>
-          )}
-          {activeTab === 'overview' && (
-            <>
-              <div className="w-44">
-                <Select value={datePreset} onValueChange={setDatePreset}>
-                  <SelectTrigger className="h-9 bg-white border-gray-200 text-sm">
-                    <CalendarDays className="w-3.5 h-3.5 mr-1.5 text-gray-400" />
-                    <SelectValue placeholder="Date range" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {DATE_PRESETS.map((p) => (
-                      <SelectItem key={p.value} value={p.value}>{p.label}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="w-56">
-                <Select value={selectedJobId} onValueChange={setSelectedJobId}>
-                  <SelectTrigger className="h-9 bg-white border-gray-200 text-sm">
-                    <SelectValue placeholder="Filter by job" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All Jobs</SelectItem>
-                    {jobs.map((j) => (
-                      <SelectItem key={j.id} value={j.id}>{j.title}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            </>
+              Export
+            </button>
           )}
         </div>
       </div>
 
-      {/* Tabs */}
-      <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList>
-          {canViewFullReports && <TabsTrigger value="overview">Overview</TabsTrigger>}
-          <TabsTrigger value="recruiter">Recruiter Performance</TabsTrigger>
-        </TabsList>
+      {/* ── Tab bar ── */}
+      <div className="flex items-center gap-3 flex-wrap">
+        <div className="flex items-center bg-gray-100 rounded-lg p-0.5">
+          {canViewFullReports && (
+            <button
+              onClick={() => setActiveTab('overview')}
+              className={`px-3 py-1.5 rounded-md text-[12px] font-medium transition-all ${
+                activeTab === 'overview' ? 'bg-gray-900 text-white shadow-sm' : 'text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              Overview
+            </button>
+          )}
+          <button
+            onClick={() => setActiveTab('recruiter')}
+            className={`px-3 py-1.5 rounded-md text-[12px] font-medium transition-all ${
+              activeTab === 'recruiter' ? 'bg-gray-900 text-white shadow-sm' : 'text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            Recruiter Performance
+          </button>
+        </div>
 
-        <TabsContent value="overview">
-          <div className="space-y-6">
-            {/* KPI Cards */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-              {KPI_CONFIG.map((kpi) => (
-                <Card key={kpi.key} className={`border-l-4 ${kpi.accent} shadow-sm hover:shadow-md transition-shadow`}>
-                  <CardContent className="p-5">
-                    <div className="flex items-start justify-between">
-                      <div>
-                        <p className="text-sm font-medium text-gray-500">{kpi.label}</p>
-                        <p className="text-3xl font-bold text-gray-900 mt-1">
-                          {kpiValues[kpi.key]}
-                          {'suffix' in kpi && kpi.suffix && (
-                            <span className="text-base font-normal text-gray-400 ml-1">{kpi.suffix}</span>
-                          )}
-                        </p>
-                        <p className="text-xs text-gray-400 mt-1">{kpiSubs[kpi.key]}</p>
-                      </div>
-                      <div className={`p-2.5 rounded-lg ${kpi.bg} ${kpi.iconColor}`}>
-                        {kpi.icon}
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
+        <div className="flex-1" />
+
+        {activeTab === 'overview' && (
+          <button
+            onClick={() => setShowFilters(!showFilters)}
+            className={`flex items-center gap-1.5 h-8 px-3 rounded-lg border text-[12px] font-medium transition-colors ${
+              showFilters || activeFilterCount > 0
+                ? 'bg-gray-900 text-white border-gray-900'
+                : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
+            }`}
+          >
+            <Filter className="w-3.5 h-3.5" />
+            Filters
+            {activeFilterCount > 0 && (
+              <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-bold ${showFilters ? 'bg-white/20 text-white' : 'bg-gray-900 text-white'}`}>
+                {activeFilterCount}
+              </span>
+            )}
+          </button>
+        )}
+      </div>
+
+      {/* ── Collapsible Filters ── */}
+      {activeTab === 'overview' && showFilters && (
+        <div className="bg-gray-50/50 border border-gray-100 rounded-xl p-4">
+          <div className="flex items-center gap-3 flex-wrap">
+            <div>
+              <label className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1 block">Date Range</label>
+              <Select value={datePreset} onValueChange={setDatePreset}>
+                <SelectTrigger className="h-8 w-[160px] text-[12px]">
+                  <CalendarDays className="w-3.5 h-3.5 mr-1.5 text-gray-400" />
+                  <SelectValue placeholder="Date range" />
+                </SelectTrigger>
+                <SelectContent>
+                  {DATE_PRESETS.map((p) => (
+                    <SelectItem key={p.value} value={p.value}>{p.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
-
-            {/* Charts */}
-            <ReportCharts
-              pipeline={pipeline}
-              jobStatusData={jobStatusData}
-              velocity={velocity}
-              timeToHire={timeToHire}
-              sourceData={sourceData}
-              selectedJobTitle={selectedJobId !== 'all' ? jobs.find((j) => j.id === selectedJobId)?.title : undefined}
-            />
+            <div>
+              <label className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1 block">Job</label>
+              <Select value={selectedJobId} onValueChange={setSelectedJobId}>
+                <SelectTrigger className="h-8 w-[200px] text-[12px]">
+                  <SelectValue placeholder="Filter by job" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Jobs</SelectItem>
+                  {jobs.map((j) => (
+                    <SelectItem key={j.id} value={j.id}>{j.title}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            {activeFilterCount > 0 && (
+              <div className="pt-4">
+                <button
+                  onClick={() => { setDatePreset('all'); setSelectedJobId('all') }}
+                  className="text-[11px] text-gray-400 hover:text-gray-600 transition-colors"
+                >
+                  Clear all
+                </button>
+              </div>
+            )}
           </div>
-        </TabsContent>
+        </div>
+      )}
 
-        <TabsContent value="recruiter">
-          <RecruiterPerformance />
-        </TabsContent>
-      </Tabs>
+      {/* ── Overview Tab ── */}
+      {activeTab === 'overview' && (
+        <div className="space-y-4">
+          {/* KPI Cards */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            {KPI_CONFIG.map((kpi) => (
+              <div key={kpi.key} className="bg-white rounded-xl border border-gray-100 overflow-hidden">
+                <div className={`h-[2px] bg-gradient-to-r ${kpi.gradient}`} />
+                <div className="p-4">
+                  <div className="flex items-start justify-between">
+                    <div>
+                      <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">{kpi.label}</p>
+                      <p className="text-2xl font-bold text-gray-900 mt-1 tabular-nums">
+                        {kpiValues[kpi.key]}
+                        {kpi.suffix && (
+                          <span className="text-[12px] font-normal text-gray-400 ml-1">{kpi.suffix}</span>
+                        )}
+                      </p>
+                      <p className="text-[10px] text-gray-400 mt-0.5">{kpiSubs[kpi.key]}</p>
+                    </div>
+                    <div className={`p-2 rounded-lg ${kpi.iconBg}`}>
+                      {kpi.icon}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Charts */}
+          <ReportCharts
+            pipeline={pipeline}
+            jobStatusData={jobStatusData}
+            velocity={velocity}
+            timeToHire={timeToHire}
+            sourceData={sourceData}
+            selectedJobTitle={selectedJobId !== 'all' ? jobs.find((j) => j.id === selectedJobId)?.title : undefined}
+          />
+        </div>
+      )}
+
+      {/* ── Recruiter Performance Tab ── */}
+      {activeTab === 'recruiter' && (
+        <RecruiterPerformance />
+      )}
     </div>
   )
 }
