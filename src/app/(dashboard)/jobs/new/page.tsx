@@ -98,14 +98,26 @@ export default function NewJobPage() {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const d = json.data as Record<string, any>
 
+      // Convert plain-text bullet lists (• or -) to HTML <ul><li> if not already HTML
+      const toHtml = (text: string) => {
+        if (!text) return text
+        if (text.includes('<ul>') || text.includes('<li>') || text.includes('<p>')) return text
+        const lines = text.split(/\n/).map(l => l.trim()).filter(Boolean)
+        const isBulletList = lines.every(l => /^[•\-\*]\s*/.test(l))
+        if (isBulletList) {
+          return '<ul>' + lines.map(l => `<li>${l.replace(/^[•\-\*]\s*/, '')}</li>`).join('') + '</ul>'
+        }
+        return lines.map(l => `<p>${l}</p>`).join('')
+      }
+
       // Auto-fill all text fields
       if (d.title) setValue('title', d.title)
       if (d.department) setValue('department', d.department)
       if (d.location) setValue('location', d.location)
-      if (d.description) setValue('description', d.description)
-      if (d.requirements) setValue('requirements', d.requirements)
-      if (d.nice_to_have) setValue('nice_to_have', d.nice_to_have)
-      if (d.benefits) setValue('benefits', d.benefits)
+      if (d.description) setValue('description', toHtml(d.description))
+      if (d.requirements) setValue('requirements', toHtml(d.requirements))
+      if (d.nice_to_have) setValue('nice_to_have', toHtml(d.nice_to_have))
+      if (d.benefits) setValue('benefits', toHtml(d.benefits))
 
       // Select fields — set form value; formKey bump will re-mount the select components
       if (d.employment_type) setValue('employment_type', d.employment_type)
