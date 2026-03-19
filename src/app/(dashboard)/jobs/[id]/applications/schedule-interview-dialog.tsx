@@ -330,7 +330,7 @@ export function ScheduleInterviewDialog({
               {showSuggestions && filtered.length > 0 && (
                 <div
                   ref={suggestionsRef}
-                  className="absolute z-50 left-0 right-0 top-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg overflow-hidden"
+                  className="absolute z-50 left-0 right-0 top-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg overflow-y-auto max-h-52"
                 >
                   {filtered.map((member, idx) => (
                     <button
