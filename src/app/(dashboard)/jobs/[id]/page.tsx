@@ -20,7 +20,7 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Textarea } from '@/components/ui/textarea'
+import { RichTextEditor } from '@/components/ui/rich-text-editor'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useToast } from '@/hooks/use-toast'
@@ -60,7 +60,7 @@ export default function JobDetailPage() {
   const initialRecruiterIdsRef = useRef<string>('')
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { register, handleSubmit, formState: { errors, isDirty }, setValue, reset } = useForm<UpdateJobInput>({
+  const { register, handleSubmit, formState: { errors, isDirty }, setValue, reset, watch } = useForm<UpdateJobInput>({
     resolver: zodResolver(updateJobSchema) as any,
   })
 
@@ -391,21 +391,57 @@ export default function JobDetailPage() {
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="space-y-2">
-                  <Label htmlFor="description">Job Description</Label>
-                  <Textarea id="description" rows={15} {...register('description')} disabled={!canManageJobs} />
+                  <Label>Job Description</Label>
+                  {canManageJobs ? (
+                    <RichTextEditor
+                      value={watch('description')}
+                      onChange={(val) => setValue('description', val, { shouldDirty: true })}
+                      placeholder="Describe the role, responsibilities, and what makes it exciting..."
+                      rows={15}
+                    />
+                  ) : (
+                    <div className="prose prose-sm max-w-none rounded-md border p-3 bg-gray-50 text-[13px]" dangerouslySetInnerHTML={{ __html: watch('description') || '' }} />
+                  )}
                   {errors.description && <p className="text-sm text-red-600">{errors.description.message}</p>}
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="requirements">Requirements</Label>
-                  <Textarea id="requirements" rows={12} {...register('requirements')} disabled={!canManageJobs} />
+                  <Label>Requirements</Label>
+                  {canManageJobs ? (
+                    <RichTextEditor
+                      value={watch('requirements')}
+                      onChange={(val) => setValue('requirements', val, { shouldDirty: true })}
+                      placeholder="List the skills, experience, and qualifications needed..."
+                      rows={12}
+                    />
+                  ) : (
+                    <div className="prose prose-sm max-w-none rounded-md border p-3 bg-gray-50 text-[13px]" dangerouslySetInnerHTML={{ __html: watch('requirements') || '' }} />
+                  )}
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="nice_to_have">Nice to Have</Label>
-                  <Textarea id="nice_to_have" rows={8} {...register('nice_to_have')} disabled={!canManageJobs} placeholder="Preferred but not required qualifications..." />
+                  <Label>Nice to Have</Label>
+                  {canManageJobs ? (
+                    <RichTextEditor
+                      value={watch('nice_to_have') ?? undefined}
+                      onChange={(val) => setValue('nice_to_have', val, { shouldDirty: true })}
+                      placeholder="Preferred but not required qualifications..."
+                      rows={8}
+                    />
+                  ) : (
+                    <div className="prose prose-sm max-w-none rounded-md border p-3 bg-gray-50 text-[13px]" dangerouslySetInnerHTML={{ __html: watch('nice_to_have') || '' }} />
+                  )}
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="benefits">Benefits & Perks</Label>
-                  <Textarea id="benefits" rows={8} {...register('benefits')} disabled={!canManageJobs} placeholder="Health insurance, PTO, equity, etc." />
+                  <Label>Benefits & Perks</Label>
+                  {canManageJobs ? (
+                    <RichTextEditor
+                      value={watch('benefits') ?? undefined}
+                      onChange={(val) => setValue('benefits', val, { shouldDirty: true })}
+                      placeholder="Health insurance, PTO, equity, etc."
+                      rows={8}
+                    />
+                  ) : (
+                    <div className="prose prose-sm max-w-none rounded-md border p-3 bg-gray-50 text-[13px]" dangerouslySetInnerHTML={{ __html: watch('benefits') || '' }} />
+                  )}
                 </div>
               </CardContent>
             </Card>

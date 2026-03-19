@@ -17,6 +17,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
+import { RichTextEditor } from '@/components/ui/rich-text-editor'
 import { Badge } from '@/components/ui/badge'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { LocationInput } from '@/components/ui/location-input'
@@ -350,45 +351,45 @@ export default function NewJobPage() {
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="space-y-2">
-                  <Label htmlFor="description">Job Description *</Label>
-                  <Textarea
-                    id="description"
-                    rows={15}
+                  <Label>Job Description *</Label>
+                  <RichTextEditor
+                    value={watch('description')}
+                    onChange={(val) => setValue('description', val, { shouldValidate: true })}
                     placeholder="Describe the role, responsibilities, and what makes it exciting..."
-                    {...register('description')}
+                    rows={15}
                   />
                   {errors.description && <p className="text-sm text-red-600">{errors.description.message}</p>}
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="requirements">Requirements *</Label>
-                  <Textarea
-                    id="requirements"
-                    rows={9}
+                  <Label>Requirements *</Label>
+                  <RichTextEditor
+                    value={watch('requirements')}
+                    onChange={(val) => setValue('requirements', val, { shouldValidate: true })}
                     placeholder="List the skills, experience, and qualifications needed..."
-                    {...register('requirements')}
+                    rows={9}
                   />
                   {errors.requirements && <p className="text-sm text-red-600">{errors.requirements.message}</p>}
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="nice_to_have">Nice to Have *</Label>
-                  <Textarea
-                    id="nice_to_have"
-                    rows={5}
+                  <Label>Nice to Have *</Label>
+                  <RichTextEditor
+                    value={watch('nice_to_have')}
+                    onChange={(val) => setValue('nice_to_have', val, { shouldValidate: true })}
                     placeholder="Preferred but not required qualifications..."
-                    {...register('nice_to_have')}
+                    rows={5}
                   />
                   {errors.nice_to_have && <p className="text-sm text-red-600">{errors.nice_to_have.message}</p>}
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="benefits">Benefits & Perks *</Label>
-                  <Textarea
-                    id="benefits"
-                    rows={5}
+                  <Label>Benefits & Perks *</Label>
+                  <RichTextEditor
+                    value={watch('benefits')}
+                    onChange={(val) => setValue('benefits', val, { shouldValidate: true })}
                     placeholder="Health insurance, PTO, equity, remote work, etc."
-                    {...register('benefits')}
+                    rows={5}
                   />
                   {errors.benefits && <p className="text-sm text-red-600">{errors.benefits.message}</p>}
                 </div>
