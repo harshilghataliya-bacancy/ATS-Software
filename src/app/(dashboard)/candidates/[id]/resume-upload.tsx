@@ -107,7 +107,7 @@ export function ResumeUpload({ candidateId, orgId, currentResumeUrl, onUploadCom
               <input
                 ref={fileInputRef}
                 type="file"
-                accept=".pdf,.doc,.docx"
+                accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
                 onChange={handleUpload}
                 className="hidden"
               />
@@ -130,7 +130,7 @@ export function ResumeUpload({ candidateId, orgId, currentResumeUrl, onUploadCom
               <input
                 ref={fileInputRef}
                 type="file"
-                accept=".pdf,.doc,.docx"
+                accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
                 onChange={handleUpload}
                 className="hidden"
               />

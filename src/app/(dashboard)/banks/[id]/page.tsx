@@ -780,7 +780,7 @@ export default function BankDetailPage() {
 
               {/* Resume Upload */}
               <div>
-                <input ref={fileInputRef} type="file" accept=".pdf,.doc,.docx" onChange={handleResumeChange} className="hidden" />
+                <input ref={fileInputRef} type="file" accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document" onChange={handleResumeChange} className="hidden" />
                 <div
                   className="flex flex-col items-center text-center p-4 border-2 border-dashed border-gray-200 rounded-xl bg-gray-50/50 cursor-pointer hover:border-gray-300 transition-colors"
                   onClick={() => fileInputRef.current?.click()}

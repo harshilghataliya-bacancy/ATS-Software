@@ -1598,7 +1598,7 @@ function ResumeUploadButton({
   return (
     <div>
       {error && <p className="text-[11px] text-rose-600 mb-2">{error}</p>}
-      <input ref={fileInputRef} type="file" accept=".pdf,.doc,.docx" onChange={handleUpload} className="hidden" />
+      <input ref={fileInputRef} type="file" accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document" onChange={handleUpload} className="hidden" />
       <Button variant="outline" size="sm" onClick={() => fileInputRef.current?.click()} disabled={uploading} className="text-[12px] rounded-lg">
         {uploading ? 'Uploading...' : 'Upload Resume'}
       </Button>
