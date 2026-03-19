@@ -10,6 +10,10 @@ CREATE TABLE interview_locations (
 
 ALTER TABLE interview_locations ENABLE ROW LEVEL SECURITY;
 
+GRANT ALL ON interview_locations TO authenticated;
+GRANT ALL ON interview_locations TO service_role;
+GRANT ALL ON interview_locations TO anon;
+
 CREATE POLICY "Org members can view interview locations"
   ON interview_locations FOR SELECT
   USING (

@@ -218,7 +218,7 @@ export function ScheduleInterviewDialog({
 
   return (
     <Dialog open={open} onOpenChange={(o) => { onOpenChange(o); if (!o) resetForm() }}>
-      <DialogContent className="max-w-lg">
+      <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Schedule Interview</DialogTitle>
           <DialogDescription>
@@ -230,15 +230,25 @@ export function ScheduleInterviewDialog({
           <div className="bg-red-50 text-red-700 text-sm p-2.5 rounded-md">{error}</div>
         )}
 
-        <div className="space-y-5">
+        <div className="space-y-5 overflow-hidden">
           {/* Interview Name */}
           <div className="space-y-2">
             <Label>Interview Name <span className="text-red-500">*</span></Label>
-            <Input
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              placeholder="e.g. Technical Round 1, HR Screening"
-            />
+            <Select value={title} onValueChange={setTitle}>
+              <SelectTrigger>
+                <SelectValue placeholder="Select interview round" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="Technical Round 1">Technical Round 1</SelectItem>
+                <SelectItem value="Technical Round 2">Technical Round 2</SelectItem>
+                <SelectItem value="Technical Round 3">Technical Round 3</SelectItem>
+                <SelectItem value="HR Round">HR Round</SelectItem>
+                <SelectItem value="Managerial Round">Managerial Round</SelectItem>
+                <SelectItem value="Culture Fit Round">Culture Fit Round</SelectItem>
+                <SelectItem value="Assignment Review">Assignment Review</SelectItem>
+                <SelectItem value="Final Round">Final Round</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
 
           {/* Interview Type — 2 options */}
@@ -367,7 +377,7 @@ export function ScheduleInterviewDialog({
               <Label>Location <span className="text-red-500">*</span></Label>
               {interviewLocations.length > 0 ? (
                 <Select value={location} onValueChange={setLocation}>
-                  <SelectTrigger>
+                  <SelectTrigger className="w-full min-w-0 [&>span:first-child]:truncate [&>span:first-child]:block [&>span:first-child]:max-w-[calc(100%-1.5rem)]">
                     <SelectValue placeholder="Select interview location" />
                   </SelectTrigger>
                   <SelectContent>
