@@ -88,6 +88,9 @@ function getMetadataDescription(action: string, metadata: AnyData | null): strin
   if (action === 'email_sent' && metadata.subject) {
     parts.push(`Subject: ${metadata.subject}`)
   }
+  if (action === 'application_rejected' && metadata.reason) {
+    parts.push(`Reason: ${metadata.reason}`)
+  }
   if (action === 'assessment_completed' && metadata.assessment_name) {
     parts.push(`${metadata.assessment_name}: ${metadata.score}%`)
   }
@@ -128,9 +131,9 @@ function getActionSentence(action: string, metadata: AnyData | null): string {
     case 'application_created':
       return metadata?.job_title ? `applied candidate to ${metadata.job_title}` : 'created an application'
     case 'application_rejected':
-      return 'rejected the application'
+      return metadata?.candidate_name ? `rejected ${metadata.candidate_name}` : 'rejected the application'
     case 'application_hired':
-      return 'hired the candidate'
+      return metadata?.candidate_name ? `hired ${metadata.candidate_name}` : 'hired the candidate'
     case 'candidate_created':
       return 'added the candidate'
     case 'candidate_updated':
@@ -218,7 +221,13 @@ export function ActivityTimeline({ activities, loading, emptyMessage = 'No activ
                   {timeAgo}
                 </span>
               </div>
-              {description && (
+              {activity.action === 'application_rejected' && activity.metadata?.reason && (
+                <div className="bg-rose-50 border border-rose-200 rounded-lg px-3 py-2 mt-1.5">
+                  <p className="text-[11px] font-medium text-rose-700">Reason:</p>
+                  <p className="text-[12px] text-rose-600 mt-0.5">{activity.metadata.reason}</p>
+                </div>
+              )}
+              {description && activity.action !== 'application_rejected' && (
                 <p className="text-xs text-gray-500 mt-0.5">{description}</p>
               )}
               {activity.entity_type && activity.action !== 'stage_changed' && !activity.metadata?.user_name && (

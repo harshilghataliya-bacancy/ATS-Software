@@ -72,7 +72,18 @@ export async function POST(
   // Auto-hire the application when offer is accepted
   if (status === 'accepted' && data?.application_id) {
     await hireApplication(supabase, data.application_id, orgId, user.id)
-    logActivity(supabase, orgId, user.id, 'application', data.application_id, 'application_hired', {}).catch(() => {})
+    // Fetch candidate info for activity log
+    const { data: appInfo } = await supabase
+      .from('applications')
+      .select('candidates(first_name, last_name), jobs(title)')
+      .eq('id', data.application_id)
+      .single()
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const info = appInfo as any
+    logActivity(supabase, orgId, user.id, 'application', data.application_id, 'application_hired', {
+      candidate_name: info?.candidates ? `${info.candidates.first_name} ${info.candidates.last_name}` : undefined,
+      job_title: info?.jobs?.title || undefined,
+    }).catch(() => {})
   }
 
   return NextResponse.json({ success: true, data })

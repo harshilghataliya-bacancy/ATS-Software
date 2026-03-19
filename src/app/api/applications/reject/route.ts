@@ -68,9 +68,21 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: rejectError.message }, { status: 500 })
   }
 
+  // Fetch candidate name for activity log
+  const admin = createAdminClient()
+  const { data: appData } = await admin
+    .from('applications')
+    .select('candidates(first_name, last_name), jobs(title)')
+    .eq('id', applicationId)
+    .single()
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const appInfo = appData as any
+
   // Log activity
   logActivity(supabase, orgId, user.id, 'application', applicationId, 'application_rejected', {
     reason: reason || '',
+    candidate_name: appInfo?.candidates ? `${appInfo.candidates.first_name} ${appInfo.candidates.last_name}` : undefined,
+    job_title: appInfo?.jobs?.title || undefined,
   }).catch(() => {})
 
   // 2. Send rejection email in background (don't block response)

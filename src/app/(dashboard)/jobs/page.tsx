@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { useUser, useRole } from '@/lib/hooks/use-user'
@@ -27,7 +27,7 @@ import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from '@/components/ui/table'
 import {
-  Search, Plus, Download, LayoutGrid, List, Users, Briefcase,
+  Search, Plus, Download, LayoutGrid, List, Users, Briefcase, User,
   Building2, MapPin, DollarSign, CalendarDays, GraduationCap,
   MoreHorizontal, Pencil, Trash2, ArrowUpRight, UserCircle, Filter,
 } from 'lucide-react'
@@ -123,6 +123,12 @@ export default function JobsPage() {
   const [page, setPage] = useState(1)
   const [viewMode, setViewMode] = useState<ViewMode>('card')
   const [showFilters, setShowFilters] = useState(false)
+  const [candidateSearch, setCandidateSearch] = useState('')
+  const [candidateResults, setCandidateResults] = useState<Array<{ id: string; application_id: string; job_id: string; job_title: string; first_name: string; last_name: string; email: string }>>([])
+  const [candidateSearching, setCandidateSearching] = useState(false)
+  const [showCandidateResults, setShowCandidateResults] = useState(false)
+  const candidateSearchRef = useRef<HTMLDivElement>(null)
+  const candidateTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const router = useRouter()
 
   useEffect(() => {
@@ -181,6 +187,42 @@ export default function JobsPage() {
   }
 
   async function handleSearch() { setPage(1); loadJobs() }
+
+  function handleCandidateSearch(query: string) {
+    setCandidateSearch(query)
+    if (candidateTimerRef.current) clearTimeout(candidateTimerRef.current)
+    if (!query.trim()) {
+      setCandidateResults([])
+      setShowCandidateResults(false)
+      return
+    }
+    setCandidateSearching(true)
+    setShowCandidateResults(true)
+    candidateTimerRef.current = setTimeout(async () => {
+      if (!organization) return
+      const supabase = createClient()
+      const term = query.trim()
+      const { data } = await supabase
+        .from('applications')
+        .select('id, job_id, jobs!inner(title), candidates!inner(id, first_name, last_name, email)')
+        .eq('jobs.organization_id', organization.id)
+        .is('deleted_at', null)
+        .or(`first_name.ilike.%${term}%,last_name.ilike.%${term}%,email.ilike.%${term}%`, { referencedTable: 'candidates' })
+        .limit(10)
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const results = (data || []).map((row: any) => ({
+        id: row.candidates.id,
+        application_id: row.id,
+        job_id: row.job_id,
+        job_title: row.jobs.title,
+        first_name: row.candidates.first_name,
+        last_name: row.candidates.last_name,
+        email: row.candidates.email,
+      }))
+      setCandidateResults(results)
+      setCandidateSearching(false)
+    }, 300)
+  }
 
   async function handleDelete(jobId: string) {
     if (!organization) return
@@ -352,7 +394,7 @@ export default function JobsPage() {
       {/* ── Search + Filter Bar ─────────────────────────────────────────── */}
       <div className="space-y-3">
         <div className="flex items-center gap-2">
-          <div className="relative flex-1 max-w-md">
+          <div className="relative flex-1 max-w-xs">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
             <Input
               placeholder="Search jobs…"
@@ -361,6 +403,49 @@ export default function JobsPage() {
               onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
               className="pl-9 h-9 bg-white border-gray-200 text-[13px]"
             />
+          </div>
+
+          {/* Candidate Search */}
+          <div className="relative flex-1 max-w-xs" ref={candidateSearchRef}>
+            <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+            <Input
+              placeholder="Search candidates…"
+              value={candidateSearch}
+              onChange={(e) => handleCandidateSearch(e.target.value)}
+              onFocus={() => { if (candidateResults.length > 0) setShowCandidateResults(true) }}
+              onBlur={() => setTimeout(() => setShowCandidateResults(false), 200)}
+              className="pl-9 h-9 bg-white border-gray-200 text-[13px]"
+            />
+            {showCandidateResults && (
+              <div className="absolute z-50 left-0 right-0 top-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-72 overflow-y-auto">
+                {candidateSearching ? (
+                  <div className="px-3 py-4 text-center text-[12px] text-gray-400">Searching...</div>
+                ) : candidateResults.length === 0 ? (
+                  <div className="px-3 py-4 text-center text-[12px] text-gray-400">No candidates found</div>
+                ) : (
+                  candidateResults.map((c) => (
+                    <button
+                      key={c.application_id}
+                      type="button"
+                      onMouseDown={(e) => {
+                        e.preventDefault()
+                        router.push(`/applications/${c.application_id}`)
+                      }}
+                      className="w-full flex items-center gap-2.5 px-3 py-2 text-left hover:bg-gray-50 transition-colors"
+                    >
+                      <div className="w-7 h-7 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-xs font-semibold shrink-0">
+                        {(c.first_name || c.email)[0].toUpperCase()}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-[13px] font-medium text-gray-800 truncate">{c.first_name} {c.last_name}</p>
+                        <p className="text-[11px] text-gray-400 truncate">{c.email}</p>
+                      </div>
+                      <span className="text-[10px] text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full truncate max-w-[140px] shrink-0">{c.job_title}</span>
+                    </button>
+                  ))
+                )}
+              </div>
+            )}
           </div>
 
           <Button

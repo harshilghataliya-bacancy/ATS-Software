@@ -35,7 +35,7 @@ import {
 } from '@/components/ui/dropdown-menu'
 import {
   ArrowLeft, UserPlus, Upload, List, Columns3, Briefcase, Sparkles, User, Users,
-  Filter, MoreHorizontal, ChevronDown, ExternalLink, FileText, Mail,
+  Filter, MoreHorizontal, ChevronDown, ExternalLink, FileText, Mail, Search,
 } from 'lucide-react'
 
 // ---------------------------------------------------------------------------
@@ -290,11 +290,13 @@ export default function ApplicationsPage() {
   // View mode
   const [viewMode, setViewMode] = useState<ViewMode>('table')
 
-  // Filters
-  const [filterStatus, setFilterStatus] = useState<string>('active')
-  const [filterStage, setFilterStage] = useState<string>('all')
+  // Filters — single stage filter (includes hired/rejected as pseudo-stages)
+  // Values: 'all', stage IDs, 'hired', 'rejected'
+  const [stageFilter, setStageFilter] = useState<string>('all')
+  const filterStatus = 'all' // always fetch all apps
   const [filterScore, setFilterScore] = useState<string>('all')
   const [filterMyCandidates, setFilterMyCandidates] = useState(false)
+  const [searchQuery, setSearchQuery] = useState('')
 
   // AI Match Scores
   const [matchScores, setMatchScores] = useState<Record<string, MatchScore>>({})
@@ -667,8 +669,7 @@ export default function ApplicationsPage() {
   // Filters panel state
   const [filtersOpen, setFiltersOpen] = useState(true)
   const activeFilterCount = [
-    filterStatus !== 'active' ? 1 : 0,
-    filterStage !== 'all' ? 1 : 0,
+    stageFilter !== 'all' ? 1 : 0,
     filterScore !== 'all' ? 1 : 0,
     filterMyCandidates ? 1 : 0,
   ].reduce((a, b) => a + b, 0)
@@ -702,7 +703,16 @@ export default function ApplicationsPage() {
 
   const pipelineStages = stages.map((stage) => ({
     ...stage,
-    applications: allApps.filter((a) => a.current_stage_id === stage.id),
+    applications: allApps.filter((a) => {
+      if (a.current_stage_id !== stage.id) return false
+      if (searchQuery.trim()) {
+        const q = searchQuery.toLowerCase()
+        const name = `${a.candidate?.first_name || ''} ${a.candidate?.last_name || ''}`.toLowerCase()
+        const email = (a.candidate?.email || '').toLowerCase()
+        if (!name.includes(q) && !email.includes(q)) return false
+      }
+      return true
+    }),
   }))
 
   // ---------------------------------------------------------------------------
@@ -788,6 +798,16 @@ export default function ApplicationsPage() {
         <>
           {/* Toolbar */}
           <div className="flex items-center gap-2">
+            <div className="relative">
+              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 pointer-events-none" />
+              <input
+                type="text"
+                placeholder="Search candidates..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="h-8 w-52 pl-8 pr-3 text-[12px] rounded-lg border border-gray-200 bg-white placeholder:text-gray-400 focus:outline-none focus:ring-1 focus:ring-ring"
+              />
+            </div>
             <Button
               variant="outline"
               size="sm"
@@ -807,7 +827,7 @@ export default function ApplicationsPage() {
               <Button
                 variant="ghost" size="sm"
                 className="h-8 text-[12px] text-gray-500"
-                onClick={() => { setFilterStatus('active'); setFilterStage('all'); setFilterScore('all'); setFilterMyCandidates(false) }}
+                onClick={() => { setStageFilter('all'); setFilterScore('all'); setFilterMyCandidates(false) }}
               >
                 Clear all
               </Button>
@@ -827,37 +847,23 @@ export default function ApplicationsPage() {
             <div className="bg-gray-50/80 rounded-xl border border-gray-200 px-4 py-3">
               <div className="flex items-center gap-3 flex-wrap">
                 <div className="flex items-center gap-2">
-                  <span className="text-[11px] font-medium text-gray-500 uppercase tracking-wider">Status</span>
-                  <Select value={filterStatus} onValueChange={setFilterStatus}>
-                    <SelectTrigger className="w-[130px] h-8 text-[12px] bg-white rounded-lg border-gray-200">
+                  <span className="text-[11px] font-medium text-gray-500 uppercase tracking-wider">Stage</span>
+                  <Select value={stageFilter} onValueChange={setStageFilter}>
+                    <SelectTrigger className="w-[180px] h-8 text-[12px] bg-white rounded-lg border-gray-200">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="active">Active</SelectItem>
-                      <SelectItem value="rejected">Rejected</SelectItem>
+                      <SelectItem value="all">All Stages</SelectItem>
+                      {stages.filter((s) => s.stage_type !== 'hired' && s.stage_type !== 'rejected').map((s) => (
+                        <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
+                      ))}
                       <SelectItem value="hired">Hired</SelectItem>
-                      <SelectItem value="all">All</SelectItem>
+                      <SelectItem value="rejected">Rejected</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
                 {allApps.length > 0 && (
                   <>
-                    {filterStatus !== 'rejected' && (
-                      <div className="flex items-center gap-2">
-                        <span className="text-[11px] font-medium text-gray-500 uppercase tracking-wider">Stage</span>
-                        <Select value={filterStage} onValueChange={setFilterStage}>
-                          <SelectTrigger className="w-[150px] h-8 text-[12px] bg-white rounded-lg border-gray-200">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="all">All Stages</SelectItem>
-                            {stages.map((s) => (
-                              <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                    )}
                     <div className="flex items-center gap-2">
                       <span className="text-[11px] font-medium text-gray-500 uppercase tracking-wider">AI Score</span>
                       <Select value={filterScore} onValueChange={setFilterScore}>
@@ -898,8 +904,17 @@ export default function ApplicationsPage() {
             <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
               {(() => {
                 const filteredApps = allApps.filter((app) => {
+                  if (searchQuery.trim()) {
+                    const q = searchQuery.toLowerCase()
+                    const name = `${app.candidate?.first_name || ''} ${app.candidate?.last_name || ''}`.toLowerCase()
+                    const email = (app.candidate?.email || '').toLowerCase()
+                    if (!name.includes(q) && !email.includes(q)) return false
+                  }
                   if (filterMyCandidates && user && app.assigned_recruiter_id !== user.id) return false
-                  if (filterStage !== 'all' && app.current_stage_id !== filterStage) return false
+                  // Stage filter: 'hired'/'rejected' filter by status, stage IDs filter by current_stage_id
+                  if (stageFilter === 'hired' && app.status !== 'hired') return false
+                  if (stageFilter === 'rejected' && app.status !== 'rejected') return false
+                  if (stageFilter !== 'all' && stageFilter !== 'hired' && stageFilter !== 'rejected' && app.current_stage_id !== stageFilter) return false
                   if (filterScore !== 'all') {
                     const score = matchScores[app.id]
                     if (filterScore === 'unscored') return !score
@@ -1114,17 +1129,29 @@ export default function ApplicationsPage() {
         <>
           {/* Status filter (simplified for pipeline) */}
           <div className="flex items-center gap-2">
+            <div className="relative">
+              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 pointer-events-none" />
+              <input
+                type="text"
+                placeholder="Search candidates..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="h-8 w-52 pl-8 pr-3 text-[12px] rounded-lg border border-gray-200 bg-white placeholder:text-gray-400 focus:outline-none focus:ring-1 focus:ring-ring"
+              />
+            </div>
             <div className="flex items-center gap-2">
-              <span className="text-[11px] font-medium text-gray-500 uppercase tracking-wider">Status</span>
-              <Select value={filterStatus} onValueChange={setFilterStatus}>
-                <SelectTrigger className="w-[130px] h-8 text-[12px] rounded-lg border-gray-200">
+              <span className="text-[11px] font-medium text-gray-500 uppercase tracking-wider">Stage</span>
+              <Select value={stageFilter} onValueChange={setStageFilter}>
+                <SelectTrigger className="w-[180px] h-8 text-[12px] rounded-lg border-gray-200">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="active">Active</SelectItem>
-                  <SelectItem value="rejected">Rejected</SelectItem>
+                  <SelectItem value="all">All Stages</SelectItem>
+                  {stages.map((s) => (
+                    <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
+                  ))}
                   <SelectItem value="hired">Hired</SelectItem>
-                  <SelectItem value="all">All</SelectItem>
+                  <SelectItem value="rejected">Rejected</SelectItem>
                 </SelectContent>
               </Select>
             </div>

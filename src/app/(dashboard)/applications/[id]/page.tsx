@@ -606,7 +606,7 @@ export default function ApplicationDetailPage() {
                       <SelectItem value="unassigned" className="text-[12px]">Unassigned</SelectItem>
                       {jobRecruiterIds.map((rid) => (
                         <SelectItem key={rid} value={rid} className="text-[12px]">
-                          {recruiterNames[rid] ?? rid.slice(0, 8)}
+                          {recruiterNames?.[rid] ?? rid.slice(0, 8)}
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -775,7 +775,7 @@ export default function ApplicationDetailPage() {
                       />
                     </div>
                   ) : (
-                    <div className="flex flex-col items-center justify-center py-10 border-2 border-dashed border-gray-200 rounded-xl">
+                    <div className="flex flex-col items-center justify-center py-10 border-2 border-dashed border-gray-200 rounded-xl bg-white">
                       <FileText className="w-10 h-10 text-gray-200 mb-3" />
                       <p className="text-[13px] text-gray-400 mb-1">No resume uploaded</p>
                       <p className="text-[11px] text-gray-300 mb-3">PDF, DOC, DOCX — max 10MB</p>
@@ -942,7 +942,7 @@ export default function ApplicationDetailPage() {
           )}
 
           {interviews.length === 0 ? (
-            <div className="text-center py-16 border-2 border-dashed border-gray-200 rounded-xl">
+            <div className="text-center py-16 border-2 border-dashed border-gray-200 rounded-xl bg-white">
               <Calendar className="w-10 h-10 text-gray-300 mx-auto mb-3" />
               <p className="text-[13px] text-gray-500 font-medium">No interviews scheduled yet</p>
               <p className="text-[11px] text-gray-400 mt-1">Schedule an interview to get started</p>
@@ -1111,18 +1111,6 @@ export default function ApplicationDetailPage() {
             </div>
           )}
 
-          {application.status === 'rejected' && (
-            <div className="bg-rose-50 border border-rose-200 rounded-xl p-4">
-              <p className="font-semibold text-[13px] text-rose-800">Application Rejected</p>
-              {application.rejection_reason && (
-                <p className="text-[12px] text-rose-600 mt-1">{application.rejection_reason}</p>
-              )}
-              {application.rejected_at && (
-                <p className="text-[11px] text-rose-400 mt-1">on {new Date(application.rejected_at).toLocaleDateString()}</p>
-              )}
-            </div>
-          )}
-
           {/* Offer Letters */}
           <div className="flex items-center justify-between">
             <h2 className="text-[15px] font-semibold text-gray-900">
@@ -1201,7 +1189,7 @@ export default function ApplicationDetailPage() {
               ))}
             </div>
           ) : (
-            <div className="text-center py-16 border-2 border-dashed border-gray-200 rounded-xl">
+            <div className="text-center py-16 border-2 border-dashed border-gray-200 rounded-xl bg-white">
               <FileText className="w-10 h-10 text-gray-300 mx-auto mb-3" />
                 <p className="text-[13px] text-gray-500 font-medium">No offers created yet</p>
                 <p className="text-[11px] text-gray-400 mt-1">Create an offer letter to extend to this candidate</p>
@@ -1291,7 +1279,7 @@ export default function ApplicationDetailPage() {
 
               {/* Notes timeline */}
               {notes.length === 0 ? (
-                <div className="text-center py-12 border-2 border-dashed border-gray-200 rounded-xl">
+                <div className="text-center py-12 border-2 border-dashed border-gray-200 rounded-xl bg-white">
                   <PenLine className="w-8 h-8 mx-auto mb-2 text-gray-300" />
                   <p className="text-[13px] text-gray-500">No notes yet</p>
                   <p className="text-[11px] text-gray-400 mt-0.5">Team notes are visible only to your organization</p>
@@ -1805,7 +1793,7 @@ function AssessmentTab({ assessmentInvitations, isActive, canManage, sending, on
 
         {/* Empty state (no history, read-only) */}
         {!hasHistory && (!isActive || !canManage) && (
-          <div className="text-center py-16 border-2 border-dashed border-gray-200 rounded-xl">
+          <div className="text-center py-16 border-2 border-dashed border-gray-200 rounded-xl bg-white">
             <ClipboardList className="w-10 h-10 text-gray-300 mx-auto mb-3" />
             <p className="text-[13px] text-gray-500 font-medium">No assessments sent yet</p>
             <p className="text-[11px] text-gray-400 mt-1">Send an assessment to evaluate this candidate</p>
