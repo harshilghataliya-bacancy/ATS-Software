@@ -23,8 +23,9 @@ export function ResumeUpload({ candidateId, orgId, currentResumeUrl, onUploadCom
     const file = event.target.files?.[0]
     if (!file) return
 
-    if (file.type !== 'application/pdf') {
-      setError('Only PDF files are allowed')
+    const allowedTypes = ['application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document']
+    if (!allowedTypes.includes(file.type)) {
+      setError('Only PDF, DOC, and DOCX files are allowed')
       return
     }
 
@@ -37,7 +38,8 @@ export function ResumeUpload({ candidateId, orgId, currentResumeUrl, onUploadCom
     setError(null)
 
     const supabase = createClient()
-    const filePath = `${orgId}/${candidateId}/resume.pdf`
+    const ext = file.name.split('.').pop()?.toLowerCase() || 'pdf'
+    const filePath = `${orgId}/${candidateId}/resume.${ext}`
 
     const { error: uploadError } = await supabase.storage
       .from('resumes')
@@ -93,7 +95,10 @@ export function ResumeUpload({ candidateId, orgId, currentResumeUrl, onUploadCom
         {currentResumeUrl ? (
           <div className="space-y-3">
             <iframe
-              src={`${currentResumeUrl}#toolbar=0&navpanes=0&scrollbar=1`}
+              src={currentResumeUrl.toLowerCase().endsWith('.pdf')
+                ? `${currentResumeUrl}#toolbar=0&navpanes=0&scrollbar=1`
+                : `/api/resumes/preview-docx?url=${encodeURIComponent(currentResumeUrl)}`
+              }
               className="w-full rounded-lg border bg-white"
               style={{ height: '500px' }}
               title="Resume Preview"
@@ -102,7 +107,7 @@ export function ResumeUpload({ candidateId, orgId, currentResumeUrl, onUploadCom
               <input
                 ref={fileInputRef}
                 type="file"
-                accept=".pdf"
+                accept=".pdf,.doc,.docx"
                 onChange={handleUpload}
                 className="hidden"
               />
@@ -125,7 +130,7 @@ export function ResumeUpload({ candidateId, orgId, currentResumeUrl, onUploadCom
               <input
                 ref={fileInputRef}
                 type="file"
-                accept=".pdf"
+                accept=".pdf,.doc,.docx"
                 onChange={handleUpload}
                 className="hidden"
               />
@@ -137,7 +142,7 @@ export function ResumeUpload({ candidateId, orgId, currentResumeUrl, onUploadCom
               >
                 {uploading ? 'Uploading...' : 'Upload Resume'}
               </Button>
-              <p className="text-xs text-gray-400 mt-1">PDF only, max 10MB</p>
+              <p className="text-xs text-gray-400 mt-1">PDF, DOC, DOCX — max 10MB</p>
             </div>
           </div>
         )}

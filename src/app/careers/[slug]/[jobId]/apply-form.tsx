@@ -51,7 +51,7 @@ export function ApplyForm({ jobId, orgId }: ApplyFormProps) {
     if (!file) return
 
     if (!ALLOWED_RESUME_TYPES.includes(file.type)) {
-      toast({ title: 'Invalid file', description: 'Only PDF files are allowed', variant: 'destructive' })
+      toast({ title: 'Invalid file', description: 'Only PDF, DOC, and DOCX files are allowed', variant: 'destructive' })
       return
     }
     if (file.size > MAX_FILE_SIZE) {
@@ -247,7 +247,7 @@ export function ApplyForm({ jobId, orgId }: ApplyFormProps) {
               <input
                 ref={fileInputRef}
                 type="file"
-                accept=".pdf"
+                accept=".pdf,.doc,.docx"
                 onChange={handleFileChange}
                 className="hidden"
               />
@@ -264,12 +264,12 @@ export function ApplyForm({ jobId, orgId }: ApplyFormProps) {
                     <span className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
                     Parsing resume...
                   </span>
-                ) : resumeFile ? resumeFile.name : 'Upload Resume (PDF)'}
+                ) : resumeFile ? resumeFile.name : 'Upload Resume (PDF, DOC, DOCX)'}
               </Button>
               {parsing && (
                 <p className="text-xs text-blue-600 animate-pulse">Extracting information from your resume to auto-fill the form...</p>
               )}
-              <p className="text-xs text-gray-400">PDF only, max 10MB. Upload first to auto-fill the form.</p>
+              <p className="text-xs text-gray-400">PDF, DOC, DOCX — max 10MB. Upload first to auto-fill the form.</p>
             </div>
           </div>
 

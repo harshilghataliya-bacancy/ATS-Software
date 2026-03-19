@@ -263,7 +263,7 @@ export default function BankDetailPage() {
     setNewError(null)
     setResumeFile(file)
 
-    if (file.type === 'application/pdf') {
+    if (ALLOWED_RESUME_TYPES.includes(file.type)) {
       setParsing(true)
       setParsed(false)
       try {

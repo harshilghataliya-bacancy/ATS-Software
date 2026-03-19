@@ -12,8 +12,13 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'No file provided' }, { status: 400 })
     }
 
-    if (file.type !== 'application/pdf') {
-      return NextResponse.json({ error: 'Only PDF files are supported' }, { status: 400 })
+    const ALLOWED_TYPES = [
+      'application/pdf',
+      'application/msword',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    ]
+    if (!ALLOWED_TYPES.includes(file.type)) {
+      return NextResponse.json({ error: 'Only PDF and Word (.doc, .docx) files are supported' }, { status: 400 })
     }
 
     if (file.size > MAX_FILE_SIZE) {
@@ -21,9 +26,9 @@ export async function POST(request: Request) {
     }
 
     const arrayBuffer = await file.arrayBuffer()
-    const pdfBytes = new Uint8Array(arrayBuffer)
+    const bytes = new Uint8Array(arrayBuffer)
 
-    const { data, error } = await parseResumeFromBytes(pdfBytes)
+    const { data, error } = await parseResumeFromBytes(bytes, file.name)
 
     if (error || !data) {
       return NextResponse.json(

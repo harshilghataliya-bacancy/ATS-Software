@@ -1044,22 +1044,14 @@ export default function InterviewDetailPage() {
           </div>
         </div>
         <div style={{ height: 'calc(100vh - 49px)' }}>
-          {candidate.resume_url.toLowerCase().endsWith('.pdf') ? (
-            <iframe
-              src={`${candidate.resume_url}#toolbar=0&navpanes=0`}
-              title="Candidate Resume"
-              className="w-full h-full border-0"
-            />
-          ) : (
-            <div className="flex items-center justify-center h-full">
-              <div className="text-center">
-                <p className="text-sm text-gray-500">Preview is only available for PDF files.</p>
-                <a href={candidate.resume_url} target="_blank" rel="noopener noreferrer" className="text-sm text-blue-600 hover:underline mt-2 inline-block">
-                  Open in new tab
-                </a>
-              </div>
-            </div>
-          )}
+          <iframe
+            src={candidate.resume_url.toLowerCase().endsWith('.pdf')
+              ? `${candidate.resume_url}#toolbar=0&navpanes=0`
+              : `/api/resumes/preview-docx?url=${encodeURIComponent(candidate.resume_url)}`
+            }
+            title="Candidate Resume"
+            className="w-full h-full border-0"
+          />
         </div>
       </div>
     )}

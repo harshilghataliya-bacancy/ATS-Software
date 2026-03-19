@@ -85,16 +85,17 @@ export async function POST(request: NextRequest) {
     const zipBuffer = await file.arrayBuffer()
     const zip = await JSZip.loadAsync(zipBuffer)
 
-    // Filter PDF entries (skip __MACOSX, directories, non-PDFs)
+    // Filter resume entries (skip __MACOSX, directories, non-resume files)
+    const RESUME_EXTS = ['.pdf', '.doc', '.docx']
     const pdfEntries = Object.entries(zip.files).filter(([name, entry]) => {
       if (entry.dir) return false
       if (name.startsWith('__MACOSX/')) return false
       if (name.startsWith('.')) return false
-      return name.toLowerCase().endsWith('.pdf')
+      return RESUME_EXTS.some(ext => name.toLowerCase().endsWith(ext))
     })
 
     if (pdfEntries.length === 0) {
-      return NextResponse.json({ error: 'No PDF files found in ZIP' }, { status: 400 })
+      return NextResponse.json({ error: 'No resume files (PDF, DOC, DOCX) found in ZIP' }, { status: 400 })
     }
 
     if (pdfEntries.length > MAX_PDFS) {
@@ -181,10 +182,10 @@ async function processPdf(
   const bytesForUpload = new Uint8Array(rawBytes)
 
   // Parse resume via GPT-4o (may fail — that's OK, we still create the candidate)
-  const { data: parsed } = await parseResumeFromBytes(bytesForParse)
+  const { data: parsed } = await parseResumeFromBytes(bytesForParse, filename)
 
   const email = parsed?.email?.toLowerCase().trim() || null
-  const firstName = parsed?.first_name || filename.replace(/\.pdf$/i, '').replace(/[_-]/g, ' ')
+  const firstName = parsed?.first_name || filename.replace(/\.(pdf|docx?|doc)$/i, '').replace(/[_-]/g, ' ')
   const lastName = parsed?.last_name || ''
   const candidateName = `${firstName} ${lastName}`.trim()
 
@@ -270,12 +271,14 @@ async function processPdf(
     }
   }
 
-  // Upload PDF to storage
-  const storagePath = `${orgId}/${candidateId}/resume.pdf`
+  // Upload resume to storage
+  const fileExt = filename.split('.').pop()?.toLowerCase() || 'pdf'
+  const mimeTypes: Record<string, string> = { pdf: 'application/pdf', doc: 'application/msword', docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' }
+  const storagePath = `${orgId}/${candidateId}/resume.${fileExt}`
   const { error: uploadError } = await adminClient.storage
     .from('resumes')
     .upload(storagePath, bytesForUpload, {
-      contentType: 'application/pdf',
+      contentType: mimeTypes[fileExt] || 'application/pdf',
       upsert: true,
     })
 

@@ -19,7 +19,7 @@ export async function POST(request: NextRequest) {
     const arrayBuffer = await file.arrayBuffer()
     const bytes = new Uint8Array(arrayBuffer)
 
-    const { data, error } = await parseResumeFromBytes(bytes)
+    const { data, error } = await parseResumeFromBytes(bytes, file.name)
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 500 })
     }

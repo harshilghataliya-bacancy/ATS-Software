@@ -31,7 +31,11 @@ import { ScoreBreakdownDialog } from './score-breakdown-dialog'
 import { BulkResumeUploadDialog } from '@/components/bulk-upload/bulk-resume-upload-dialog'
 import { AddCandidateDialog } from '@/components/add-candidate-dialog'
 import {
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
+import {
   ArrowLeft, UserPlus, Upload, List, Columns3, Briefcase, Sparkles, User, Users,
+  Filter, MoreHorizontal, ChevronDown, ExternalLink, FileText, Mail,
 } from 'lucide-react'
 
 // ---------------------------------------------------------------------------
@@ -115,6 +119,47 @@ const STAGE_COLORS: Record<string, string> = {
   rejected:   'border-t-red-400',
 }
 
+const STAGE_BG: Record<string, string> = {
+  applied:    'bg-blue-50 text-blue-700 border-blue-200',
+  screening:  'bg-yellow-50 text-yellow-700 border-yellow-200',
+  assessment: 'bg-orange-50 text-orange-700 border-orange-200',
+  interview:  'bg-purple-50 text-purple-700 border-purple-200',
+  offer:      'bg-green-50 text-green-700 border-green-200',
+  hired:      'bg-emerald-50 text-emerald-700 border-emerald-200',
+  rejected:   'bg-red-50 text-red-700 border-red-200',
+}
+
+// Status dot + pill design
+const STATUS_DOT: Record<string, string> = {
+  active:    'bg-emerald-500',
+  rejected:  'bg-rose-400',
+  hired:     'bg-emerald-500',
+  withdrawn: 'bg-gray-400',
+}
+
+const STATUS_PILL: Record<string, string> = {
+  active:    'bg-emerald-50 text-emerald-700 border-emerald-200',
+  rejected:  'bg-rose-50 text-rose-600 border-rose-200',
+  hired:     'bg-emerald-50 text-emerald-700 border-emerald-200',
+  withdrawn: 'bg-gray-50 text-gray-600 border-gray-200',
+}
+
+// Gradient avatars
+const GRADIENTS = [
+  'from-blue-500 to-indigo-600',
+  'from-emerald-500 to-teal-600',
+  'from-violet-500 to-purple-600',
+  'from-rose-500 to-pink-600',
+  'from-amber-500 to-orange-600',
+  'from-cyan-500 to-blue-600',
+]
+
+function getGradient(name: string) {
+  let hash = 0
+  for (let i = 0; i < name.length; i++) hash = name.charCodeAt(i) + ((hash << 5) - hash)
+  return GRADIENTS[Math.abs(hash) % GRADIENTS.length]
+}
+
 // ---------------------------------------------------------------------------
 // Pipeline: Droppable stage column
 // ---------------------------------------------------------------------------
@@ -125,13 +170,15 @@ function StageColumn({ stage, children }: { stage: StageGroup; children: React.R
   return (
     <div
       ref={setNodeRef}
-      className={`flex flex-col w-72 min-w-[18rem] rounded-lg border border-t-4 bg-gray-50/50 ${
+      className={`flex flex-col w-72 min-w-[18rem] rounded-xl border border-t-4 bg-gray-50/30 transition-all ${
         STAGE_COLORS[stage.stage_type] ?? 'border-t-gray-400'
-      } ${isOver ? 'ring-2 ring-blue-400 bg-blue-50/20' : ''}`}
+      } ${isOver ? 'ring-2 ring-blue-400/60 bg-blue-50/30 border-blue-200' : 'border-gray-200'}`}
     >
-      <div className="flex items-center justify-between px-3 py-2.5 border-b bg-white rounded-t-lg">
-        <h3 className="text-sm font-semibold text-gray-700">{stage.name}</h3>
-        <span className="text-xs font-medium text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full">
+      <div className="flex items-center justify-between px-3.5 py-3 border-b border-gray-100 bg-white rounded-t-xl">
+        <div className="flex items-center gap-2">
+          <h3 className="text-[13px] font-semibold text-gray-800">{stage.name}</h3>
+        </div>
+        <span className="text-[11px] font-bold text-gray-500 bg-gray-100 min-w-[24px] text-center px-2 py-0.5 rounded-full">
           {stage.applications.length}
         </span>
       </div>
@@ -157,44 +204,47 @@ function AppCardUI({
   isDragging?: boolean
   draggable?: boolean
 }) {
+  const fullName = `${app.candidate.first_name} ${app.candidate.last_name}`
   const initials = `${app.candidate.first_name?.[0] ?? ''}${app.candidate.last_name?.[0] ?? ''}`.toUpperCase()
+  const gradient = getGradient(fullName)
   const statusConfig = APPLICATION_STATUS_CONFIG[app.status as keyof typeof APPLICATION_STATUS_CONFIG]
 
   return (
     <div
-      className={`bg-white rounded-xl border border-gray-200 transition-shadow ${draggable ? 'cursor-grab active:cursor-grabbing' : ''} ${
-        isDragging ? 'shadow-lg ring-2 ring-blue-300 opacity-90' : 'hover:shadow-md'
+      className={`bg-white rounded-xl border transition-all ${draggable ? 'cursor-grab active:cursor-grabbing' : ''} ${
+        isDragging ? 'shadow-xl ring-2 ring-blue-300/70 opacity-95 scale-[1.02] border-blue-200' : 'hover:shadow-md border-gray-200'
       }`}
     >
       <div className="p-3">
         <div className="flex items-start gap-2.5">
-          <div className="w-8 h-8 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-xs font-semibold shrink-0">
+          <div className={`w-8 h-8 rounded-full bg-gradient-to-br ${gradient} text-white flex items-center justify-center text-[11px] font-semibold shrink-0 shadow-sm`}>
             {initials}
           </div>
           <div className="flex-1 min-w-0">
             <Link
               href={`/applications/${app.id}?from=applications`}
               onClick={(e) => e.stopPropagation()}
-              className="text-sm font-medium text-gray-900 truncate block hover:text-blue-600 transition-colors"
+              className="text-[13px] font-medium text-gray-900 truncate block hover:text-blue-600 transition-colors"
             >
-              {app.candidate.first_name} {app.candidate.last_name}
+              {fullName}
             </Link>
-            <p className="text-xs text-gray-500 truncate">{app.candidate.email}</p>
+            <p className="text-[11px] text-gray-400 truncate">{app.candidate.email}</p>
           </div>
         </div>
-        <div className="flex items-center gap-2 mt-2 flex-wrap">
+        <div className="flex items-center gap-1.5 mt-2.5 flex-wrap">
           {statusConfig && (
-            <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-gray-100 text-gray-700`}>
+            <span className={`inline-flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded-full border ${STATUS_PILL[app.status] ?? 'bg-gray-50 text-gray-600 border-gray-200'}`}>
+              <span className={`w-1.5 h-1.5 rounded-full ${STATUS_DOT[app.status] ?? 'bg-gray-400'}`} />
               {statusConfig.label}
             </span>
           )}
           {app.candidate.tags?.slice(0, 2).map((tag) => (
-            <span key={tag} className="text-[10px] bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded">
+            <span key={tag} className="text-[10px] bg-gray-50 text-gray-500 px-1.5 py-0.5 rounded-md border border-gray-100">
               {tag}
             </span>
           ))}
         </div>
-        <p className="text-[10px] text-gray-400 mt-1.5">
+        <p className="text-[10px] text-gray-400 mt-2">
           {new Date(app.applied_at).toLocaleDateString()}
         </p>
       </div>
@@ -614,14 +664,23 @@ export default function ApplicationsPage() {
   }
 
   // Compute pipeline stages from allApps (always fresh — reflects optimistic stage changes)
+  // Filters panel state
+  const [filtersOpen, setFiltersOpen] = useState(true)
+  const activeFilterCount = [
+    filterStatus !== 'active' ? 1 : 0,
+    filterStage !== 'all' ? 1 : 0,
+    filterScore !== 'all' ? 1 : 0,
+    filterMyCandidates ? 1 : 0,
+  ].reduce((a, b) => a + b, 0)
+
   const viewToggle = (
-    <div className="flex items-center gap-0.5 rounded-lg border border-gray-200 bg-gray-50 p-1">
+    <div className="flex items-center gap-0.5 rounded-lg bg-gray-100 p-1">
       <button
         onClick={() => setViewMode('table')}
         title="Table view"
         className={`flex items-center justify-center w-8 h-7 rounded-md transition-all duration-150 ${
           viewMode === 'table'
-            ? 'bg-white text-gray-900 shadow-sm ring-1 ring-gray-200'
+            ? 'bg-gray-900 text-white shadow-sm'
             : 'text-gray-400 hover:text-gray-600'
         }`}
       >
@@ -632,7 +691,7 @@ export default function ApplicationsPage() {
         title="Pipeline view"
         className={`flex items-center justify-center w-8 h-7 rounded-md transition-all duration-150 ${
           viewMode === 'pipeline'
-            ? 'bg-white text-gray-900 shadow-sm ring-1 ring-gray-200'
+            ? 'bg-gray-900 text-white shadow-sm'
             : 'text-gray-400 hover:text-gray-600'
         }`}
       >
@@ -675,21 +734,22 @@ export default function ApplicationsPage() {
             <ArrowLeft className="w-4 h-4" />
           </button>
           <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-blue-500 to-indigo-600 text-white flex items-center justify-center shrink-0">
+            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 text-white flex items-center justify-center shrink-0 shadow-sm">
               <Briefcase className="w-4 h-4" />
             </div>
             <div>
               <div className="flex items-center gap-2.5">
                 <h1 className="text-lg font-semibold text-gray-900">{job.title}</h1>
-                <span className="text-[11px] font-medium px-2 py-0.5 rounded-full bg-gray-100 text-gray-600">{allApps.length} applicant{allApps.length !== 1 ? 's' : ''}</span>
-                {batchScoring && <span className="text-[10px] font-medium px-2 py-0.5 rounded-full border border-blue-200 text-blue-500 animate-pulse">AI Scoring...</span>}
-                {moving && <span className="text-xs text-gray-400 animate-pulse">Saving…</span>}
+                <span className="text-[11px] font-medium px-2 py-0.5 rounded-full border border-gray-200 bg-gray-50 text-gray-600">{allApps.length} applicant{allApps.length !== 1 ? 's' : ''}</span>
+                {batchScoring && <span className="text-[10px] font-medium px-2 py-0.5 rounded-full border border-blue-200 bg-blue-50 text-blue-600 animate-pulse">AI Scoring...</span>}
+                {moving && <span className="text-[11px] text-gray-400 animate-pulse">Saving...</span>}
               </div>
-              <p className="text-xs text-gray-400 mt-0.5 flex items-center gap-2">
+              <p className="text-[12px] text-gray-400 mt-0.5 flex items-center gap-2">
                 Applications
                 {job.assigned_to && recruiterNames[job.assigned_to] && (
-                  <span className="text-[11px] font-medium text-emerald-700 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded-full">
-                    ★ {recruiterNames[job.assigned_to]}
+                  <span className="text-[11px] font-medium text-emerald-700 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded-full inline-flex items-center gap-1">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                    {recruiterNames[job.assigned_to]}
                   </span>
                 )}
               </p>
@@ -700,18 +760,18 @@ export default function ApplicationsPage() {
         <div className="flex items-center gap-2">
           {canManageJobs && (
             <>
-              <Button variant="outline" size="sm" onClick={() => setAddCandidateOpen(true)} className="gap-1.5">
+              <Button variant="outline" size="sm" onClick={() => setAddCandidateOpen(true)} className="gap-1.5 h-8 text-[12px] rounded-lg border-gray-200">
                 <UserPlus className="w-3.5 h-3.5" />
                 Add Candidate
               </Button>
-              <Button variant="outline" size="sm" onClick={() => setBulkUploadOpen(true)} className="gap-1.5">
+              <Button variant="outline" size="sm" onClick={() => setBulkUploadOpen(true)} className="gap-1.5 h-8 text-[12px] rounded-lg border-gray-200">
                 <Upload className="w-3.5 h-3.5" />
                 Bulk Upload
               </Button>
             </>
           )}
           {allApps.length > 0 && canManageJobs && (
-            <Button size="sm" disabled={batchScoring} onClick={handleBatchScore} className="bg-blue-600 hover:bg-blue-700 text-white gap-1.5">
+            <Button size="sm" disabled={batchScoring} onClick={handleBatchScore} className="bg-gray-900 hover:bg-gray-800 text-white gap-1.5 h-8 text-[12px] rounded-lg shadow-sm">
               <Sparkles className="w-3.5 h-3.5" />
               {batchScoring ? 'Scoring...' : 'AI Re-Score All'}
             </Button>
@@ -726,87 +786,110 @@ export default function ApplicationsPage() {
       {/* ── TABLE VIEW ──────────────────────────────────────────────────────── */}
       {viewMode === 'table' && (
         <>
-          {/* Filters */}
-          <div className="flex items-center gap-3">
-            <div className="flex items-center gap-2">
-              <span className="text-sm text-gray-500">Status:</span>
-              <Select value={filterStatus} onValueChange={setFilterStatus}>
-                <SelectTrigger className="w-[140px] h-8 text-xs">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="active">Active</SelectItem>
-                  <SelectItem value="rejected">Rejected</SelectItem>
-                  <SelectItem value="hired">Hired</SelectItem>
-                  <SelectItem value="all">All</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            {allApps.length > 0 && (
-              <>
-                {filterStatus !== 'rejected' && (
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm text-gray-500">Stage:</span>
-                    <Select value={filterStage} onValueChange={setFilterStage}>
-                      <SelectTrigger className="w-[160px] h-8 text-xs">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="all">All Stages</SelectItem>
-                        {stages.map((s) => (
-                          <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                )}
-                <div className="flex items-center gap-2">
-                  <span className="text-sm text-gray-500">AI Score:</span>
-                  <Select value={filterScore} onValueChange={setFilterScore}>
-                    <SelectTrigger className="w-[140px] h-8 text-xs">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">All Scores</SelectItem>
-                      <SelectItem value="80+">80+ (Strong)</SelectItem>
-                      <SelectItem value="60-79">60-79 (Good)</SelectItem>
-                      <SelectItem value="40-59">40-59 (Fair)</SelectItem>
-                      <SelectItem value="<40">&lt;40 (Weak)</SelectItem>
-                      <SelectItem value="unscored">Unscored</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              </>
-            )}
-            {jobRecruiterIds.length > 0 && (
-              <Button
-                variant={filterMyCandidates ? 'default' : 'outline'}
-                size="sm"
-                className={`h-8 text-xs gap-1.5 ${filterMyCandidates ? '' : ''}`}
-                onClick={() => setFilterMyCandidates((v) => !v)}
-              >
-                <User className="w-3.5 h-3.5" />
-                My Candidates
-              </Button>
-            )}
-            {(filterStatus !== 'active' || filterStage !== 'all' || filterScore !== 'all' || filterMyCandidates) && (
+          {/* Toolbar */}
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setFiltersOpen((v) => !v)}
+              className={`h-8 text-[12px] gap-1.5 rounded-lg border-gray-200 ${filtersOpen ? 'bg-gray-50' : ''}`}
+            >
+              <Filter className="w-3.5 h-3.5" />
+              Filters
+              {activeFilterCount > 0 && (
+                <span className="ml-0.5 min-w-[18px] h-[18px] flex items-center justify-center rounded-full bg-gray-900 text-white text-[10px] font-bold">
+                  {activeFilterCount}
+                </span>
+              )}
+              <ChevronDown className={`w-3 h-3 text-gray-400 transition-transform ${filtersOpen ? 'rotate-180' : ''}`} />
+            </Button>
+            {activeFilterCount > 0 && (
               <Button
                 variant="ghost" size="sm"
-                className="h-8 text-xs text-gray-500"
+                className="h-8 text-[12px] text-gray-500"
                 onClick={() => { setFilterStatus('active'); setFilterStage('all'); setFilterScore('all'); setFilterMyCandidates(false) }}
               >
-                Clear filters
+                Clear all
               </Button>
             )}
             <div className="flex-1" />
             {isAdmin && (
-              <Button variant="outline" size="sm" onClick={openManageRecruiters} className="h-8 text-xs gap-1.5">
+              <Button variant="outline" size="sm" onClick={openManageRecruiters} className="h-8 text-[12px] gap-1.5 rounded-lg border-gray-200">
                 <Users className="w-3.5 h-3.5" />
                 Manage Recruiters
               </Button>
             )}
             {viewToggle}
           </div>
+
+          {/* Collapsible Filters Panel */}
+          {filtersOpen && (
+            <div className="bg-gray-50/80 rounded-xl border border-gray-200 px-4 py-3">
+              <div className="flex items-center gap-3 flex-wrap">
+                <div className="flex items-center gap-2">
+                  <span className="text-[11px] font-medium text-gray-500 uppercase tracking-wider">Status</span>
+                  <Select value={filterStatus} onValueChange={setFilterStatus}>
+                    <SelectTrigger className="w-[130px] h-8 text-[12px] bg-white rounded-lg border-gray-200">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="active">Active</SelectItem>
+                      <SelectItem value="rejected">Rejected</SelectItem>
+                      <SelectItem value="hired">Hired</SelectItem>
+                      <SelectItem value="all">All</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                {allApps.length > 0 && (
+                  <>
+                    {filterStatus !== 'rejected' && (
+                      <div className="flex items-center gap-2">
+                        <span className="text-[11px] font-medium text-gray-500 uppercase tracking-wider">Stage</span>
+                        <Select value={filterStage} onValueChange={setFilterStage}>
+                          <SelectTrigger className="w-[150px] h-8 text-[12px] bg-white rounded-lg border-gray-200">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="all">All Stages</SelectItem>
+                            {stages.map((s) => (
+                              <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    )}
+                    <div className="flex items-center gap-2">
+                      <span className="text-[11px] font-medium text-gray-500 uppercase tracking-wider">AI Score</span>
+                      <Select value={filterScore} onValueChange={setFilterScore}>
+                        <SelectTrigger className="w-[130px] h-8 text-[12px] bg-white rounded-lg border-gray-200">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">All Scores</SelectItem>
+                          <SelectItem value="80+">80+ (Strong)</SelectItem>
+                          <SelectItem value="60-79">60-79 (Good)</SelectItem>
+                          <SelectItem value="40-59">40-59 (Fair)</SelectItem>
+                          <SelectItem value="<40">&lt;40 (Weak)</SelectItem>
+                          <SelectItem value="unscored">Unscored</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </>
+                )}
+                {jobRecruiterIds.length > 0 && (
+                  <Button
+                    variant={filterMyCandidates ? 'default' : 'outline'}
+                    size="sm"
+                    className={`h-8 text-[12px] gap-1.5 rounded-lg ${filterMyCandidates ? 'bg-gray-900 hover:bg-gray-800 text-white' : 'border-gray-200 bg-white'}`}
+                    onClick={() => setFilterMyCandidates((v) => !v)}
+                  >
+                    <User className="w-3.5 h-3.5" />
+                    My Candidates
+                  </Button>
+                )}
+              </div>
+            </div>
+          )}
 
           {/* Table */}
           {allApps.length === 0 ? (
@@ -832,7 +915,7 @@ export default function ApplicationsPage() {
 
                 if (filteredApps.length === 0) {
                   return (
-                    <div className="text-center py-8 text-gray-500 text-sm">
+                    <div className="text-center py-8 text-gray-500 text-[13px]">
                       No applications match the current filters.
                     </div>
                   )
@@ -841,47 +924,45 @@ export default function ApplicationsPage() {
                 return (
                   <Table>
                     <TableHeader>
-                      <TableRow className="bg-gray-50/40 hover:bg-gray-50/40 border-b border-gray-100">
+                      <TableRow className="bg-gray-50/60 hover:bg-gray-50/60 border-b border-gray-100">
                         <TableHead className="text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Candidate</TableHead>
                         <TableHead className="text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Status</TableHead>
                         <TableHead className="text-[11px] font-semibold text-gray-500 uppercase tracking-wider">AI Score</TableHead>
                         <TableHead className="text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Assessment</TableHead>
-                        <TableHead className="text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Email</TableHead>
-                        <TableHead className="text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Phone</TableHead>
                         <TableHead className="text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Assigned To</TableHead>
                         <TableHead className="text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Current Stage</TableHead>
                         <TableHead className="text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Applied</TableHead>
+                        <TableHead className="text-[11px] font-semibold text-gray-500 uppercase tracking-wider w-10"></TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {filteredApps.map((app) => (
+                      {filteredApps.map((app) => {
+                        const fullName = `${app.candidate.first_name} ${app.candidate.last_name}`
+                        const initials = `${app.candidate.first_name?.[0] ?? ''}${app.candidate.last_name?.[0] ?? ''}`.toUpperCase()
+                        const gradient = getGradient(fullName)
+
+                        return (
                         <TableRow
                           key={app.id}
-                          className="cursor-pointer hover:bg-gray-50"
+                          className="group cursor-pointer hover:bg-gray-50/80 transition-colors"
                           onClick={() => router.push(`/applications/${app.id}?from=applications`)}
                         >
                           <TableCell>
-                            <div className="flex items-center gap-2">
-                              <span className="font-medium text-gray-900">
-                                {app.candidate.first_name} {app.candidate.last_name}
-                              </span>
-                              <Link
-                                href={`/candidates/${app.candidate.id}`}
-                                onClick={(e) => e.stopPropagation()}
-                                className="text-[10px] text-gray-400 hover:text-gray-700 hover:underline"
-                              >
-                                Profile
-                              </Link>
+                            <div className="flex items-center gap-2.5">
+                              <div className={`w-8 h-8 rounded-full bg-gradient-to-br ${gradient} text-white flex items-center justify-center text-[11px] font-semibold shrink-0 shadow-sm`}>
+                                {initials}
+                              </div>
+                              <div className="min-w-0">
+                                <span className="text-[13px] font-medium text-gray-900 truncate block">
+                                  {fullName}
+                                </span>
+                                <span className="text-[11px] text-gray-400 truncate block">{app.candidate.email}</span>
+                              </div>
                             </div>
                           </TableCell>
                           <TableCell>
-                            <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full ${
-                              app.status === 'active'    ? 'bg-green-100 text-green-800' :
-                              app.status === 'rejected'  ? 'bg-red-100 text-red-800' :
-                              app.status === 'hired'     ? 'bg-emerald-100 text-emerald-800' :
-                              app.status === 'withdrawn' ? 'bg-gray-100 text-gray-800' :
-                              'bg-gray-100 text-gray-800'
-                            }`}>
+                            <span className={`inline-flex items-center gap-1.5 text-[11px] font-medium px-2 py-0.5 rounded-full border ${STATUS_PILL[app.status] ?? 'bg-gray-50 text-gray-600 border-gray-200'}`}>
+                              <span className={`w-1.5 h-1.5 rounded-full ${STATUS_DOT[app.status] ?? 'bg-gray-400'}`} />
                               {app.status}
                             </span>
                           </TableCell>
@@ -889,14 +970,14 @@ export default function ApplicationsPage() {
                             {(() => {
                               const score = matchScores[app.id]
                               if (!score) return batchScoring
-                                ? <span className="text-xs text-gray-400 animate-pulse">Scoring...</span>
-                                : <span className="text-xs text-gray-400">-</span>
+                                ? <span className="text-[11px] text-gray-400 animate-pulse">Scoring...</span>
+                                : <span className="text-[11px] text-gray-400">-</span>
                               return (
                                 <button
                                   onClick={() => setScoreDetailApp(app)}
                                   className="flex flex-col items-center gap-0.5 cursor-pointer hover:opacity-80"
                                 >
-                                  <span className={`${getScoreBadgeColor(score.overall_score)} text-xs font-semibold px-2 py-0.5 rounded-full`}>
+                                  <span className={`${getScoreBadgeColor(score.overall_score)} text-[11px] font-semibold px-2 py-0.5 rounded-full`}>
                                     {score.overall_score}%
                                   </span>
                                   <Progress
@@ -910,18 +991,18 @@ export default function ApplicationsPage() {
                           <TableCell>
                             {(() => {
                               const inv = assessmentInvitations[app.id]
-                              if (!inv) return <span className="text-xs text-gray-400">-</span>
+                              if (!inv) return <span className="text-[11px] text-gray-400">-</span>
                               const statusColors: Record<string, string> = {
-                                invited: 'bg-amber-100 text-amber-700',
-                                started: 'bg-blue-100 text-blue-700',
-                                completed: 'bg-green-100 text-green-700',
-                                expired: 'text-gray-500',
+                                invited: 'bg-amber-50 text-amber-700 border-amber-200',
+                                started: 'bg-blue-50 text-blue-700 border-blue-200',
+                                completed: 'bg-green-50 text-green-700 border-green-200',
+                                expired: 'bg-gray-50 text-gray-500 border-gray-200',
                               }
                               const statusLabels: Record<string, string> = {
                                 invited: 'Sent', started: 'In Progress', completed: 'Completed', expired: 'Expired',
                               }
                               return (
-                                <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full ${statusColors[inv.status] || 'bg-gray-100 text-gray-700'}`}>
+                                <span className={`inline-flex items-center text-[10px] font-medium px-2 py-0.5 rounded-full border ${statusColors[inv.status] || 'bg-gray-50 text-gray-700 border-gray-200'}`}>
                                   {inv.status === 'completed' && inv.score != null
                                     ? `${Math.round(inv.score)}%`
                                     : statusLabels[inv.status] || inv.status}
@@ -929,8 +1010,6 @@ export default function ApplicationsPage() {
                               )
                             })()}
                           </TableCell>
-                          <TableCell className="text-sm text-gray-600">{app.candidate.email}</TableCell>
-                          <TableCell className="text-sm text-gray-600">{app.candidate.phone || '-'}</TableCell>
                           <TableCell onClick={(e) => e.stopPropagation()}>
                             {isAdmin && jobRecruiterIds.length > 0 ? (
                               <Select
@@ -944,7 +1023,7 @@ export default function ApplicationsPage() {
                                   await assignRecruiter(supabase3, app.id, organization.id, newId)
                                 }}
                               >
-                                <SelectTrigger className="w-[140px] h-8 text-xs">
+                                <SelectTrigger className="w-[130px] h-7 text-[11px] rounded-lg border-gray-200">
                                   <SelectValue />
                                 </SelectTrigger>
                                 <SelectContent>
@@ -957,7 +1036,7 @@ export default function ApplicationsPage() {
                                 </SelectContent>
                               </Select>
                             ) : (
-                              <span className="text-xs text-gray-600">
+                              <span className="text-[12px] text-gray-600">
                                 {app.assigned_recruiter_id ? (recruiterNames[app.assigned_recruiter_id] ?? '-') : '-'}
                               </span>
                             )}
@@ -968,7 +1047,7 @@ export default function ApplicationsPage() {
                                 value={app.current_stage_id}
                                 onValueChange={(val) => handleStageChange(app, val)}
                               >
-                                <SelectTrigger className="w-[160px] h-8 text-xs">
+                                <SelectTrigger className="w-[150px] h-7 text-[11px] rounded-lg border-gray-200">
                                   <SelectValue />
                                 </SelectTrigger>
                                 <SelectContent>
@@ -978,16 +1057,49 @@ export default function ApplicationsPage() {
                                 </SelectContent>
                               </Select>
                             ) : (
-                              <span className="text-xs font-medium px-2 py-0.5 rounded-full border border-gray-200 text-gray-700">
+                              <span className={`inline-flex items-center text-[11px] font-medium px-2 py-0.5 rounded-full border ${
+                                STAGE_BG[app.current_stage?.stage_type ?? ''] ?? 'bg-gray-50 text-gray-700 border-gray-200'
+                              }`}>
                                 {app.current_stage?.name ?? '-'}
                               </span>
                             )}
                           </TableCell>
-                          <TableCell className="text-sm text-gray-600">
+                          <TableCell className="text-[12px] text-gray-500">
                             {new Date(app.applied_at).toLocaleDateString()}
                           </TableCell>
+                          <TableCell onClick={(e) => e.stopPropagation()}>
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <button className="p-1 rounded-md opacity-0 group-hover:opacity-100 hover:bg-gray-100 transition-all">
+                                  <MoreHorizontal className="w-4 h-4 text-gray-400" />
+                                </button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end" className="w-48">
+                                <DropdownMenuItem onClick={() => router.push(`/applications/${app.id}?from=applications`)}>
+                                  <ExternalLink className="w-3.5 h-3.5 mr-2" />
+                                  View Application
+                                </DropdownMenuItem>
+                                <DropdownMenuItem onClick={() => router.push(`/candidates/${app.candidate.id}`)}>
+                                  <User className="w-3.5 h-3.5 mr-2" />
+                                  View Profile
+                                </DropdownMenuItem>
+                                {app.candidate.resume_url && (
+                                  <DropdownMenuItem onClick={() => window.open(app.candidate.resume_url!, '_blank')}>
+                                    <FileText className="w-3.5 h-3.5 mr-2" />
+                                    View Resume
+                                  </DropdownMenuItem>
+                                )}
+                                <DropdownMenuSeparator />
+                                <DropdownMenuItem onClick={() => window.open(`mailto:${app.candidate.email}`, '_blank')}>
+                                  <Mail className="w-3.5 h-3.5 mr-2" />
+                                  Send Email
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          </TableCell>
                         </TableRow>
-                      ))}
+                        )
+                      })}
                     </TableBody>
                   </Table>
                 )
@@ -1001,11 +1113,11 @@ export default function ApplicationsPage() {
       {viewMode === 'pipeline' && (
         <>
           {/* Status filter (simplified for pipeline) */}
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2">
             <div className="flex items-center gap-2">
-              <span className="text-sm text-gray-500">Status:</span>
+              <span className="text-[11px] font-medium text-gray-500 uppercase tracking-wider">Status</span>
               <Select value={filterStatus} onValueChange={setFilterStatus}>
-                <SelectTrigger className="w-[140px] h-8 text-xs">
+                <SelectTrigger className="w-[130px] h-8 text-[12px] rounded-lg border-gray-200">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -1018,7 +1130,7 @@ export default function ApplicationsPage() {
             </div>
             <div className="flex-1" />
             {isAdmin && (
-              <Button variant="outline" size="sm" onClick={openManageRecruiters} className="h-8 text-xs gap-1.5">
+              <Button variant="outline" size="sm" onClick={openManageRecruiters} className="h-8 text-[12px] gap-1.5 rounded-lg border-gray-200">
                 <Users className="w-3.5 h-3.5" />
                 Manage Recruiters
               </Button>
@@ -1035,7 +1147,7 @@ export default function ApplicationsPage() {
               onDragStart={handleDragStart}
               onDragEnd={handleDragEnd}
             >
-              <div className="flex gap-4 overflow-x-auto pb-4" style={{ minHeight: 'calc(100vh - 280px)' }}>
+              <div className="flex gap-3 overflow-x-auto pb-4" style={{ minHeight: 'calc(100vh - 280px)' }}>
                 {pipelineStages.map((stage) => (
                   <StageColumn key={stage.id} stage={stage}>
                     {stage.applications.map((app) =>
@@ -1044,7 +1156,7 @@ export default function ApplicationsPage() {
                         : <AppCardUI key={app.id} app={app} draggable={false} />
                     )}
                     {stage.applications.length === 0 && (
-                      <div className="flex items-center justify-center h-16 text-xs text-gray-400 border-2 border-dashed border-gray-200 rounded-lg">
+                      <div className="flex items-center justify-center h-16 text-[11px] text-gray-400 border-2 border-dashed border-gray-200 rounded-xl">
                         Drop here
                       </div>
                     )}

@@ -1,6 +1,26 @@
 import { SupabaseClient } from '@supabase/supabase-js'
 import OpenAI from 'openai'
 import { extractText } from 'unpdf'
+import mammoth from 'mammoth'
+
+// ---------------------------------------------------------------------------
+// Text extraction helpers — supports PDF and Word (.doc/.docx)
+// ---------------------------------------------------------------------------
+
+async function extractTextFromBytes(bytes: Uint8Array, fileName?: string): Promise<string> {
+  const ext = (fileName || '').toLowerCase()
+
+  // Word documents (.doc / .docx)
+  if (ext.endsWith('.doc') || ext.endsWith('.docx')) {
+    const result = await mammoth.extractRawText({ buffer: Buffer.from(bytes) })
+    return (result.value || '').substring(0, 8000)
+  }
+
+  // Default: PDF
+  const result = await extractText(bytes)
+  const text = Array.isArray(result.text) ? result.text.join('\n') : (result.text || '')
+  return text.substring(0, 8000)
+}
 
 // ---------------------------------------------------------------------------
 // Types
@@ -53,12 +73,7 @@ async function fetchResumeText(
     const arrayBuffer = await data.arrayBuffer()
     const bytes = new Uint8Array(arrayBuffer)
 
-    const result = await extractText(bytes)
-    const text = Array.isArray(result.text)
-      ? result.text.join('\n')
-      : (result.text || '')
-
-    return text.substring(0, 8000)
+    return await extractTextFromBytes(bytes, storagePath)
   } catch {
     return ''
   }
@@ -89,11 +104,11 @@ export interface ParsedResumeForAutoFill {
 // ---------------------------------------------------------------------------
 
 export async function parseResumeFromBytes(
-  pdfBytes: Uint8Array
+  pdfBytes: Uint8Array,
+  fileName?: string
 ): Promise<{ data: ParsedResumeForAutoFill | null; error: Error | null }> {
   try {
-    const result = await extractText(pdfBytes)
-    const text = (Array.isArray(result.text) ? result.text.join('\n') : (result.text || '')).substring(0, 8000)
+    const text = await extractTextFromBytes(pdfBytes, fileName)
 
     if (!text || text.trim().length < 20) {
       return { data: null, error: new Error('Could not extract text from resume') }

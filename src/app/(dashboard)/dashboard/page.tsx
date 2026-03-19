@@ -8,14 +8,17 @@ import { useUser, useRole } from '@/lib/hooks/use-user'
 import { createClient } from '@/lib/supabase/client'
 import { getDashboardStats } from '@/lib/services/reports'
 import { Skeleton } from '@/components/ui/skeleton'
-import { Briefcase, Users, Calendar, Mail, Clock, MessageSquare } from 'lucide-react'
+import {
+  Briefcase, Users, Calendar, Mail, MessageSquare,
+  ArrowUpRight, Clock, Activity,
+} from 'lucide-react'
 
 const DashboardCharts = dynamic(() => import('./dashboard-charts'), {
   loading: () => (
     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
       {[1, 2, 3].map((i) => (
-        <div key={i} className="bg-white rounded-xl border border-gray-200">
-          <div className="p-6"><Skeleton className="h-[220px] w-full" /></div>
+        <div key={i} className="bg-white rounded-xl border border-gray-100">
+          <div className="p-6"><Skeleton className="h-[220px] w-full rounded-lg" /></div>
         </div>
       ))}
     </div>
@@ -26,7 +29,7 @@ const DashboardCharts = dynamic(() => import('./dashboard-charts'), {
 const AdminWidgets = dynamic(() => import('./admin-widgets'), {
   loading: () => (
     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-      {[1, 2].map((i) => <Skeleton key={i} className="h-[180px] rounded-xl" />)}
+      {[1, 2].map((i) => <Skeleton key={i} className="h-[200px] rounded-xl" />)}
     </div>
   ),
   ssr: false,
@@ -35,7 +38,7 @@ const AdminWidgets = dynamic(() => import('./admin-widgets'), {
 const RecruiterWidgets = dynamic(() => import('./recruiter-widgets'), {
   loading: () => (
     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-      {[1, 2].map((i) => <Skeleton key={i} className="h-[180px] rounded-xl" />)}
+      {[1, 2].map((i) => <Skeleton key={i} className="h-[200px] rounded-xl" />)}
     </div>
   ),
   ssr: false,
@@ -78,56 +81,92 @@ interface UpcomingInterview {
   }
 }
 
+/* ── Gradient avatars (same system as jobs page) ── */
+const GRADIENTS = [
+  'from-blue-500 to-indigo-600',
+  'from-emerald-500 to-teal-600',
+  'from-violet-500 to-purple-600',
+  'from-amber-500 to-orange-600',
+  'from-rose-500 to-pink-600',
+  'from-cyan-500 to-blue-600',
+  'from-fuchsia-500 to-purple-600',
+  'from-lime-500 to-emerald-600',
+]
+function getGradient(name: string) {
+  let hash = 0
+  for (let i = 0; i < name.length; i++) hash = name.charCodeAt(i) + ((hash << 5) - hash)
+  return GRADIENTS[Math.abs(hash) % GRADIENTS.length]
+}
+
+/* ── Entity styling ── */
+const ENTITY_DOT: Record<string, string> = {
+  application: 'bg-blue-500',
+  interview: 'bg-amber-500',
+  offer: 'bg-violet-500',
+  job: 'bg-emerald-500',
+  candidate: 'bg-rose-500',
+}
+
+const ENTITY_LABEL: Record<string, string> = {
+  application: 'Application',
+  interview: 'Interview',
+  offer: 'Offer',
+  job: 'Job',
+  candidate: 'Candidate',
+}
+
+/* ── Interview type config ── */
+const INTERVIEW_TYPE_DOT: Record<string, string> = {
+  phone: 'bg-blue-400',
+  video: 'bg-violet-400',
+  onsite: 'bg-emerald-400',
+  technical: 'bg-amber-400',
+  hr: 'bg-rose-400',
+}
+
+/* ── KPI config ── */
 const KPI_CONFIG = [
   {
     key: 'open_jobs',
     label: 'Open Jobs',
-    sub: 'Published job postings',
+    sub: 'Published postings',
     href: '/jobs',
-    icon: <Briefcase className="w-5 h-5" />,
-    bg: 'bg-blue-50',
-    iconColor: 'text-blue-600',
-    accent: 'border-l-blue-500',
+    icon: Briefcase,
+    gradient: 'from-blue-500 to-blue-600',
+    lightBg: 'bg-blue-50',
+    lightText: 'text-blue-600',
   },
   {
     key: 'active_candidates',
     label: 'Active Candidates',
-    sub: 'With active applications',
+    sub: 'In pipeline',
     href: '/candidates',
-    icon: <Users className="w-5 h-5" />,
-    bg: 'bg-emerald-50',
-    iconColor: 'text-emerald-600',
-    accent: 'border-l-emerald-500',
+    icon: Users,
+    gradient: 'from-emerald-500 to-emerald-600',
+    lightBg: 'bg-emerald-50',
+    lightText: 'text-emerald-600',
   },
   {
     key: 'interviews_this_week',
-    label: 'Interviews This Week',
-    sub: 'Scheduled this week',
+    label: 'This Week',
+    sub: 'Interviews scheduled',
     href: '/interviews',
-    icon: <Calendar className="w-5 h-5" />,
-    bg: 'bg-amber-50',
-    iconColor: 'text-amber-600',
-    accent: 'border-l-amber-500',
+    icon: Calendar,
+    gradient: 'from-amber-500 to-orange-500',
+    lightBg: 'bg-amber-50',
+    lightText: 'text-amber-600',
   },
   {
     key: 'pending_offers',
     label: 'Pending Offers',
     sub: 'Awaiting response',
     href: '/offers',
-    icon: <Mail className="w-5 h-5" />,
-    bg: 'bg-purple-50',
-    iconColor: 'text-purple-600',
-    accent: 'border-l-purple-500',
+    icon: Mail,
+    gradient: 'from-violet-500 to-purple-600',
+    lightBg: 'bg-violet-50',
+    lightText: 'text-violet-600',
   },
 ]
-
-const ENTITY_COLORS: Record<string, string> = {
-  application: 'bg-blue-100 text-blue-700',
-  interview: 'bg-amber-100 text-amber-700',
-  offer: 'bg-purple-100 text-purple-700',
-  job: 'bg-emerald-100 text-emerald-700',
-  candidate: 'bg-rose-100 text-rose-700',
-}
 
 export default function DashboardPage() {
   const router = useRouter()
@@ -150,8 +189,6 @@ export default function DashboardPage() {
     const supabase = createClient()
 
     if (isInterviewer) {
-      // Interviewer: only fetch their assigned interviews
-      // First get interview IDs from panelist table
       const { data: panelistData } = await supabase
         .from('interview_panelists')
         .select('interview_id')
@@ -167,7 +204,6 @@ export default function DashboardPage() {
         return
       }
 
-      // Fetch upcoming interviews assigned to this interviewer
       const { data: upcomingData } = await supabase
         .from('interviews')
         .select(`
@@ -185,7 +221,6 @@ export default function DashboardPage() {
         .order('scheduled_at', { ascending: true })
         .limit(10)
 
-      // Count this week's interviews
       const startOfWeek = new Date()
       startOfWeek.setDate(startOfWeek.getDate() - startOfWeek.getDay())
       startOfWeek.setHours(0, 0, 0, 0)
@@ -202,7 +237,6 @@ export default function DashboardPage() {
         .gte('scheduled_at', startOfWeek.toISOString())
         .lt('scheduled_at', endOfWeek.toISOString())
 
-      // Count total scheduled
       const { count: totalScheduled } = await supabase
         .from('interviews')
         .select('id', { count: 'exact', head: true })
@@ -211,7 +245,6 @@ export default function DashboardPage() {
         .eq('status', 'scheduled')
         .is('deleted_at', null)
 
-      // Count completed
       const { count: totalCompleted } = await supabase
         .from('interviews')
         .select('id', { count: 'exact', head: true })
@@ -220,7 +253,6 @@ export default function DashboardPage() {
         .eq('status', 'completed')
         .is('deleted_at', null)
 
-      // Count pending feedback: completed interviews minus already-submitted feedback
       const completedIds = await supabase
         .from('interviews')
         .select('id')
@@ -254,7 +286,6 @@ export default function DashboardPage() {
       return
     }
 
-    // Full dashboard for non-interviewers
     const [statsResult, activityResult, interviewsResult, teamResult] = await Promise.all([
       getDashboardStats(supabase, organization.id),
       supabase
@@ -306,16 +337,21 @@ export default function DashboardPage() {
   if (isLoading || loading) {
     return (
       <div className="space-y-6">
-        <Skeleton className="h-10 w-72" />
+        <div className="flex items-end justify-between">
+          <div>
+            <Skeleton className="h-7 w-56 rounded-lg" />
+            <Skeleton className="h-4 w-72 mt-2 rounded-lg" />
+          </div>
+          <Skeleton className="h-4 w-40 rounded-lg" />
+        </div>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           {[1, 2, 3, 4].map((i) => (
-            <Skeleton key={i} className="h-[120px] rounded-xl" />
+            <Skeleton key={i} className="h-[110px] rounded-xl" />
           ))}
         </div>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {[1, 2, 3].map((i) => (
-            <Skeleton key={i} className="h-[280px] rounded-xl" />
-          ))}
+        <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
+          <Skeleton className="lg:col-span-3 h-[340px] rounded-xl" />
+          <Skeleton className="lg:col-span-2 h-[340px] rounded-xl" />
         </div>
       </div>
     )
@@ -364,62 +400,60 @@ export default function DashboardPage() {
   const greeting =
     today.getHours() < 12 ? 'Good morning' : today.getHours() < 18 ? 'Good afternoon' : 'Good evening'
 
-  // Admin gets 5th KPI: Team Members
   const ADMIN_KPI = [
     ...KPI_CONFIG,
     {
       key: 'team_members',
-      label: 'Team Members',
-      sub: 'Active org members',
+      label: 'Team Size',
+      sub: 'Active members',
       href: '/settings',
-      icon: <Users className="w-5 h-5" />,
-      bg: 'bg-blue-50',
-      iconColor: 'text-blue-600',
-      accent: 'border-l-blue-500',
+      icon: Users,
+      gradient: 'from-slate-600 to-gray-700',
+      lightBg: 'bg-gray-50',
+      lightText: 'text-gray-600',
     },
   ]
 
-  // Interviewer-specific KPI config (4 cards including Pending Feedback)
   const INTERVIEWER_KPI = [
     {
       key: 'open_jobs',
-      label: 'Upcoming Interviews',
-      sub: 'Scheduled & assigned to you',
+      label: 'Upcoming',
+      sub: 'Scheduled interviews',
       href: '/interviews',
-      icon: KPI_CONFIG[2].icon,
-      bg: 'bg-blue-50',
-      iconColor: 'text-blue-600',
-      accent: 'border-l-blue-500',
+      icon: Calendar,
+      gradient: 'from-blue-500 to-blue-600',
+      lightBg: 'bg-blue-50',
+      lightText: 'text-blue-600',
     },
     {
       key: 'active_candidates',
       label: 'Completed',
-      sub: 'Interviews completed',
+      sub: 'Interviews done',
       href: '/interviews',
-      icon: KPI_CONFIG[1].icon,
-      bg: 'bg-emerald-50',
-      iconColor: 'text-emerald-600',
-      accent: 'border-l-emerald-500',
+      icon: Users,
+      gradient: 'from-emerald-500 to-emerald-600',
+      lightBg: 'bg-emerald-50',
+      lightText: 'text-emerald-600',
     },
     {
       key: 'interviews_this_week',
       label: 'This Week',
-      sub: 'Interviews this week',
+      sub: 'Scheduled this week',
       href: '/interviews',
-      icon: KPI_CONFIG[2].icon,
-      bg: 'bg-amber-50',
-      iconColor: 'text-amber-600',
-      accent: 'border-l-amber-500',
+      icon: Calendar,
+      gradient: 'from-amber-500 to-orange-500',
+      lightBg: 'bg-amber-50',
+      lightText: 'text-amber-600',
     },
     {
       key: 'pending_feedback',
       label: 'Pending Feedback',
       sub: 'Awaiting your review',
       href: '/interviews',
-      icon: <MessageSquare className="w-5 h-5" />,
-      bg: 'bg-orange-50',
-      iconColor: 'text-orange-600',
-      accent: 'border-l-orange-500',
+      icon: MessageSquare,
+      gradient: 'from-orange-500 to-red-500',
+      lightBg: 'bg-orange-50',
+      lightText: 'text-orange-600',
     },
   ]
 
@@ -427,152 +461,204 @@ export default function DashboardPage() {
 
   return (
     <div className="space-y-6">
-      {/* Welcome Header */}
+      {/* ── Header ── */}
       <div className="flex items-end justify-between">
         <div>
-          <h1 className="text-xl font-semibold text-gray-900">
+          <h1 className="text-[22px] font-semibold text-gray-900 tracking-tight">
             {greeting}, {user?.full_name?.split(' ')[0]}
           </h1>
-          <p className="text-gray-500 mt-1">
+          <p className="text-[13px] text-gray-400 mt-0.5">
             {isInterviewer
               ? 'Here are your assigned interviews'
               : `Here\u0027s what\u0027s happening at ${organization?.name}`}
           </p>
         </div>
-        <p className="text-sm text-gray-400">
-          {today.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}
-        </p>
+        <div className="flex items-center gap-2">
+          <span className="text-[12px] text-gray-400 tabular-nums">
+            {today.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
+          </span>
+        </div>
       </div>
 
-      {/* KPI Cards */}
-      <div className={`grid grid-cols-1 md:grid-cols-2 ${isAdmin ? 'lg:grid-cols-5' : isInterviewer ? 'lg:grid-cols-4' : 'lg:grid-cols-4'} gap-4`}>
-        {kpiList.map((kpi) => (
-          <Link key={kpi.key} href={kpi.href}>
-            <div className={`group bg-white rounded-xl border border-gray-200 border-l-4 ${kpi.accent} hover:shadow-lg transition-all duration-200 cursor-pointer p-5`}>
-              <div className="flex items-start justify-between">
-                <div>
-                  <p className="text-sm font-medium text-gray-500">{kpi.label}</p>
-                  <p className="text-3xl font-bold text-gray-900 mt-1">
-                    {stats?.[kpi.key as keyof typeof stats] ?? 0}
-                  </p>
-                  <p className="text-xs text-gray-400 mt-1">{kpi.sub}</p>
+      {/* ── KPI Cards ── */}
+      <div className={`grid grid-cols-1 md:grid-cols-2 ${isAdmin ? 'lg:grid-cols-5' : 'lg:grid-cols-4'} gap-3`}>
+        {kpiList.map((kpi) => {
+          const Icon = kpi.icon
+          const value = stats?.[kpi.key as keyof typeof stats] ?? 0
+          return (
+            <Link key={kpi.key} href={kpi.href}>
+              <div className="group relative bg-white rounded-xl border border-gray-100 hover:border-gray-200 hover:shadow-md transition-all duration-200 p-4 overflow-hidden">
+                {/* Subtle gradient accent line at top */}
+                <div className={`absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r ${kpi.gradient} opacity-60`} />
+
+                <div className="flex items-start justify-between">
+                  <div className="space-y-1">
+                    <p className="text-[11px] font-medium text-gray-400 uppercase tracking-wide">{kpi.label}</p>
+                    <p className="text-[28px] font-bold text-gray-900 leading-none tracking-tight">{value}</p>
+                    <p className="text-[11px] text-gray-400">{kpi.sub}</p>
+                  </div>
+                  <div className={`p-2 rounded-lg ${kpi.lightBg} group-hover:scale-105 transition-transform`}>
+                    <Icon className={`w-4 h-4 ${kpi.lightText}`} />
+                  </div>
                 </div>
-                <div className={`p-2.5 rounded-lg ${kpi.bg} ${kpi.iconColor} group-hover:scale-110 transition-transform`}>
-                  {kpi.icon}
-                </div>
+
+                {/* Hover arrow */}
+                <ArrowUpRight className="absolute bottom-3 right-3 w-3.5 h-3.5 text-gray-300 opacity-0 group-hover:opacity-100 transition-opacity" />
               </div>
-            </div>
-          </Link>
-        ))}
+            </Link>
+          )
+        })}
       </div>
 
-      {/* Role-specific widgets */}
+      {/* ── Role-specific widgets ── */}
       {isAdmin && organization && <AdminWidgets orgId={organization.id} />}
       {isRecruiter && organization && user && <RecruiterWidgets orgId={organization.id} userId={user.id} />}
 
-      {/* Charts — only for non-interviewers */}
+      {/* ── Charts ── */}
       {!isInterviewer && organization && <DashboardCharts orgId={organization.id} />}
 
-      {/* Interviewer widgets: Today's Schedule + Pending Feedback + Feedback Stats */}
+      {/* ── Interviewer widgets ── */}
       {isInterviewer && organization && user && (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
           <InterviewerWidgets orgId={organization.id} userId={user.id} interviews={interviews} />
         </div>
       )}
 
-      {/* Activity + Interviews */}
-      <div className={`grid grid-cols-1 ${isInterviewer ? '' : 'lg:grid-cols-2'} gap-6`}>
-        {/* Recent Activity — only for non-interviewers */}
+      {/* ── Activity + Interviews ── */}
+      <div className={`grid grid-cols-1 ${isInterviewer ? '' : 'lg:grid-cols-5'} gap-4`}>
+        {/* Recent Activity */}
         {!isInterviewer && (
-          <div className="bg-white rounded-xl border border-gray-200 shadow-sm">
-            <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
-              <h3 className="text-base font-semibold text-gray-900">Recent Activity</h3>
-              <span className="text-xs text-gray-400">{activities.length} events</span>
+          <div className="lg:col-span-3 bg-white rounded-xl border border-gray-100">
+            <div className="px-5 py-3.5 border-b border-gray-50 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Activity className="w-4 h-4 text-gray-400" />
+                <h3 className="text-[13px] font-semibold text-gray-900">Recent Activity</h3>
+              </div>
+              <span className="text-[11px] text-gray-300">{activities.length} events</span>
             </div>
-            <div className="p-4">
+            <div className="p-3">
               {activities.length === 0 ? (
-                <div className="text-center py-10">
-                  <div className="w-12 h-12 rounded-full bg-gray-100 flex items-center justify-center mx-auto mb-3">
-                    <Clock className="w-6 h-6 text-gray-400" />
+                <div className="text-center py-12">
+                  <div className="w-10 h-10 rounded-full bg-gray-50 flex items-center justify-center mx-auto mb-2.5">
+                    <Clock className="w-5 h-5 text-gray-300" />
                   </div>
-                  <p className="text-sm text-gray-500">No activity yet</p>
-                  <p className="text-xs text-gray-400 mt-1">Start by creating a job posting</p>
+                  <p className="text-[13px] text-gray-400">No activity yet</p>
+                  <p className="text-[11px] text-gray-300 mt-0.5">Start by creating a job posting</p>
                 </div>
               ) : (
-                <div className="space-y-1">
-                  {activities.map((activity) => (
-                    <div
-                      key={activity.id}
-                      className="flex items-center justify-between gap-3 py-2.5 px-3 rounded-lg hover:bg-gray-50 transition-colors"
-                    >
-                      <div className="flex items-center gap-3 min-w-0">
-                        <span className={`text-[10px] shrink-0 capitalize font-medium px-2 py-0.5 rounded-full ${
-                          ENTITY_COLORS[activity.entity_type] ?? 'bg-gray-100 text-gray-700'
-                        }`}>
-                          {activity.entity_type}
+                <div className="space-y-0.5">
+                  {activities.map((activity, idx) => {
+                    const candidateName = (activity.metadata as Record<string, string>).candidate_name
+                    return (
+                      <div
+                        key={activity.id}
+                        className="flex items-center gap-3 py-2.5 px-3 rounded-lg hover:bg-gray-50/80 transition-colors group"
+                        style={{ animationDelay: `${idx * 50}ms` }}
+                      >
+                        {/* Entity dot */}
+                        <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${ENTITY_DOT[activity.entity_type] ?? 'bg-gray-400'}`} />
+
+                        {/* Avatar for candidate-related activities */}
+                        {candidateName ? (
+                          <div className={`w-7 h-7 rounded-full bg-gradient-to-br ${getGradient(candidateName)} flex items-center justify-center shrink-0`}>
+                            <span className="text-[10px] font-semibold text-white">
+                              {candidateName.split(' ').map((n: string) => n[0]).join('').slice(0, 2).toUpperCase()}
+                            </span>
+                          </div>
+                        ) : (
+                          <div className="w-7 h-7 rounded-full bg-gray-100 flex items-center justify-center shrink-0">
+                            <span className="text-[9px] font-medium text-gray-400">
+                              {ENTITY_LABEL[activity.entity_type]?.[0] ?? '?'}
+                            </span>
+                          </div>
+                        )}
+
+                        {/* Content */}
+                        <div className="flex-1 min-w-0">
+                          <p className="text-[12px] text-gray-600 truncate">{formatAction(activity)}</p>
+                        </div>
+
+                        {/* Time */}
+                        <span className="text-[11px] text-gray-300 shrink-0 tabular-nums group-hover:text-gray-400 transition-colors">
+                          {timeAgo(activity.created_at)}
                         </span>
-                        <span className="text-sm text-gray-700 truncate">{formatAction(activity)}</span>
                       </div>
-                      <span className="text-xs text-gray-400 shrink-0 tabular-nums">{timeAgo(activity.created_at)}</span>
-                    </div>
-                  ))}
+                    )
+                  })}
                 </div>
               )}
             </div>
           </div>
         )}
 
-        <div className="bg-white rounded-xl border border-gray-200 shadow-sm">
-          <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
-            <h3 className="text-base font-semibold text-gray-900">
-              {isInterviewer ? 'My Upcoming Interviews' : 'Upcoming Interviews'}
-            </h3>
+        {/* Upcoming Interviews */}
+        <div className={`${isInterviewer ? '' : 'lg:col-span-2'} bg-white rounded-xl border border-gray-100`}>
+          <div className="px-5 py-3.5 border-b border-gray-50 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Calendar className="w-4 h-4 text-gray-400" />
+              <h3 className="text-[13px] font-semibold text-gray-900">
+                {isInterviewer ? 'My Interviews' : 'Upcoming Interviews'}
+              </h3>
+            </div>
             {interviews.length > 0 && (
-              <Link href="/interviews" className="text-xs text-blue-600 hover:underline">
+              <Link href="/interviews" className="text-[11px] text-blue-600 hover:text-blue-700 font-medium transition-colors">
                 View all
               </Link>
             )}
           </div>
-          <div className="p-4">
+          <div className="p-3">
             {interviews.length === 0 ? (
-              <div className="text-center py-10">
-                <div className="w-12 h-12 rounded-full bg-gray-100 flex items-center justify-center mx-auto mb-3">
-                  <Calendar className="w-6 h-6 text-gray-400" />
+              <div className="text-center py-12">
+                <div className="w-10 h-10 rounded-full bg-gray-50 flex items-center justify-center mx-auto mb-2.5">
+                  <Calendar className="w-5 h-5 text-gray-300" />
                 </div>
-                <p className="text-sm text-gray-500">
-                  {isInterviewer ? 'No interviews assigned to you' : 'No interviews scheduled'}
+                <p className="text-[13px] text-gray-400">
+                  {isInterviewer ? 'No interviews assigned' : 'No interviews scheduled'}
                 </p>
-                <p className="text-xs text-gray-400 mt-1">
-                  {isInterviewer ? 'You will be notified when assigned' : 'Interviews will appear here when scheduled'}
+                <p className="text-[11px] text-gray-300 mt-0.5">
+                  {isInterviewer ? 'You will be notified when assigned' : 'Interviews will appear here'}
                 </p>
               </div>
             ) : (
-              <div className="space-y-1">
+              <div className="space-y-0.5">
                 {interviews.map((iv) => {
                   const candidate = (iv.application as unknown as { candidate: { first_name: string; last_name: string } })?.candidate
                   const job = (iv.application as unknown as { job: { title: string } })?.job
+                  const name = `${candidate?.first_name ?? ''} ${candidate?.last_name ?? ''}`.trim()
                   const initials = `${candidate?.first_name?.[0] ?? ''}${candidate?.last_name?.[0] ?? ''}`.toUpperCase()
+                  const isToday = new Date(iv.scheduled_at).toDateString() === today.toDateString()
+
                   return (
                     <Link key={iv.id} href={`/interviews/${iv.id}`}>
-                      <div className="flex items-center gap-3 p-3 rounded-lg hover:bg-gray-50 transition-colors cursor-pointer group">
-                        <div className="w-9 h-9 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-xs font-semibold shrink-0 group-hover:bg-blue-200 transition-colors">
-                          {initials}
+                      <div className="flex items-center gap-3 py-2.5 px-3 rounded-lg hover:bg-gray-50/80 transition-colors group">
+                        {/* Candidate avatar */}
+                        <div className={`w-8 h-8 rounded-full bg-gradient-to-br ${getGradient(name)} flex items-center justify-center shrink-0`}>
+                          <span className="text-[10px] font-semibold text-white">{initials}</span>
                         </div>
+
+                        {/* Details */}
                         <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium text-gray-900 truncate">
-                            {candidate?.first_name} {candidate?.last_name}
+                          <p className="text-[12px] font-medium text-gray-900 truncate group-hover:text-blue-600 transition-colors">
+                            {name}
                           </p>
-                          <p className="text-xs text-gray-500 truncate">{job?.title}</p>
+                          <p className="text-[11px] text-gray-400 truncate">{job?.title}</p>
                         </div>
+
+                        {/* Time */}
                         <div className="text-right shrink-0">
-                          <p className="text-xs font-medium text-gray-700">
-                            {new Date(iv.scheduled_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                          <p className={`text-[11px] font-medium tabular-nums ${isToday ? 'text-blue-600' : 'text-gray-600'}`}>
+                            {isToday ? 'Today' : new Date(iv.scheduled_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
                           </p>
-                          <p className="text-[11px] text-gray-400">
+                          <p className="text-[10px] text-gray-400 tabular-nums">
                             {new Date(iv.scheduled_at).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
                           </p>
                         </div>
-                        <span className="text-[10px] capitalize shrink-0 px-2 py-0.5 rounded-full border border-gray-200 text-gray-600">{iv.interview_type}</span>
+
+                        {/* Type dot */}
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          <span className={`w-1.5 h-1.5 rounded-full ${INTERVIEW_TYPE_DOT[iv.interview_type] ?? 'bg-gray-300'}`} />
+                          <span className="text-[10px] text-gray-400 capitalize">{iv.interview_type}</span>
+                        </div>
                       </div>
                     </Link>
                   )

@@ -3,14 +3,29 @@
 import { useEffect, useState, useCallback } from 'react'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
+import { Users, AlertTriangle } from 'lucide-react'
 
-const ROLE_CONFIG: Record<string, { label: string; dot: string }> = {
-  admin: { label: 'Admin', dot: 'bg-purple-500' },
-  recruiter: { label: 'Recruiter', dot: 'bg-blue-500' },
-  hiring_manager: { label: 'Hiring Manager', dot: 'bg-green-500' },
-  interviewer: { label: 'Interviewer', dot: 'bg-orange-500' },
+/* ── Gradient avatars ── */
+const GRADIENTS = [
+  'from-blue-500 to-indigo-600',
+  'from-emerald-500 to-teal-600',
+  'from-violet-500 to-purple-600',
+  'from-amber-500 to-orange-600',
+  'from-rose-500 to-pink-600',
+  'from-cyan-500 to-blue-600',
+]
+function getGradient(name: string) {
+  let hash = 0
+  for (let i = 0; i < name.length; i++) hash = name.charCodeAt(i) + ((hash << 5) - hash)
+  return GRADIENTS[Math.abs(hash) % GRADIENTS.length]
+}
+
+const ROLE_CONFIG: Record<string, { label: string; dot: string; bg: string }> = {
+  admin: { label: 'Admin', dot: 'bg-violet-500', bg: 'bg-violet-50' },
+  recruiter: { label: 'Recruiter', dot: 'bg-blue-500', bg: 'bg-blue-50' },
+  hiring_manager: { label: 'Hiring Mgr', dot: 'bg-emerald-500', bg: 'bg-emerald-50' },
+  interviewer: { label: 'Interviewer', dot: 'bg-amber-500', bg: 'bg-amber-50' },
 }
 
 interface RoleCount {
@@ -50,36 +65,50 @@ function TeamOverviewCard({ orgId }: { orgId: string }) {
   const total = roles.reduce((s, r) => s + r.count, 0)
 
   return (
-    <Card className="shadow-sm hover:shadow-md transition-shadow">
-      <CardHeader className="pb-2">
-        <div className="flex items-center justify-between">
-          <CardTitle className="text-sm font-medium">Team Overview</CardTitle>
-          <span className="text-xs text-gray-400">{total} members</span>
+    <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
+      <div className="px-5 py-3.5 border-b border-gray-50 flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <Users className="w-4 h-4 text-gray-400" />
+          <h3 className="text-[13px] font-semibold text-gray-900">Team Overview</h3>
         </div>
-      </CardHeader>
-      <CardContent>
+        <span className="text-[11px] text-gray-300">{total} members</span>
+      </div>
+      <div className="p-4">
         {loading ? (
-          <Skeleton className="h-[100px] w-full" />
+          <Skeleton className="h-[100px] w-full rounded-lg" />
         ) : roles.length === 0 ? (
-          <p className="text-sm text-gray-500 text-center py-6">No team members yet</p>
+          <p className="text-[12px] text-gray-400 text-center py-8">No team members yet</p>
         ) : (
           <div className="space-y-3">
             {roles.map((r) => {
-              const cfg = ROLE_CONFIG[r.role] ?? { label: r.role, dot: 'bg-gray-400' }
+              const cfg = ROLE_CONFIG[r.role] ?? { label: r.role, dot: 'bg-gray-400', bg: 'bg-gray-50' }
+              const pct = total > 0 ? Math.round((r.count / total) * 100) : 0
               return (
-                <div key={r.role} className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <span className={`w-2.5 h-2.5 rounded-full ${cfg.dot}`} />
-                    <span className="text-sm text-gray-700">{cfg.label}</span>
+                <div key={r.role} className="space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <span className={`w-1.5 h-1.5 rounded-full ${cfg.dot}`} />
+                      <span className="text-[12px] text-gray-600">{cfg.label}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-[12px] font-semibold text-gray-900">{r.count}</span>
+                      <span className="text-[10px] text-gray-300">{pct}%</span>
+                    </div>
                   </div>
-                  <span className="text-sm font-semibold text-gray-900">{r.count}</span>
+                  {/* Progress bar */}
+                  <div className="h-1 bg-gray-100 rounded-full overflow-hidden">
+                    <div
+                      className={`h-full rounded-full ${cfg.dot} transition-all duration-500`}
+                      style={{ width: `${pct}%` }}
+                    />
+                  </div>
                 </div>
               )
             })}
           </div>
         )}
-      </CardContent>
-    </Card>
+      </div>
+    </div>
   )
 }
 
@@ -135,40 +164,52 @@ function ExpiringOffersCard({ orgId }: { orgId: string }) {
   }
 
   return (
-    <Card className="shadow-sm hover:shadow-md transition-shadow border-l-4 border-l-amber-400">
-      <CardHeader className="pb-2">
-        <div className="flex items-center justify-between">
-          <CardTitle className="text-sm font-medium">Expiring Offers</CardTitle>
-          {offers.length > 0 && (
-            <span className="text-xs font-medium text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full">
-              {offers.length}
-            </span>
-          )}
+    <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
+      {/* Orange accent for urgency */}
+      <div className="h-[2px] bg-gradient-to-r from-amber-400 to-orange-500" />
+      <div className="px-5 py-3.5 border-b border-gray-50 flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <AlertTriangle className="w-4 h-4 text-amber-500" />
+          <h3 className="text-[13px] font-semibold text-gray-900">Expiring Offers</h3>
         </div>
-      </CardHeader>
-      <CardContent>
+        {offers.length > 0 && (
+          <span className="text-[10px] font-semibold text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full">
+            {offers.length}
+          </span>
+        )}
+      </div>
+      <div className="p-3">
         {loading ? (
-          <Skeleton className="h-[100px] w-full" />
+          <Skeleton className="h-[100px] w-full rounded-lg" />
         ) : offers.length === 0 ? (
-          <div className="text-center py-6">
-            <p className="text-sm text-gray-500">No offers expiring soon</p>
-            <p className="text-xs text-gray-400 mt-1">All offers are in good standing</p>
+          <div className="text-center py-8">
+            <p className="text-[12px] text-gray-400">No offers expiring soon</p>
+            <p className="text-[11px] text-gray-300 mt-0.5">All offers are in good standing</p>
           </div>
         ) : (
-          <div className="space-y-2">
+          <div className="space-y-0.5">
             {offers.map((offer) => {
               const days = daysUntil(offer.expiry_date)
+              const urgent = days <= 2
               return (
                 <Link key={offer.id} href="/offers">
-                  <div className="flex items-center justify-between p-2.5 rounded-lg hover:bg-amber-50/50 transition-colors cursor-pointer">
-                    <div className="min-w-0">
-                      <p className="text-sm font-medium text-gray-900 truncate">{offer.candidate_name}</p>
-                      <p className="text-xs text-gray-500 truncate">{offer.job_title}</p>
+                  <div className="flex items-center gap-3 py-2.5 px-3 rounded-lg hover:bg-amber-50/40 transition-colors group">
+                    {/* Avatar */}
+                    <div className={`w-7 h-7 rounded-full bg-gradient-to-br ${getGradient(offer.candidate_name)} flex items-center justify-center shrink-0`}>
+                      <span className="text-[9px] font-semibold text-white">
+                        {offer.candidate_name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()}
+                      </span>
                     </div>
-                    <span className={`text-xs font-medium shrink-0 ml-2 px-2 py-0.5 rounded-full ${
-                      days <= 2 ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700'
+
+                    <div className="flex-1 min-w-0">
+                      <p className="text-[12px] font-medium text-gray-900 truncate">{offer.candidate_name}</p>
+                      <p className="text-[11px] text-gray-400 truncate">{offer.job_title}</p>
+                    </div>
+
+                    <span className={`text-[10px] font-semibold shrink-0 px-2 py-0.5 rounded-full ${
+                      urgent ? 'bg-red-50 text-red-600' : 'bg-amber-50 text-amber-600'
                     }`}>
-                      {days === 0 ? 'Expires today' : `${days}d left`}
+                      {days === 0 ? 'Today' : `${days}d left`}
                     </span>
                   </div>
                 </Link>
@@ -176,8 +217,8 @@ function ExpiringOffersCard({ orgId }: { orgId: string }) {
             })}
           </div>
         )}
-      </CardContent>
-    </Card>
+      </div>
+    </div>
   )
 }
 

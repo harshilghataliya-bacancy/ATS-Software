@@ -22,6 +22,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
 } from '@/components/ui/dialog'
+import {
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import { ScheduleInterviewDialog } from '@/app/(dashboard)/jobs/[id]/applications/schedule-interview-dialog'
 import { SendEmailDialog } from '@/components/email/send-email-dialog'
 import { SendWhatsAppDialog } from '@/components/whatsapp/send-whatsapp-dialog'
@@ -34,7 +37,7 @@ import {
   ArrowLeft, Mail, MessageSquare, FileText, UserCircle, Calendar, Link as LinkIcon,
   Download, X, Eye, Plus, Trash2, CheckCircle2, XCircle, Clock, ChevronDown,
   ClipboardList, Loader2, PenLine, Info, ExternalLink,
-  User,
+  User, MoreHorizontal,
 } from 'lucide-react'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -55,10 +58,10 @@ const INTERVIEW_TYPES_MAP: Record<string, string> = {
   cultural: 'Cultural Fit',
 }
 
-const INTERVIEW_STATUS_COLORS: Record<string, string> = {
-  scheduled: 'bg-blue-100 text-blue-800',
-  completed: 'bg-green-100 text-green-800',
-  cancelled: 'bg-gray-100 text-gray-800',
+const INTERVIEW_STATUS_DOT: Record<string, string> = {
+  scheduled: 'bg-blue-500',
+  completed: 'bg-emerald-500',
+  cancelled: 'bg-gray-400',
 }
 
 type HiringPhase = 'NEW' | 'INTERVIEW_SCHEDULED' | 'AWAITING_FEEDBACK' | 'READY_FOR_NEXT' | 'OFFER' | 'DECIDED'
@@ -76,20 +79,56 @@ function getHiringPhase(app: AnyData): HiringPhase {
   return 'NEW'
 }
 
-const STATUS_COLORS: Record<string, string> = {
-  active: 'bg-green-100 text-green-800',
-  withdrawn: 'bg-gray-100 text-gray-800',
-  rejected: 'bg-red-100 text-red-800',
-  hired: 'bg-emerald-100 text-emerald-800',
+const STATUS_DOT_COLORS: Record<string, string> = {
+  active: 'bg-emerald-500',
+  withdrawn: 'bg-gray-400',
+  rejected: 'bg-rose-500',
+  hired: 'bg-emerald-500',
 }
 
-const OFFER_STATUS_COLORS: Record<string, string> = {
-  draft: 'bg-gray-100 text-gray-800',
-  sent: 'bg-blue-100 text-blue-800',
-  accepted: 'bg-green-100 text-green-800',
-  declined: 'bg-red-100 text-red-800',
-  revoked: 'bg-red-100 text-red-800',
-  expired: 'bg-yellow-100 text-yellow-800',
+const STATUS_PILL_COLORS: Record<string, string> = {
+  active: 'border-emerald-200 bg-emerald-50 text-emerald-700',
+  withdrawn: 'border-gray-200 bg-gray-50 text-gray-600',
+  rejected: 'border-rose-200 bg-rose-50 text-rose-700',
+  hired: 'border-emerald-200 bg-emerald-50 text-emerald-700',
+}
+
+const OFFER_STATUS_DOT: Record<string, string> = {
+  draft: 'bg-gray-400',
+  sent: 'bg-blue-500',
+  accepted: 'bg-emerald-500',
+  declined: 'bg-rose-500',
+  revoked: 'bg-rose-500',
+  expired: 'bg-amber-500',
+}
+
+const OFFER_STATUS_PILL: Record<string, string> = {
+  draft: 'border-gray-200 bg-gray-50 text-gray-600',
+  sent: 'border-blue-200 bg-blue-50 text-blue-700',
+  accepted: 'border-emerald-200 bg-emerald-50 text-emerald-700',
+  declined: 'border-rose-200 bg-rose-50 text-rose-700',
+  revoked: 'border-rose-200 bg-rose-50 text-rose-700',
+  expired: 'border-amber-200 bg-amber-50 text-amber-700',
+}
+
+// Hash-based gradient for avatar
+const AVATAR_GRADIENTS = [
+  'from-blue-500 to-indigo-600',
+  'from-violet-500 to-purple-600',
+  'from-pink-500 to-rose-600',
+  'from-amber-500 to-orange-600',
+  'from-emerald-500 to-teal-600',
+  'from-cyan-500 to-blue-600',
+  'from-fuchsia-500 to-pink-600',
+  'from-lime-500 to-green-600',
+]
+
+function getAvatarGradient(name: string) {
+  let hash = 0
+  for (let i = 0; i < name.length; i++) {
+    hash = name.charCodeAt(i) + ((hash << 5) - hash)
+  }
+  return AVATAR_GRADIENTS[Math.abs(hash) % AVATAR_GRADIENTS.length]
 }
 
 export default function ApplicationDetailPage() {
@@ -452,147 +491,176 @@ export default function ApplicationDetailPage() {
   const educationLabel = candidate?.education ? (EDUCATION_LABELS[candidate.education] || candidate.education) : null
   const genderLabel = candidate?.gender ? (GENDER_OPTIONS.find((g: AnyData) => g.value === candidate.gender)?.label || candidate.gender) : null
   const noticeLabel = candidate?.notice_period ? (NOTICE_PERIOD_OPTIONS.find((n: AnyData) => n.value === candidate.notice_period)?.label || candidate.notice_period) : null
+  const candidateFullName = `${candidate?.first_name || ''} ${candidate?.last_name || ''}`.trim()
+  const avatarGradient = getAvatarGradient(candidateFullName || 'U')
+
   return (
     <div className="max-w-6xl space-y-6">
       {/* Back + Header */}
-      <div className="flex items-start justify-between">
-        <div className="flex items-center gap-4">
-          <Button type="button" variant="ghost" size="sm" className="gap-1.5 text-gray-500 hover:text-gray-900" onClick={() => router.back()}>
-            <ArrowLeft className="w-4 h-4" />
-            Back
-          </Button>
-          <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 text-white flex items-center justify-center text-sm font-semibold shadow-sm shadow-blue-200">
-            {candidate?.first_name?.[0]}{candidate?.last_name?.[0]}
-          </div>
-          <div>
-            <div className="flex items-center gap-3">
-              <h1 className="text-xl font-semibold text-gray-900">
-                {candidate?.first_name} {candidate?.last_name}
-              </h1>
-              <span className={`text-[11px] font-semibold px-2.5 py-0.5 rounded-full ${STATUS_COLORS[application.status] || 'bg-gray-100 text-gray-800'}`}>
-                {application.status}
-              </span>
+      <div className="rounded-xl border border-gray-200 bg-white shadow-sm">
+        <div className="px-6 py-5">
+          <div className="flex items-start justify-between">
+            <div className="flex items-center gap-4">
+              <button
+                type="button"
+                onClick={() => router.back()}
+                className="flex items-center justify-center w-8 h-8 rounded-lg text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-colors"
+              >
+                <ArrowLeft className="w-4 h-4" />
+              </button>
+              <div className={`w-11 h-11 rounded-xl bg-gradient-to-br ${avatarGradient} text-white flex items-center justify-center text-[13px] font-semibold shadow-sm`}>
+                {candidate?.first_name?.[0]}{candidate?.last_name?.[0]}
+              </div>
+              <div>
+                <div className="flex items-center gap-2.5">
+                  <h1 className="text-[15px] font-semibold text-gray-900">
+                    {candidate?.first_name} {candidate?.last_name}
+                  </h1>
+                  <span className={`inline-flex items-center gap-1.5 text-[11px] font-medium px-2.5 py-0.5 rounded-full border ${STATUS_PILL_COLORS[application.status] || 'border-gray-200 bg-gray-50 text-gray-600'}`}>
+                    <span className={`w-1.5 h-1.5 rounded-full ${STATUS_DOT_COLORS[application.status] || 'bg-gray-400'}`} />
+                    {application.status}
+                  </span>
+                </div>
+                <p className="text-[12px] text-gray-500 mt-0.5">
+                  Applied for{' '}
+                  <Link href={`/jobs/${job?.id}`} className="text-gray-900 hover:underline font-medium">
+                    {job?.title || 'Unknown Job'}
+                  </Link>
+                  {job?.department && <span className="text-gray-400"> &middot; {job.department}</span>}
+                </p>
+              </div>
             </div>
-            <p className="text-gray-500 text-sm mt-0.5">
-              Applied for{' '}
-              <Link href={`/jobs/${job?.id}`} className="text-blue-600 hover:underline font-medium">
-                {job?.title || 'Unknown Job'}
-              </Link>
-              {job?.department && <span className="text-gray-400"> &middot; {job.department}</span>}
-            </p>
-            {isActive && canManageCandidates && stages.length > 0 && (
-              <div className="flex items-center gap-4 mt-1.5">
+
+            {/* Header actions */}
+            <div className="flex items-center gap-2">
+              {canManageCandidates && (
+                <Button size="sm" className="gap-1.5 bg-gray-900 hover:bg-gray-800 text-white h-8 text-[12px]" onClick={() => setEmailOpen(true)}>
+                  <Mail className="w-3.5 h-3.5" />
+                  Email
+                </Button>
+              )}
+              {canSendWhatsApp && candidate?.phone && (
+                <Button size="sm" variant="outline" onClick={() => setWhatsappOpen(true)} className="gap-1.5 text-green-700 border-green-200 hover:bg-green-50 h-8 text-[12px]">
+                  <MessageSquare className="w-3.5 h-3.5" />
+                  WhatsApp
+                </Button>
+              )}
+              {isActive && canManageCandidates && (
+                <Button size="sm" variant="outline" className="gap-1.5 text-rose-600 border-rose-200 hover:bg-rose-50 h-8 text-[12px]" onClick={() => setRejectOpen(true)}>
+                  <XCircle className="w-3.5 h-3.5" />
+                  Reject
+                </Button>
+              )}
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button size="sm" variant="outline" className="h-8 w-8 p-0">
+                    <MoreHorizontal className="w-4 h-4" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-44">
+                  {job?.id && (
+                    <DropdownMenuItem asChild>
+                      <Link href={`/jobs/${job.id}`} className="flex items-center gap-2 text-[12px]">
+                        <FileText className="w-3.5 h-3.5 text-gray-500" />
+                        View Job Description
+                      </Link>
+                    </DropdownMenuItem>
+                  )}
+                  {canManageCandidates && (
+                    <DropdownMenuItem asChild>
+                      <Link href={`/candidates/${candidate?.id}`} className="flex items-center gap-2 text-[12px]">
+                        <UserCircle className="w-3.5 h-3.5 text-gray-500" />
+                        View Candidate Profile
+                      </Link>
+                    </DropdownMenuItem>
+                  )}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
+          </div>
+
+          {/* Stage + Recruiter selectors */}
+          {isActive && canManageCandidates && stages.length > 0 && (
+            <div className="flex items-center gap-4 mt-4 pt-4 border-t border-gray-100">
+              <div className="flex items-center gap-2">
+                <span className="text-[11px] font-medium text-gray-400 uppercase tracking-wide">Stage</span>
+                <Select value={application.current_stage?.id || ''} onValueChange={handleStageChange}>
+                  <SelectTrigger className="h-7 w-[180px] text-[12px] rounded-lg border-gray-200">
+                    <SelectValue placeholder="Move stage..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {stages.map((s) => (
+                      <SelectItem key={s.id} value={s.id} className="text-[12px]">{s.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              {isAdmin && jobRecruiterIds.length > 0 && (
                 <div className="flex items-center gap-2">
-                  <span className="text-xs text-gray-500">Stage:</span>
-                  <Select value={application.current_stage?.id || ''} onValueChange={handleStageChange}>
-                    <SelectTrigger className="h-7 w-[180px] text-xs">
-                      <SelectValue placeholder="Move stage..." />
+                  <span className="text-[11px] font-medium text-gray-400 uppercase tracking-wide">Assigned</span>
+                  <Select value={application.assigned_recruiter_id || 'unassigned'} onValueChange={handleRecruiterChange}>
+                    <SelectTrigger className="h-7 w-[180px] text-[12px] rounded-lg border-gray-200">
+                      <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      {stages.map((s) => (
-                        <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
+                      <SelectItem value="unassigned" className="text-[12px]">Unassigned</SelectItem>
+                      {jobRecruiterIds.map((rid) => (
+                        <SelectItem key={rid} value={rid} className="text-[12px]">
+                          {recruiterNames[rid] ?? rid.slice(0, 8)}
+                        </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
                 </div>
-                {isAdmin && jobRecruiterIds.length > 0 && (
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs text-gray-500">Assigned:</span>
-                    <Select value={application.assigned_recruiter_id || 'unassigned'} onValueChange={handleRecruiterChange}>
-                      <SelectTrigger className="h-7 w-[180px] text-xs">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="unassigned">Unassigned</SelectItem>
-                        {jobRecruiterIds.map((rid) => (
-                          <SelectItem key={rid} value={rid}>
-                            {recruiterNames[rid] ?? rid.slice(0, 8)}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* Header actions */}
-        <div className="flex flex-wrap gap-2">
-          {canManageCandidates && (
-            <Button size="sm" variant="outline" className="gap-1.5" onClick={() => setEmailOpen(true)}>
-              <Mail className="w-3.5 h-3.5" />
-              Email
-            </Button>
-          )}
-          {canSendWhatsApp && candidate?.phone && (
-            <Button size="sm" variant="outline" onClick={() => setWhatsappOpen(true)} className="gap-1.5 text-green-700 border-green-200 hover:bg-green-50">
-              <MessageSquare className="w-3.5 h-3.5" />
-              WhatsApp
-            </Button>
-          )}
-          {job?.id && (
-            <Link href={`/jobs/${job.id}`}>
-              <Button size="sm" variant="outline" className="gap-1.5">
-                <FileText className="w-3.5 h-3.5" />
-                View JD
-              </Button>
-            </Link>
-          )}
-          {canManageCandidates && (
-            <Link href={`/candidates/${candidate?.id}`}>
-              <Button size="sm" variant="outline" className="gap-1.5">
-                <UserCircle className="w-3.5 h-3.5" />
-                View Profile
-              </Button>
-            </Link>
-          )}
-          {isActive && canManageCandidates && (
-            <Button size="sm" variant="destructive" className="gap-1.5" onClick={() => setRejectOpen(true)}>
-              <XCircle className="w-3.5 h-3.5" />
-              Reject
-            </Button>
+              )}
+            </div>
           )}
         </div>
       </div>
 
-      {error && <div className="bg-red-50 text-red-700 text-sm p-3 rounded-md">{error}</div>}
+      {error && (
+        <div className="bg-rose-50 border border-rose-200 text-rose-700 text-[12px] p-3 rounded-xl flex items-center gap-2">
+          <XCircle className="w-4 h-4 shrink-0" />
+          {error}
+        </div>
+      )}
 
       {/* ====== TABS ====== */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="w-full justify-start">
-          <TabsTrigger value="personal">Personal Details</TabsTrigger>
-          <TabsTrigger value="assessment">
+        <TabsList className="w-full justify-start bg-transparent border-b border-gray-200 rounded-none p-0 h-auto">
+          <TabsTrigger value="personal" className="text-[12px] data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:border-b-2 data-[state=active]:border-gray-900 rounded-none pb-2.5 pt-1 px-4">
+            Personal Details
+          </TabsTrigger>
+          <TabsTrigger value="assessment" className="text-[12px] data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:border-b-2 data-[state=active]:border-gray-900 rounded-none pb-2.5 pt-1 px-4">
             Assessment
             {assessmentInvitations.length > 0 && (
-              <span className="ml-1.5 text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-gray-100 text-gray-700">
+              <span className="ml-1.5 text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-gray-900 text-white">
                 {assessmentInvitations.length}
               </span>
             )}
           </TabsTrigger>
-          <TabsTrigger value="interview">
+          <TabsTrigger value="interview" className="text-[12px] data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:border-b-2 data-[state=active]:border-gray-900 rounded-none pb-2.5 pt-1 px-4">
             Interviews
             {interviews.length > 0 && (
-              <span className="ml-1.5 text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-gray-100 text-gray-700">{interviews.length}</span>
+              <span className="ml-1.5 text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-gray-900 text-white">{interviews.length}</span>
             )}
           </TabsTrigger>
-          <TabsTrigger value="offer">
+          <TabsTrigger value="offer" className="text-[12px] data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:border-b-2 data-[state=active]:border-gray-900 rounded-none pb-2.5 pt-1 px-4">
             Offer & Hire
             {application.offer_letters?.length > 0 && (
-              <span className="ml-1.5 text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-gray-100 text-gray-700">{application.offer_letters.length}</span>
+              <span className="ml-1.5 text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-gray-900 text-white">{application.offer_letters.length}</span>
             )}
           </TabsTrigger>
-          <TabsTrigger value="notes">
+          <TabsTrigger value="notes" className="text-[12px] data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:border-b-2 data-[state=active]:border-gray-900 rounded-none pb-2.5 pt-1 px-4">
             Notes
             {notes.length > 0 && (
-              <span className="ml-1.5 text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-gray-100 text-gray-700">{notes.length}</span>
+              <span className="ml-1.5 text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-gray-900 text-white">{notes.length}</span>
             )}
           </TabsTrigger>
-          <TabsTrigger value="activity">
+          <TabsTrigger value="activity" className="text-[12px] data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:border-b-2 data-[state=active]:border-gray-900 rounded-none pb-2.5 pt-1 px-4">
             Activity
             {activityLogs.length > 0 && (
-              <span className="ml-1.5 text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-gray-100 text-gray-700">{activityLogs.length}</span>
+              <span className="ml-1.5 text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-gray-900 text-white">{activityLogs.length}</span>
             )}
           </TabsTrigger>
         </TabsList>
@@ -600,13 +668,13 @@ export default function ApplicationDetailPage() {
         {/* ============ TAB 1: Personal Details ============ */}
         <TabsContent value="personal" className="mt-6">
           <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
-            {/* ====== LEFT COLUMN — All Details ====== */}
+            {/* ====== LEFT COLUMN -- All Details ====== */}
             <div className="lg:col-span-3 space-y-0">
-              <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+              <div className="rounded-xl border border-gray-200 bg-white shadow-sm overflow-hidden">
                 {/* Section: Personal */}
                 <div className="px-5 py-4 border-b border-gray-100">
                   <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest mb-3">Personal</p>
-                  <div className="grid grid-cols-2 gap-x-6 gap-y-3 text-sm">
+                  <div className="grid grid-cols-2 gap-x-6 gap-y-4 text-[13px]">
                     <InfoField label="Full Name" value={`${candidate?.first_name || ''} ${candidate?.last_name || ''}`} />
                     <InfoField label="Email" value={candidate?.email} />
                     <InfoField label="Phone" value={candidate?.phone} />
@@ -619,7 +687,7 @@ export default function ApplicationDetailPage() {
                 {/* Section: Professional */}
                 <div className="px-5 py-4 border-b border-gray-100">
                   <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest mb-3">Professional</p>
-                  <div className="grid grid-cols-2 gap-x-6 gap-y-3 text-sm">
+                  <div className="grid grid-cols-2 gap-x-6 gap-y-4 text-[13px]">
                     <InfoField label="Current Company" value={candidate?.current_company} />
                     <InfoField label="Current Title" value={candidate?.current_title} />
                     <InfoField label="Experience" value={candidate?.experience_years != null ? `${candidate.experience_years} years` : null} />
@@ -632,7 +700,7 @@ export default function ApplicationDetailPage() {
                 {/* Section: Compensation */}
                 <div className="px-5 py-4 border-b border-gray-100">
                   <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest mb-3">Compensation</p>
-                  <div className="grid grid-cols-2 gap-x-6 gap-y-3 text-sm">
+                  <div className="grid grid-cols-2 gap-x-6 gap-y-4 text-[13px]">
                     <InfoField label="Current CTC (Annual)" value={candidate?.current_salary != null ? `₹${Number(candidate.current_salary).toLocaleString()}` : null} />
                     <InfoField label="Expected CTC (Annual)" value={candidate?.expected_salary != null ? `₹${Number(candidate.expected_salary).toLocaleString()}` : null} />
                   </div>
@@ -641,14 +709,14 @@ export default function ApplicationDetailPage() {
                 {candidate?.cover_letter && (
                   <div className="px-5 py-4 border-b border-gray-100">
                     <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest mb-2">Cover Letter</p>
-                    <p className="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">{candidate.cover_letter}</p>
+                    <p className="text-[13px] text-gray-700 whitespace-pre-wrap leading-relaxed">{candidate.cover_letter}</p>
                   </div>
                 )}
                 {/* Candidate Notes */}
                 {candidate?.notes && (
                   <div className="px-5 py-4 border-b border-gray-100">
                     <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest mb-2">Candidate Notes</p>
-                    <p className="text-sm text-gray-700 whitespace-pre-wrap">{candidate.notes}</p>
+                    <p className="text-[13px] text-gray-700 whitespace-pre-wrap">{candidate.notes}</p>
                   </div>
                 )}
                 {/* AI Score & Summary */}
@@ -656,17 +724,17 @@ export default function ApplicationDetailPage() {
                   <div className="px-5 py-4 border-b border-gray-100">
                     <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest mb-3">AI Match</p>
                     <div className="flex items-center gap-3 mb-3">
-                      <div className={`w-12 h-12 rounded-full flex items-center justify-center text-sm font-bold shrink-0 ${
-                        matchScore.overall_score >= 80 ? 'bg-green-100 text-green-700' :
-                        matchScore.overall_score >= 60 ? 'bg-yellow-100 text-yellow-700' :
-                        matchScore.overall_score >= 40 ? 'bg-orange-100 text-orange-700' :
-                        'bg-red-100 text-red-700'
+                      <div className={`w-12 h-12 rounded-xl flex items-center justify-center text-[13px] font-bold shrink-0 ${
+                        matchScore.overall_score >= 80 ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' :
+                        matchScore.overall_score >= 60 ? 'bg-amber-50 text-amber-700 border border-amber-200' :
+                        matchScore.overall_score >= 40 ? 'bg-orange-50 text-orange-700 border border-orange-200' :
+                        'bg-rose-50 text-rose-700 border border-rose-200'
                       }`}>
                         {matchScore.overall_score}%
                       </div>
                       <div>
-                        <p className="text-sm font-medium text-gray-800 capitalize">{(matchScore.recommendation ?? '').replace(/_/g, ' ')}</p>
-                        <div className="flex gap-3 mt-0.5 text-xs text-gray-400">
+                        <p className="text-[13px] font-medium text-gray-800 capitalize">{(matchScore.recommendation ?? '').replace(/_/g, ' ')}</p>
+                        <div className="flex gap-3 mt-0.5 text-[11px] text-gray-400">
                           <span>Skills {matchScore.skill_score}%</span>
                           <span>Exp {matchScore.experience_score}%</span>
                           <span>Semantic {matchScore.semantic_score}%</span>
@@ -674,7 +742,7 @@ export default function ApplicationDetailPage() {
                       </div>
                     </div>
                     {matchScore.ai_summary && (
-                      <p className="text-sm text-gray-600 leading-relaxed">{matchScore.ai_summary}</p>
+                      <p className="text-[13px] text-gray-600 leading-relaxed">{matchScore.ai_summary}</p>
                     )}
                   </div>
                 )}
@@ -688,7 +756,7 @@ export default function ApplicationDetailPage() {
                         href={candidate.resume_url}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="inline-flex items-center gap-1 text-xs text-gray-500 hover:text-gray-800 border border-gray-200 rounded-md px-2 py-1 hover:border-gray-300 transition-colors"
+                        className="inline-flex items-center gap-1 text-[11px] text-gray-500 hover:text-gray-800 border border-gray-200 rounded-lg px-2.5 py-1 hover:border-gray-300 transition-colors"
                       >
                         <Download className="w-3 h-3" />
                         Download
@@ -696,18 +764,21 @@ export default function ApplicationDetailPage() {
                     )}
                   </div>
                   {candidate?.resume_url ? (
-                    <div className="rounded-md border border-gray-200 overflow-hidden bg-gray-50" style={{ height: '700px' }}>
+                    <div className="rounded-xl border border-gray-200 overflow-hidden bg-gray-50" style={{ height: '700px' }}>
                       <iframe
-                        src={`${candidate.resume_url}#toolbar=0&navpanes=0&scrollbar=1`}
+                        src={candidate.resume_url.toLowerCase().endsWith('.pdf')
+                          ? `${candidate.resume_url}#toolbar=0&navpanes=0&scrollbar=1`
+                          : `/api/resumes/preview-docx?url=${encodeURIComponent(candidate.resume_url)}`
+                        }
                         className="w-full h-full border-0"
                         title="Resume Preview"
                       />
                     </div>
                   ) : (
-                    <div className="flex flex-col items-center justify-center py-10 border-2 border-dashed border-gray-200 rounded-md">
+                    <div className="flex flex-col items-center justify-center py-10 border-2 border-dashed border-gray-200 rounded-xl">
                       <FileText className="w-10 h-10 text-gray-200 mb-3" />
-                      <p className="text-sm text-gray-400 mb-1">No resume uploaded</p>
-                      <p className="text-xs text-gray-300 mb-3">PDF only, max 10MB</p>
+                      <p className="text-[13px] text-gray-400 mb-1">No resume uploaded</p>
+                      <p className="text-[11px] text-gray-300 mb-3">PDF, DOC, DOCX — max 10MB</p>
                       {canManageCandidates && (
                         <ResumeUploadButton
                           candidateId={candidate?.id}
@@ -725,31 +796,33 @@ export default function ApplicationDetailPage() {
               </div>
             </div>
 
-            {/* ====== RIGHT COLUMN — Actions + Overview ====== */}
+            {/* ====== RIGHT COLUMN -- Actions + Overview ====== */}
             <div className="lg:col-span-2">
               <div className="lg:sticky lg:top-6 space-y-4 max-h-[calc(100vh-3rem)] overflow-y-auto">
 
                 {/* Quick Actions */}
                 {isActive && canManageCandidates && (
-                  <div className="bg-white rounded-xl border border-gray-200 shadow-sm">
-                    <div className="px-6 py-4 border-b border-gray-100"><h3 className="text-sm font-semibold text-gray-900">Quick Actions</h3></div>
-                    <div className="p-5 space-y-2">
-                      <Button size="sm" variant="outline" className="w-full justify-start gap-2 h-8 text-xs" onClick={() => setScheduleOpen(true)}>
+                  <div className="rounded-xl border border-gray-200 bg-white shadow-sm">
+                    <div className="px-5 py-3.5 border-b border-gray-100">
+                      <h3 className="text-[12px] font-semibold text-gray-900 uppercase tracking-wide">Quick Actions</h3>
+                    </div>
+                    <div className="p-4 space-y-1.5">
+                      <Button size="sm" variant="outline" className="w-full justify-start gap-2 h-8 text-[12px] rounded-lg" onClick={() => setScheduleOpen(true)}>
                         <Calendar className="w-3.5 h-3.5 text-purple-500" />
                         Schedule Interview
                       </Button>
                       <Link href={`/offers/new?applicationId=${application.id}`} className="block">
-                        <Button size="sm" variant="outline" className="w-full justify-start gap-2 h-8 text-xs">
-                          <FileText className="w-3.5 h-3.5 text-green-500" />
+                        <Button size="sm" variant="outline" className="w-full justify-start gap-2 h-8 text-[12px] rounded-lg">
+                          <FileText className="w-3.5 h-3.5 text-emerald-500" />
                           Create Offer
                         </Button>
                       </Link>
-                      <Button size="sm" variant="outline" className="w-full justify-start gap-2 h-8 text-xs" onClick={() => setEmailOpen(true)}>
+                      <Button size="sm" variant="outline" className="w-full justify-start gap-2 h-8 text-[12px] rounded-lg" onClick={() => setEmailOpen(true)}>
                         <Mail className="w-3.5 h-3.5 text-blue-500" />
                         Send Email
                       </Button>
                       {canSendWhatsApp && candidate?.phone && (
-                        <Button size="sm" variant="outline" className="w-full justify-start gap-2 h-8 text-xs text-green-700 border-green-200 hover:bg-green-50" onClick={() => setWhatsappOpen(true)}>
+                        <Button size="sm" variant="outline" className="w-full justify-start gap-2 h-8 text-[12px] text-green-700 border-green-200 hover:bg-green-50 rounded-lg" onClick={() => setWhatsappOpen(true)}>
                           <MessageSquare className="w-3.5 h-3.5" />
                           Send WhatsApp
                         </Button>
@@ -759,12 +832,12 @@ export default function ApplicationDetailPage() {
                 )}
 
                 {/* Overview Card */}
-                <div className="bg-white rounded-xl border border-gray-200 shadow-sm">
-                  <div className="px-6 py-4 border-b border-gray-100">
-                    <h3 className="text-sm font-semibold text-gray-900">Overview</h3>
+                <div className="rounded-xl border border-gray-200 bg-white shadow-sm">
+                  <div className="px-5 py-3.5 border-b border-gray-100">
+                    <h3 className="text-[12px] font-semibold text-gray-900 uppercase tracking-wide">Overview</h3>
                   </div>
                   <div className="p-5 space-y-4">
-                    <div className="text-sm space-y-2">
+                    <div className="text-[13px] space-y-2.5">
                       <InfoRow label="Applied" value={new Date(application.applied_at || application.created_at).toLocaleDateString()} />
                       <InfoRow label="Source" value={sourceLabel || '-'} />
                       {application.current_stage && (
@@ -781,27 +854,27 @@ export default function ApplicationDetailPage() {
 
                     {/* Tags */}
                     <div>
-                      <h4 className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-2">Tags & Skills</h4>
+                      <h4 className="text-[11px] font-medium text-gray-400 uppercase tracking-wide mb-2">Tags & Skills</h4>
                       {candidate?.tags?.length > 0 ? (
                         <div className="flex flex-wrap gap-1.5">
                           {candidate.tags.map((tag: string) => (
-                            <span key={tag} className="text-xs bg-blue-50 text-blue-700 px-2 py-1 rounded">{tag}</span>
+                            <span key={tag} className="text-[11px] bg-gray-100 text-gray-700 px-2 py-0.5 rounded-md border border-gray-200">{tag}</span>
                           ))}
                         </div>
-                      ) : <p className="text-sm text-gray-400">No tags</p>}
+                      ) : <p className="text-[13px] text-gray-400">No tags</p>}
                     </div>
 
                     <Separator />
 
                     {/* Resume */}
                     <div>
-                      <h4 className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-2">Resume</h4>
+                      <h4 className="text-[11px] font-medium text-gray-400 uppercase tracking-wide mb-2">Resume</h4>
                       {candidate?.resume_url ? (
                         <div className="flex items-center gap-2 flex-wrap">
                           <Button
                             size="sm"
                             variant="outline"
-                            className="h-7 text-xs gap-1.5"
+                            className="h-7 text-[11px] gap-1.5 rounded-lg"
                             onClick={() => setResumeOpen(true)}
                           >
                             <Eye className="w-3.5 h-3.5" />
@@ -811,15 +884,15 @@ export default function ApplicationDetailPage() {
                             href={candidate.resume_url}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="text-xs text-gray-400 hover:text-gray-700 hover:underline"
+                            className="text-[11px] text-gray-400 hover:text-gray-700 hover:underline"
                           >
                             Download
                           </a>
                         </div>
                       ) : (
                         <div className="flex items-center gap-2">
-                          <p className="text-sm text-gray-400">No resume uploaded</p>
-                          <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => setResumeOpen(true)}>
+                          <p className="text-[13px] text-gray-400">No resume uploaded</p>
+                          <Button size="sm" variant="outline" className="h-7 text-[11px] rounded-lg" onClick={() => setResumeOpen(true)}>
                             Upload
                           </Button>
                         </div>
@@ -831,7 +904,7 @@ export default function ApplicationDetailPage() {
 
                 {/* View Profile Link */}
                 <Link href={`/candidates/${candidate?.id}`} className="block">
-                  <Button variant="outline" size="sm" className="w-full justify-start gap-2 h-8 text-xs">
+                  <Button variant="outline" size="sm" className="w-full justify-start gap-2 h-8 text-[12px] rounded-lg">
                     <User className="w-3.5 h-3.5" />
                     View Full Profile
                   </Button>
@@ -858,10 +931,11 @@ export default function ApplicationDetailPage() {
           {/* Schedule button */}
           {isActive && canManageCandidates && (
             <div className="flex items-center justify-between">
-              <h2 className="text-lg font-semibold text-gray-900">
+              <h2 className="text-[15px] font-semibold text-gray-900">
                 Interviews ({interviews.length})
               </h2>
-              <Button onClick={() => setScheduleOpen(true)}>
+              <Button onClick={() => setScheduleOpen(true)} className="bg-gray-900 hover:bg-gray-800 text-white text-[12px] h-8 gap-1.5">
+                <Plus className="w-3.5 h-3.5" />
                 Schedule Interview
               </Button>
             </div>
@@ -870,50 +944,55 @@ export default function ApplicationDetailPage() {
           {interviews.length === 0 ? (
             <div className="text-center py-16 border-2 border-dashed border-gray-200 rounded-xl">
               <Calendar className="w-10 h-10 text-gray-300 mx-auto mb-3" />
-              <p className="text-sm text-gray-500 font-medium">No interviews scheduled yet</p>
-              <p className="text-xs text-gray-400 mt-1">Schedule an interview to get started</p>
+              <p className="text-[13px] text-gray-500 font-medium">No interviews scheduled yet</p>
+              <p className="text-[11px] text-gray-400 mt-1">Schedule an interview to get started</p>
             </div>
           ) : (
-            <div className="space-y-4">
+            <div className="space-y-3">
               {interviews.map((iv: AnyData, idx: number) => {
                 const typeLabel = INTERVIEW_TYPES_MAP[iv.interview_type] || iv.interview_type
                 const feedback = iv.interview_feedback?.[0]
                 const hasFeedback = feedback != null
 
                 return (
-                  <div key={iv.id} className="bg-white rounded-xl border border-gray-200 shadow-sm">
-                    <div className="p-6">
+                  <div key={iv.id} className="rounded-xl border border-gray-200 bg-white shadow-sm">
+                    <div className="p-5">
                       <div className="flex items-start justify-between">
                         <div className="space-y-1">
                           <div className="flex items-center gap-2">
-                            <h3 className="font-semibold text-sm">{iv.title || `Round ${idx + 1}`}: {typeLabel}</h3>
-                            <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full ${INTERVIEW_STATUS_COLORS[iv.status] || 'bg-gray-100 text-gray-800'}`}>
+                            <h3 className="font-semibold text-[13px] text-gray-900">{iv.title || `Round ${idx + 1}`}: {typeLabel}</h3>
+                            <span className={`inline-flex items-center gap-1.5 text-[10px] font-medium px-2 py-0.5 rounded-full border ${
+                              iv.status === 'scheduled' ? 'border-blue-200 bg-blue-50 text-blue-700' :
+                              iv.status === 'completed' ? 'border-emerald-200 bg-emerald-50 text-emerald-700' :
+                              'border-gray-200 bg-gray-50 text-gray-600'
+                            }`}>
+                              <span className={`w-1.5 h-1.5 rounded-full ${INTERVIEW_STATUS_DOT[iv.status] || 'bg-gray-400'}`} />
                               {iv.status}
                             </span>
                           </div>
-                          <p className="text-xs text-gray-500">
+                          <p className="text-[11px] text-gray-500">
                             {new Date(iv.scheduled_at).toLocaleDateString()} at {new Date(iv.scheduled_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                             {iv.duration_minutes && ` (${iv.duration_minutes} min)`}
                           </p>
-                          {iv.location && <p className="text-xs text-gray-400">{iv.location}</p>}
+                          {iv.location && <p className="text-[11px] text-gray-400">{iv.location}</p>}
                           {iv.meeting_link && (
-                            <a href={iv.meeting_link} target="_blank" rel="noopener noreferrer" className="text-xs text-blue-600 hover:underline">
+                            <a href={iv.meeting_link} target="_blank" rel="noopener noreferrer" className="text-[11px] text-blue-600 hover:underline">
                               Join Meeting
                             </a>
                           )}
                         </div>
                         <Link href={`/interviews/${iv.id}?from=application`}>
-                          <Button variant="outline" size="sm" className="text-xs">View Details</Button>
+                          <Button variant="outline" size="sm" className="text-[11px] h-7 rounded-lg">View Details</Button>
                         </Link>
                       </div>
 
                       {/* Panelists */}
                       {iv.interview_panelists?.length > 0 && (
                         <div className="mt-3">
-                          <p className="text-xs text-gray-500 mb-1">Panelists:</p>
+                          <p className="text-[11px] text-gray-400 mb-1.5">Panelists</p>
                           <div className="flex flex-wrap gap-1.5">
                             {iv.interview_panelists.map((p: AnyData) => (
-                              <span key={p.id} className="text-[10px] font-medium px-2 py-0.5 rounded-full border border-gray-200 text-gray-700">
+                              <span key={p.id} className="text-[10px] font-medium px-2 py-0.5 rounded-md border border-gray-200 bg-gray-50 text-gray-700">
                                 {userNames[p.user_id] || p.user_id?.slice(0, 8)}
                               </span>
                             ))}
@@ -921,39 +1000,39 @@ export default function ApplicationDetailPage() {
                         </div>
                       )}
 
-                      {/* Feedback — collapsible */}
+                      {/* Feedback -- collapsible */}
                       {hasFeedback ? (
                         <div className="mt-3">
                           <button
                             onClick={() => setExpandedFeedback((prev) => ({ ...prev, [iv.id]: !prev[iv.id] }))}
-                            className="w-full p-3 bg-gray-50 rounded-lg flex items-center justify-between hover:bg-gray-100 transition-colors"
+                            className="w-full p-3 bg-gray-50 rounded-lg flex items-center justify-between hover:bg-gray-100 transition-colors border border-gray-100"
                           >
                             <div className="flex items-center gap-2">
-                              <span className="text-xs font-medium text-gray-700">Feedback:</span>
-                              <span className="text-amber-500 text-xs">
+                              <span className="text-[11px] font-medium text-gray-700">Feedback:</span>
+                              <span className="text-amber-500 text-[11px]">
                                 {'★'.repeat(feedback.overall_rating)}{'☆'.repeat(5 - feedback.overall_rating)}
                               </span>
-                              <span className="text-[10px] font-medium px-2 py-0.5 rounded-full border border-gray-200 text-gray-700">
+                              <span className="text-[10px] font-medium px-2 py-0.5 rounded-md border border-gray-200 bg-white text-gray-700">
                                 {feedback.recommendation}
                               </span>
                             </div>
                             <ChevronDown className={`w-4 h-4 text-gray-400 transition-transform ${expandedFeedback[iv.id] ? 'rotate-180' : ''}`} />
                           </button>
                           {expandedFeedback[iv.id] && (
-                            <div className="mt-2 border border-gray-200 rounded-lg overflow-hidden">
+                            <div className="mt-2 border border-gray-200 rounded-xl overflow-hidden">
                               {iv.interview_feedback.map((fb: AnyData) => {
                                 const fbDate = fb.submitted_at || fb.created_at
                                 return (
                                   <div key={fb.id} className="p-4 space-y-3 border-b border-gray-100 last:border-b-0">
                                     <div className="flex items-center justify-between">
                                       <div className="flex items-center gap-2">
-                                        <span className="text-xs font-semibold text-gray-800">
+                                        <span className="text-[12px] font-semibold text-gray-800">
                                           {userNames[fb.user_id] || 'Reviewer'}
                                         </span>
-                                        <span className="text-amber-500 text-xs">
+                                        <span className="text-amber-500 text-[11px]">
                                           {'★'.repeat(fb.overall_rating || 0)}{'☆'.repeat(5 - (fb.overall_rating || 0))}
                                         </span>
-                                        <span className="text-[10px] font-medium px-2 py-0.5 rounded-full border border-gray-200 text-gray-700">
+                                        <span className="text-[10px] font-medium px-2 py-0.5 rounded-md border border-gray-200 text-gray-700">
                                           {fb.recommendation?.replace(/_/g, ' ')}
                                         </span>
                                       </div>
@@ -968,7 +1047,7 @@ export default function ApplicationDetailPage() {
                                         <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1">Evaluation Criteria</p>
                                         <div className="flex flex-wrap gap-1.5">
                                           {fb.scorecard_ratings.map((cr: AnyData) => (
-                                            <span key={cr.id} className="text-[10px] bg-gray-100 px-2 py-0.5 rounded-md text-gray-600">
+                                            <span key={cr.id} className="text-[10px] bg-gray-50 border border-gray-200 px-2 py-0.5 rounded-md text-gray-600">
                                               {cr.criteria?.name || 'Criteria'}: <strong>{cr.rating}/5</strong>
                                             </span>
                                           ))}
@@ -978,19 +1057,19 @@ export default function ApplicationDetailPage() {
                                     {fb.strengths && (
                                       <div>
                                         <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Strengths</p>
-                                        <p className="text-xs text-gray-700 mt-0.5">{fb.strengths}</p>
+                                        <p className="text-[12px] text-gray-700 mt-0.5">{fb.strengths}</p>
                                       </div>
                                     )}
                                     {fb.weaknesses && (
                                       <div>
                                         <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Weaknesses</p>
-                                        <p className="text-xs text-gray-700 mt-0.5">{fb.weaknesses}</p>
+                                        <p className="text-[12px] text-gray-700 mt-0.5">{fb.weaknesses}</p>
                                       </div>
                                     )}
                                     {fb.notes && (
                                       <div>
                                         <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Notes</p>
-                                        <p className="text-xs text-gray-700 mt-0.5">{fb.notes}</p>
+                                        <p className="text-[12px] text-gray-700 mt-0.5">{fb.notes}</p>
                                       </div>
                                     )}
                                   </div>
@@ -1000,9 +1079,9 @@ export default function ApplicationDetailPage() {
                           )}
                         </div>
                       ) : iv.status === 'completed' ? (
-                        <div className="mt-3 p-3 bg-amber-50 rounded-lg flex items-center justify-between">
-                          <span className="text-xs text-amber-700">Awaiting feedback</span>
-                          <Link href={`/interviews/${iv.id}?from=application`} className="text-xs text-blue-600 hover:underline">
+                        <div className="mt-3 p-3 bg-amber-50 border border-amber-100 rounded-lg flex items-center justify-between">
+                          <span className="text-[11px] text-amber-700">Awaiting feedback</span>
+                          <Link href={`/interviews/${iv.id}?from=application`} className="text-[11px] text-blue-600 hover:underline">
                             Submit Feedback
                           </Link>
                         </div>
@@ -1014,85 +1093,87 @@ export default function ApplicationDetailPage() {
             </div>
           )}
 
-          {/* View All Feedback button removed — feedback is now collapsible inside each interview card */}
+          {/* View All Feedback button removed -- feedback is now collapsible inside each interview card */}
         </TabsContent>
 
         {/* ============ TAB 4: Offer & Hire ============ */}
         <TabsContent value="offer" className="mt-6 space-y-6">
           {/* Status banner */}
           {application.status === 'hired' && (
-            <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-4 flex items-center gap-3">
-              <CheckCircle2 className="w-6 h-6 text-emerald-600 shrink-0" />
+            <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 flex items-center gap-3">
+              <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
               <div>
-                <p className="font-semibold text-emerald-800">Candidate Hired</p>
+                <p className="font-semibold text-[13px] text-emerald-800">Candidate Hired</p>
                 {application.hired_at && (
-                  <p className="text-xs text-emerald-600">on {new Date(application.hired_at).toLocaleDateString()}</p>
+                  <p className="text-[11px] text-emerald-600">on {new Date(application.hired_at).toLocaleDateString()}</p>
                 )}
               </div>
             </div>
           )}
 
           {application.status === 'rejected' && (
-            <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-              <p className="font-semibold text-red-800">Application Rejected</p>
+            <div className="bg-rose-50 border border-rose-200 rounded-xl p-4">
+              <p className="font-semibold text-[13px] text-rose-800">Application Rejected</p>
               {application.rejection_reason && (
-                <p className="text-sm text-red-600 mt-1">{application.rejection_reason}</p>
+                <p className="text-[12px] text-rose-600 mt-1">{application.rejection_reason}</p>
               )}
               {application.rejected_at && (
-                <p className="text-xs text-red-400 mt-1">on {new Date(application.rejected_at).toLocaleDateString()}</p>
+                <p className="text-[11px] text-rose-400 mt-1">on {new Date(application.rejected_at).toLocaleDateString()}</p>
               )}
             </div>
           )}
 
           {/* Offer Letters */}
           <div className="flex items-center justify-between">
-            <h2 className="text-lg font-semibold text-gray-900">
+            <h2 className="text-[15px] font-semibold text-gray-900">
               Offer Letters ({application.offer_letters?.length || 0})
             </h2>
             {isActive && canManageCandidates && (
-              <Button onClick={() => router.push(`/offers/new?applicationId=${application.id}`)}>
+              <Button onClick={() => router.push(`/offers/new?applicationId=${application.id}`)} className="bg-gray-900 hover:bg-gray-800 text-white text-[12px] h-8 gap-1.5">
+                <Plus className="w-3.5 h-3.5" />
                 Create Offer
               </Button>
             )}
           </div>
 
           {application.offer_letters?.length > 0 ? (
-            <div className="space-y-4">
+            <div className="space-y-3">
               {application.offer_letters.map((offer: AnyData) => (
-                <div key={offer.id} className="bg-white rounded-xl border border-gray-200 shadow-sm">
-                  <div className="p-6 space-y-3">
+                <div key={offer.id} className="rounded-xl border border-gray-200 bg-white shadow-sm">
+                  <div className="p-5 space-y-3">
                     <div className="flex items-start justify-between">
                       <div className="space-y-1">
                         <div className="flex items-center gap-2">
-                          <h3 className="font-semibold text-sm">
+                          <h3 className="font-semibold text-[13px] text-gray-900">
                             {offer.salary_currency} {Number(offer.salary).toLocaleString()}
                           </h3>
-                          <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full ${OFFER_STATUS_COLORS[offer.status] || 'bg-gray-100 text-gray-800'}`}>
+                          <span className={`inline-flex items-center gap-1.5 text-[10px] font-medium px-2 py-0.5 rounded-full border ${OFFER_STATUS_PILL[offer.status] || 'border-gray-200 bg-gray-50 text-gray-600'}`}>
+                            <span className={`w-1.5 h-1.5 rounded-full ${OFFER_STATUS_DOT[offer.status] || 'bg-gray-400'}`} />
                             {offer.status}
                           </span>
                         </div>
                         {offer.sent_at && (
-                          <p className="text-xs text-gray-500">
+                          <p className="text-[11px] text-gray-500">
                             Sent on {new Date(offer.sent_at).toLocaleDateString()}
                           </p>
                         )}
                         {offer.responded_at && (
-                          <p className="text-xs text-gray-500">
+                          <p className="text-[11px] text-gray-500">
                             Responded on {new Date(offer.responded_at).toLocaleDateString()}
                           </p>
                         )}
                       </div>
                       <Link href={`/offers/${offer.id}?from=application`}>
-                        <Button variant="outline" size="sm" className="text-xs">View Offer</Button>
+                        <Button variant="outline" size="sm" className="text-[11px] h-7 rounded-lg">View Offer</Button>
                       </Link>
                     </div>
                     {/* Action buttons for sent/draft offers */}
                     {(offer.status === 'sent' || offer.status === 'draft') && canManageCandidates && (
-                      <div className="flex items-center gap-2 pt-2 border-t">
-                        <span className="text-xs text-gray-500 mr-1">Response:</span>
+                      <div className="flex items-center gap-2 pt-3 border-t border-gray-100">
+                        <span className="text-[11px] text-gray-400 mr-1">Response:</span>
                         <Button
                           size="sm"
-                          className="bg-green-600 hover:bg-green-700 text-xs h-7"
+                          className="bg-emerald-600 hover:bg-emerald-700 text-[11px] h-7 rounded-lg"
                           onClick={() => handleOfferRespond(offer.id, 'accepted')}
                         >
                           Accepted
@@ -1100,15 +1181,15 @@ export default function ApplicationDetailPage() {
                         <Button
                           size="sm"
                           variant="outline"
-                          className="text-xs h-7"
+                          className="text-[11px] h-7 rounded-lg"
                           onClick={() => handleOfferRespond(offer.id, 'declined')}
                         >
                           Declined
                         </Button>
                         <Button
                           size="sm"
-                          variant="destructive"
-                          className="text-xs h-7"
+                          variant="outline"
+                          className="text-[11px] h-7 text-rose-600 border-rose-200 hover:bg-rose-50 rounded-lg"
                           onClick={() => handleOfferRespond(offer.id, 'revoked')}
                         >
                           Revoked by Company
@@ -1122,10 +1203,10 @@ export default function ApplicationDetailPage() {
           ) : (
             <div className="text-center py-16 border-2 border-dashed border-gray-200 rounded-xl">
               <FileText className="w-10 h-10 text-gray-300 mx-auto mb-3" />
-                <p className="text-sm text-gray-500 font-medium">No offers created yet</p>
-                <p className="text-xs text-gray-400 mt-1">Create an offer letter to extend to this candidate</p>
+                <p className="text-[13px] text-gray-500 font-medium">No offers created yet</p>
+                <p className="text-[11px] text-gray-400 mt-1">Create an offer letter to extend to this candidate</p>
                 {isActive && canManageCandidates && (
-                  <Button className="mt-4 gap-1.5" onClick={() => router.push(`/offers/new?applicationId=${application.id}`)}>
+                  <Button className="mt-4 gap-1.5 bg-gray-900 hover:bg-gray-800 text-white text-[12px]" onClick={() => router.push(`/offers/new?applicationId=${application.id}`)}>
                     <Plus className="w-3.5 h-3.5" />
                     Create Offer
                   </Button>
@@ -1137,26 +1218,28 @@ export default function ApplicationDetailPage() {
 
           {/* Hire / Reject Actions */}
           {isActive && canManageCandidates && phase !== 'DECIDED' && (
-            <div className="bg-white rounded-xl border border-gray-200 shadow-sm">
-              <div className="px-6 py-4 border-b border-gray-100"><h3 className="text-base font-semibold text-gray-900">Decision</h3></div>
+            <div className="rounded-xl border border-gray-200 bg-white shadow-sm">
+              <div className="px-5 py-3.5 border-b border-gray-100">
+                <h3 className="text-[13px] font-semibold text-gray-900">Decision</h3>
+              </div>
               <div className="p-5 space-y-3">
                 {phase === 'OFFER' ? (
-                  <p className="text-sm text-gray-600">
+                  <p className="text-[12px] text-gray-600">
                     An offer has been extended. You can now mark the candidate as hired or reject the application.
                   </p>
                 ) : (
-                  <p className="text-sm text-gray-600">
+                  <p className="text-[12px] text-gray-600">
                     You can reject this application at any time. To hire, first create and send an offer.
                   </p>
                 )}
                 <div className="flex gap-2">
                   {phase === 'OFFER' && (
-                    <Button className="bg-green-600 hover:bg-green-700 gap-1.5" onClick={handleHire}>
-                      <CheckCircle2 className="w-4 h-4" />
+                    <Button className="bg-emerald-600 hover:bg-emerald-700 gap-1.5 text-[12px] h-8" onClick={handleHire}>
+                      <CheckCircle2 className="w-3.5 h-3.5" />
                       Mark as Hired
                     </Button>
                   )}
-                  <Button variant="destructive" onClick={() => setRejectOpen(true)}>
+                  <Button variant="outline" className="text-rose-600 border-rose-200 hover:bg-rose-50 text-[12px] h-8" onClick={() => setRejectOpen(true)}>
                     Reject Application
                   </Button>
                 </div>
@@ -1171,7 +1254,7 @@ export default function ApplicationDetailPage() {
             {/* Input column */}
             <div className="lg:col-span-3 space-y-4">
               {canManageCandidates ? (
-                <div className="space-y-2.5">
+                <div className="rounded-xl border border-gray-200 bg-white shadow-sm p-5 space-y-3">
                   <Textarea
                     rows={4}
                     placeholder="Write a note about this candidate... (Cmd+Enter to submit)"
@@ -1180,20 +1263,20 @@ export default function ApplicationDetailPage() {
                     onKeyDown={(e) => {
                       if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) handleAddNote()
                     }}
-                    className="resize-none"
+                    className="resize-none text-[13px] rounded-lg"
                   />
-                  {noteError && <p className="text-xs text-red-600">{noteError}</p>}
+                  {noteError && <p className="text-[11px] text-rose-600">{noteError}</p>}
                   <div className="flex justify-end">
                     <Button
                       size="sm"
                       onClick={handleAddNote}
                       disabled={addingNote || !noteInput.trim()}
-                      className="gap-1.5"
+                      className="gap-1.5 bg-gray-900 hover:bg-gray-800 text-white text-[12px] h-8"
                     >
                       {addingNote ? (
                         <>
                           <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                          Saving…
+                          Saving...
                         </>
                       ) : (
                         <>
@@ -1208,61 +1291,65 @@ export default function ApplicationDetailPage() {
 
               {/* Notes timeline */}
               {notes.length === 0 ? (
-                <div className="text-center py-12 border-2 border-dashed border-gray-200 rounded-lg">
+                <div className="text-center py-12 border-2 border-dashed border-gray-200 rounded-xl">
                   <PenLine className="w-8 h-8 mx-auto mb-2 text-gray-300" />
-                  <p className="text-sm text-gray-500">No notes yet</p>
-                  <p className="text-xs text-gray-400 mt-0.5">Team notes are visible only to your organization</p>
+                  <p className="text-[13px] text-gray-500">No notes yet</p>
+                  <p className="text-[11px] text-gray-400 mt-0.5">Team notes are visible only to your organization</p>
                 </div>
               ) : (
                 <div className="space-y-0">
-                  {notes.map((note, idx) => (
-                    <div key={note.id} className="flex gap-3 group">
-                      {/* Timeline line */}
-                      <div className="flex flex-col items-center">
-                        <div className="w-8 h-8 rounded-full bg-gray-100 text-gray-600 flex items-center justify-center text-xs font-semibold shrink-0">
-                          {(note.user_email || 'U')[0].toUpperCase()}
-                        </div>
-                        {idx < notes.length - 1 && (
-                          <div className="w-px flex-1 bg-gray-100 my-1" />
-                        )}
-                      </div>
-                      {/* Content */}
-                      <div className={`flex-1 pb-4 ${idx < notes.length - 1 ? '' : ''}`}>
-                        <div className="flex items-center justify-between mb-1">
-                          <span className="text-xs text-gray-500">
-                            {new Date(note.created_at).toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' })}
-                          </span>
-                          {user?.id === note.user_id && (
-                            <button
-                              onClick={() => handleDeleteNote(note.id)}
-                              className="opacity-0 group-hover:opacity-100 text-gray-400 hover:text-red-500 transition-all"
-                              title="Delete note"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
+                  {notes.map((note, idx) => {
+                    const noteUserName = (note.user_email || 'User')
+                    const noteGradient = getAvatarGradient(noteUserName)
+                    return (
+                      <div key={note.id} className="flex gap-3 group">
+                        {/* Timeline line */}
+                        <div className="flex flex-col items-center">
+                          <div className={`w-8 h-8 rounded-lg bg-gradient-to-br ${noteGradient} text-white flex items-center justify-center text-[11px] font-semibold shrink-0`}>
+                            {noteUserName[0].toUpperCase()}
+                          </div>
+                          {idx < notes.length - 1 && (
+                            <div className="w-px flex-1 bg-gray-100 my-1" />
                           )}
                         </div>
-                        <p className="text-sm text-gray-800 whitespace-pre-wrap leading-relaxed">{note.content}</p>
+                        {/* Content */}
+                        <div className={`flex-1 pb-4 ${idx < notes.length - 1 ? '' : ''}`}>
+                          <div className="flex items-center justify-between mb-1">
+                            <span className="text-[11px] text-gray-400">
+                              {new Date(note.created_at).toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' })}
+                            </span>
+                            {user?.id === note.user_id && (
+                              <button
+                                onClick={() => handleDeleteNote(note.id)}
+                                className="opacity-0 group-hover:opacity-100 text-gray-400 hover:text-rose-500 transition-all"
+                                title="Delete note"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            )}
+                          </div>
+                          <p className="text-[13px] text-gray-800 whitespace-pre-wrap leading-relaxed">{note.content}</p>
+                        </div>
                       </div>
-                    </div>
-                  ))}
+                    )
+                  })}
                 </div>
               )}
             </div>
 
             {/* Info sidebar */}
             <div className="lg:col-span-2">
-              <div className="lg:sticky lg:top-6 rounded-lg border border-gray-100 bg-gray-50/60 p-4 space-y-3">
-                <div className="flex items-center gap-2 text-xs text-gray-500">
+              <div className="lg:sticky lg:top-6 rounded-xl border border-gray-200 bg-white shadow-sm p-5 space-y-3">
+                <div className="flex items-center gap-2 text-[12px] text-gray-500">
                   <Info className="w-4 h-4 text-gray-400" />
                   <span className="font-medium text-gray-700">About Notes</span>
                 </div>
-                <p className="text-xs text-gray-500 leading-relaxed">
+                <p className="text-[12px] text-gray-500 leading-relaxed">
                   Notes are internal and only visible to your organization team. Use them to track conversations, decisions, or any context about this candidate.
                 </p>
-                <div className="pt-2 border-t border-gray-200 text-xs text-gray-400 space-y-1">
-                  <p><span className="font-medium text-gray-500">{notes.length}</span> note{notes.length !== 1 ? 's' : ''} added</p>
-                  <p>Tip: Press <kbd className="bg-white border border-gray-200 rounded px-1 py-0.5 text-[10px] font-mono">⌘</kbd> + <kbd className="bg-white border border-gray-200 rounded px-1 py-0.5 text-[10px] font-mono">↵</kbd> to submit</p>
+                <div className="pt-3 border-t border-gray-100 text-[11px] text-gray-400 space-y-1">
+                  <p><span className="font-medium text-gray-600">{notes.length}</span> note{notes.length !== 1 ? 's' : ''} added</p>
+                  <p>Tip: Press <kbd className="bg-gray-50 border border-gray-200 rounded px-1 py-0.5 text-[10px] font-mono">Cmd</kbd> + <kbd className="bg-gray-50 border border-gray-200 rounded px-1 py-0.5 text-[10px] font-mono">Enter</kbd> to submit</p>
                 </div>
               </div>
             </div>
@@ -1273,19 +1360,19 @@ export default function ApplicationDetailPage() {
         <TabsContent value="activity" className="mt-6">
           <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
             <div className="lg:col-span-3">
-              <div className="bg-white rounded-xl border border-gray-200 shadow-sm">
-                <div className="px-6 py-4 border-b border-gray-100">
-                  <h3 className="text-base font-semibold text-gray-900">
+              <div className="rounded-xl border border-gray-200 bg-white shadow-sm">
+                <div className="px-5 py-3.5 border-b border-gray-100">
+                  <h3 className="text-[13px] font-semibold text-gray-900">
                     Activity Timeline
                     {activityLogs.length > 0 && (
-                      <span className="ml-2 text-[11px] font-medium px-2 py-0.5 rounded-full bg-gray-100 text-gray-700">
+                      <span className="ml-2 text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-gray-900 text-white">
                         {activityLogs.length}
                       </span>
                     )}
                   </h3>
-                  <p className="text-xs text-gray-500 mt-0.5">All actions performed on this application and candidate</p>
+                  <p className="text-[11px] text-gray-500 mt-0.5">All actions performed on this application and candidate</p>
                 </div>
-                <div className="p-6">
+                <div className="p-5">
                   <ActivityTimeline
                     activities={activityLogs}
                     loading={activityLoading}
@@ -1296,16 +1383,16 @@ export default function ApplicationDetailPage() {
             </div>
 
             <div className="lg:col-span-2">
-              <div className="lg:sticky lg:top-6 rounded-lg border border-gray-100 bg-gray-50/60 p-4 space-y-3">
-                <div className="flex items-center gap-2 text-xs text-gray-500">
+              <div className="lg:sticky lg:top-6 rounded-xl border border-gray-200 bg-white shadow-sm p-5 space-y-3">
+                <div className="flex items-center gap-2 text-[12px] text-gray-500">
                   <Info className="w-4 h-4 text-gray-400" />
                   <span className="font-medium text-gray-700">About Activity</span>
                 </div>
-                <p className="text-xs text-gray-500 leading-relaxed">
-                  This timeline shows all actions performed by your team — stage changes, interviews scheduled, offers sent, profile updates, and more.
+                <p className="text-[12px] text-gray-500 leading-relaxed">
+                  This timeline shows all actions performed by your team -- stage changes, interviews scheduled, offers sent, profile updates, and more.
                 </p>
-                <div className="pt-2 border-t border-gray-200 text-xs text-gray-400 space-y-1">
-                  <p><span className="font-medium text-gray-500">{activityLogs.length}</span> activit{activityLogs.length !== 1 ? 'ies' : 'y'} recorded</p>
+                <div className="pt-3 border-t border-gray-100 text-[11px] text-gray-400 space-y-1">
+                  <p><span className="font-medium text-gray-600">{activityLogs.length}</span> activit{activityLogs.length !== 1 ? 'ies' : 'y'} recorded</p>
                 </div>
               </div>
             </div>
@@ -1379,12 +1466,17 @@ export default function ApplicationDetailPage() {
         style={{ width: '820px', maxWidth: '95vw' }}
       >
         {/* Drawer header */}
-        <div className="flex items-center justify-between px-5 py-3.5 border-b border-gray-100 bg-gray-50/60 shrink-0">
-          <div>
-            <h2 className="text-sm font-semibold text-gray-900">
-              {candidate?.first_name} {candidate?.last_name}
-            </h2>
-            <p className="text-xs text-gray-400 mt-0.5">Resume</p>
+        <div className="flex items-center justify-between px-5 py-3.5 border-b border-gray-100 bg-white shrink-0">
+          <div className="flex items-center gap-3">
+            <div className={`w-8 h-8 rounded-lg bg-gradient-to-br ${avatarGradient} text-white flex items-center justify-center text-[11px] font-semibold`}>
+              {candidate?.first_name?.[0]}{candidate?.last_name?.[0]}
+            </div>
+            <div>
+              <h2 className="text-[13px] font-semibold text-gray-900">
+                {candidate?.first_name} {candidate?.last_name}
+              </h2>
+              <p className="text-[11px] text-gray-400">Resume</p>
+            </div>
           </div>
           <div className="flex items-center gap-2">
             {candidate?.resume_url && (
@@ -1392,7 +1484,7 @@ export default function ApplicationDetailPage() {
                 href={candidate.resume_url}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="inline-flex items-center gap-1 text-xs text-gray-500 hover:text-gray-800 border border-gray-200 bg-white rounded-md px-2.5 py-1.5 hover:border-gray-300 transition-colors"
+                className="inline-flex items-center gap-1 text-[11px] text-gray-500 hover:text-gray-800 border border-gray-200 bg-white rounded-lg px-2.5 py-1.5 hover:border-gray-300 transition-colors"
               >
                 <Download className="w-3.5 h-3.5" />
                 Download
@@ -1400,7 +1492,7 @@ export default function ApplicationDetailPage() {
             )}
             <button
               onClick={() => setResumeOpen(false)}
-              className="flex items-center justify-center w-8 h-8 rounded-lg text-gray-400 hover:text-gray-700 hover:bg-gray-200 transition-colors"
+              className="flex items-center justify-center w-8 h-8 rounded-lg text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-colors"
               title="Close"
             >
               <X className="w-4 h-4" />
@@ -1408,19 +1500,22 @@ export default function ApplicationDetailPage() {
           </div>
         </div>
 
-        {/* Drawer body — iframe fills remaining height */}
+        {/* Drawer body -- iframe fills remaining height */}
         <div className="flex-1 overflow-hidden">
           {candidate?.resume_url ? (
             <iframe
-              src={`${candidate.resume_url}#toolbar=0&navpanes=0&scrollbar=1`}
+              src={candidate.resume_url.toLowerCase().endsWith('.pdf')
+                ? `${candidate.resume_url}#toolbar=0&navpanes=0&scrollbar=1`
+                : `/api/resumes/preview-docx?url=${encodeURIComponent(candidate.resume_url)}`
+              }
               className="w-full h-full border-0 bg-white"
               title="Resume Preview"
             />
           ) : (
             <div className="flex flex-col items-center justify-center h-full text-center px-8">
               <FileText className="w-14 h-14 text-gray-200 mb-4" />
-              <p className="text-sm font-medium text-gray-500 mb-1">No resume uploaded</p>
-              <p className="text-xs text-gray-400 mb-4">PDF only, max 10MB</p>
+              <p className="text-[13px] font-medium text-gray-500 mb-1">No resume uploaded</p>
+              <p className="text-[11px] text-gray-400 mb-4">PDF, DOC, DOCX — max 10MB</p>
               <ResumeUploadButton
                 candidateId={candidate?.id}
                 orgId={organization!.id}
@@ -1437,25 +1532,26 @@ export default function ApplicationDetailPage() {
 
       {/* Reject Dialog */}
       <Dialog open={rejectOpen} onOpenChange={setRejectOpen}>
-        <DialogContent>
+        <DialogContent className="rounded-xl">
           <DialogHeader>
-            <DialogTitle>Reject Application</DialogTitle>
-            <DialogDescription>
+            <DialogTitle className="text-[15px]">Reject Application</DialogTitle>
+            <DialogDescription className="text-[12px]">
               Provide a reason for rejecting {candidate?.first_name}&apos;s application for {job?.title}.
             </DialogDescription>
           </DialogHeader>
           <div className="py-4">
-            <Label>Rejection Reason</Label>
+            <Label className="text-[12px]">Rejection Reason</Label>
             <Textarea
               rows={3}
               value={rejectReason}
               onChange={(e) => setRejectReason(e.target.value)}
               placeholder="Enter the reason for rejection..."
+              className="mt-1.5 text-[13px] rounded-lg"
             />
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setRejectOpen(false)}>Cancel</Button>
-            <Button variant="destructive" onClick={handleReject} disabled={rejecting || !rejectReason.trim()}>
+            <Button variant="outline" onClick={() => setRejectOpen(false)} className="text-[12px] h-8 rounded-lg">Cancel</Button>
+            <Button className="bg-rose-600 hover:bg-rose-700 text-white text-[12px] h-8 rounded-lg" onClick={handleReject} disabled={rejecting || !rejectReason.trim()}>
               {rejecting ? 'Rejecting...' : 'Reject'}
             </Button>
           </DialogFooter>
@@ -1481,12 +1577,14 @@ function ResumeUploadButton({
   async function handleUpload(event: React.ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0]
     if (!file) return
-    if (file.type !== 'application/pdf') { setError('Only PDF files are allowed'); return }
+    const allowedTypes = ['application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document']
+    if (!allowedTypes.includes(file.type)) { setError('Only PDF, DOC, and DOCX files are allowed'); return }
     if (file.size > MAX_FILE_SIZE) { setError('File size must be under 10MB'); return }
     setUploading(true)
     setError(null)
     const supabase = createClient()
-    const filePath = `${orgId}/${candidateId}/resume.pdf`
+    const ext = file.name.split('.').pop()?.toLowerCase() || 'pdf'
+    const filePath = `${orgId}/${candidateId}/resume.${ext}`
     const { error: uploadError } = await supabase.storage.from('resumes').upload(filePath, file, { upsert: true })
     if (uploadError) { setError(uploadError.message); setUploading(false); return }
     const { data: { publicUrl } } = supabase.storage.from('resumes').getPublicUrl(filePath)
@@ -1499,9 +1597,9 @@ function ResumeUploadButton({
 
   return (
     <div>
-      {error && <p className="text-xs text-red-600 mb-2">{error}</p>}
-      <input ref={fileInputRef} type="file" accept=".pdf" onChange={handleUpload} className="hidden" />
-      <Button variant="outline" size="sm" onClick={() => fileInputRef.current?.click()} disabled={uploading}>
+      {error && <p className="text-[11px] text-rose-600 mb-2">{error}</p>}
+      <input ref={fileInputRef} type="file" accept=".pdf,.doc,.docx" onChange={handleUpload} className="hidden" />
+      <Button variant="outline" size="sm" onClick={() => fileInputRef.current?.click()} disabled={uploading} className="text-[12px] rounded-lg">
         {uploading ? 'Uploading...' : 'Upload Resume'}
       </Button>
     </div>
@@ -1513,8 +1611,8 @@ function ResumeUploadButton({
 function InfoField({ label, value }: { label: string; value: string | null | undefined }) {
   return (
     <div>
-      <span className="text-gray-500 text-xs uppercase tracking-wide">{label}</span>
-      <p className="font-medium mt-0.5">{value || <span className="text-gray-300">-</span>}</p>
+      <span className="text-[11px] text-gray-400 uppercase tracking-wide block mb-0.5">{label}</span>
+      <p className="text-[13px] font-medium text-gray-900">{value || <span className="text-gray-300">-</span>}</p>
     </div>
   )
 }
@@ -1522,8 +1620,8 @@ function InfoField({ label, value }: { label: string; value: string | null | und
 function InfoRow({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex justify-between">
-      <span className="text-gray-500">{label}</span>
-      <span className="font-medium">{value}</span>
+      <span className="text-gray-500 text-[12px]">{label}</span>
+      <span className="font-medium text-[12px] text-gray-900">{value}</span>
     </div>
   )
 }
@@ -1531,8 +1629,8 @@ function InfoRow({ label, value }: { label: string; value: string }) {
 function LinkField({ label, url, text }: { label: string; url: string | null | undefined; text: string }) {
   return (
     <div>
-      <span className="text-gray-500 text-xs uppercase tracking-wide">{label}</span>
-      <p className="font-medium mt-0.5">
+      <span className="text-[11px] text-gray-400 uppercase tracking-wide block mb-0.5">{label}</span>
+      <p className="text-[13px] font-medium">
         {url ? (
           <a href={url} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">{text}</a>
         ) : <span className="text-gray-300">-</span>}
@@ -1544,11 +1642,19 @@ function LinkField({ label, url, text }: { label: string; url: string | null | u
 /* ====== Assessment Tab Component ====== */
 
 const ASSESSMENT_STATUS_COLORS: Record<string, string> = {
-  invited: 'bg-amber-100 text-amber-700',
-  started: 'bg-blue-100 text-blue-700',
-  completed: 'bg-green-100 text-green-700',
-  expired: 'bg-gray-100 text-gray-500',
+  invited: 'border-amber-200 bg-amber-50 text-amber-700',
+  started: 'border-blue-200 bg-blue-50 text-blue-700',
+  completed: 'border-emerald-200 bg-emerald-50 text-emerald-700',
+  expired: 'border-gray-200 bg-gray-50 text-gray-500',
 }
+
+const ASSESSMENT_STATUS_DOT: Record<string, string> = {
+  invited: 'bg-amber-500',
+  started: 'bg-blue-500',
+  completed: 'bg-emerald-500',
+  expired: 'bg-gray-400',
+}
+
 const ASSESSMENT_STATUS_LABELS: Record<string, string> = {
   invited: 'Sent',
   started: 'In Progress',
@@ -1618,73 +1724,73 @@ function AssessmentTab({ assessmentInvitations, isActive, canManage, sending, on
   return (
     <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
 
-      {/* ── LEFT: Send Form ── */}
+      {/* -- LEFT: Send Form -- */}
       <div className="lg:col-span-3 space-y-6">
         {isActive && canManage && (
-          <div className="bg-white rounded-xl border border-gray-200 shadow-sm">
-            <div className="px-6 py-4 border-b border-gray-100">
-              <h3 className="text-base font-semibold text-gray-900">
+          <div className="rounded-xl border border-gray-200 bg-white shadow-sm">
+            <div className="px-5 py-3.5 border-b border-gray-100">
+              <h3 className="text-[13px] font-semibold text-gray-900">
                 {!hasHistory ? 'Send Assessment' : 'Send Another Assessment'}
               </h3>
-              <p className="text-sm text-gray-500 mt-1">Send an online assessment link to this candidate via email.</p>
+              <p className="text-[12px] text-gray-500 mt-0.5">Send an online assessment link to this candidate via email.</p>
             </div>
-            <div className="p-6 space-y-4">
+            <div className="p-5 space-y-4">
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1.5">
-                  <Label>Assessment Name <span className="text-red-500">*</span></Label>
+                  <Label className="text-[12px]">Assessment Name <span className="text-rose-500">*</span></Label>
                   <input
                     type="text"
-                    className={`flex h-9 w-full rounded-md border bg-transparent px-3 py-1 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring ${formErrors.name ? 'border-red-500' : 'border-input'}`}
+                    className={`flex h-9 w-full rounded-lg border bg-transparent px-3 py-1 text-[13px] shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring ${formErrors.name ? 'border-rose-500' : 'border-input'}`}
                     placeholder="e.g. Technical Round 1"
                     value={name}
                     onChange={(e) => { setName(e.target.value); setFormErrors((p) => ({ ...p, name: '' })) }}
                   />
-                  {formErrors.name && <p className="text-xs text-red-500">{formErrors.name}</p>}
+                  {formErrors.name && <p className="text-[11px] text-rose-500">{formErrors.name}</p>}
                 </div>
                 <div className="space-y-1.5">
-                  <Label>Expiry Date <span className="text-red-500">*</span></Label>
+                  <Label className="text-[12px]">Expiry Date <span className="text-rose-500">*</span></Label>
                   <input
                     type="date"
-                    className={`flex h-9 w-full rounded-md border bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring ${formErrors.expiryDate ? 'border-red-500' : 'border-input'}`}
+                    className={`flex h-9 w-full rounded-lg border bg-transparent px-3 py-1 text-[13px] shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring ${formErrors.expiryDate ? 'border-rose-500' : 'border-input'}`}
                     min={new Date().toISOString().split('T')[0]}
                     value={expiryDate}
                     onChange={(e) => { setExpiryDate(e.target.value); setFormErrors((p) => ({ ...p, expiryDate: '' })) }}
                   />
-                  {formErrors.expiryDate && <p className="text-xs text-red-500">{formErrors.expiryDate}</p>}
+                  {formErrors.expiryDate && <p className="text-[11px] text-rose-500">{formErrors.expiryDate}</p>}
                 </div>
               </div>
 
               <div className="space-y-1.5">
-                <Label>Assessment Link <span className="text-red-500">*</span></Label>
+                <Label className="text-[12px]">Assessment Link <span className="text-rose-500">*</span></Label>
                 <div className="relative">
                   <LinkIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
                   <input
                     type="url"
-                    className={`flex h-9 w-full rounded-md border bg-transparent pl-9 pr-3 py-1 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring ${formErrors.link ? 'border-red-500' : 'border-input'}`}
+                    className={`flex h-9 w-full rounded-lg border bg-transparent pl-9 pr-3 py-1 text-[13px] shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring ${formErrors.link ? 'border-rose-500' : 'border-input'}`}
                     placeholder="https://your-platform.com/test/..."
                     value={link}
                     onChange={(e) => { setLink(e.target.value); setFormErrors((p) => ({ ...p, link: '' })) }}
                   />
                 </div>
-                {formErrors.link && <p className="text-xs text-red-500">{formErrors.link}</p>}
+                {formErrors.link && <p className="text-[11px] text-rose-500">{formErrors.link}</p>}
               </div>
 
               <div className="space-y-1.5">
-                <Label>Instructions for Candidate</Label>
+                <Label className="text-[12px]">Instructions for Candidate</Label>
                 <Textarea
                   rows={2}
-                  className="resize-none"
+                  className="resize-none text-[13px] rounded-lg"
                   placeholder="Optional preparation notes or guidelines..."
                   value={instructions}
                   onChange={(e) => setInstructions(e.target.value)}
                 />
               </div>
 
-              <Button onClick={handleSend} disabled={sending} className="gap-1.5">
+              <Button onClick={handleSend} disabled={sending} className="gap-1.5 bg-gray-900 hover:bg-gray-800 text-white text-[12px] h-8">
                 {sending ? (
                   <>
                     <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                    Sending…
+                    Sending...
                   </>
                 ) : (
                   <>
@@ -1701,21 +1807,21 @@ function AssessmentTab({ assessmentInvitations, isActive, canManage, sending, on
         {!hasHistory && (!isActive || !canManage) && (
           <div className="text-center py-16 border-2 border-dashed border-gray-200 rounded-xl">
             <ClipboardList className="w-10 h-10 text-gray-300 mx-auto mb-3" />
-            <p className="text-sm text-gray-500 font-medium">No assessments sent yet</p>
-            <p className="text-xs text-gray-400 mt-1">Send an assessment to evaluate this candidate</p>
+            <p className="text-[13px] text-gray-500 font-medium">No assessments sent yet</p>
+            <p className="text-[11px] text-gray-400 mt-1">Send an assessment to evaluate this candidate</p>
           </div>
         )}
       </div>
 
-      {/* ── RIGHT: History Sidebar ── */}
+      {/* -- RIGHT: History Sidebar -- */}
       <div className="lg:col-span-2">
         <div className="lg:sticky lg:top-6 space-y-3">
-          <div className="bg-white rounded-xl border border-gray-200 shadow-sm">
-            <div className="px-6 py-4 border-b border-gray-100">
+          <div className="rounded-xl border border-gray-200 bg-white shadow-sm">
+            <div className="px-5 py-3.5 border-b border-gray-100">
               <div className="flex items-center justify-between">
-                <h3 className="text-base font-semibold text-gray-900">Assessment History</h3>
+                <h3 className="text-[12px] font-semibold text-gray-900 uppercase tracking-wide">Assessment History</h3>
                 {hasHistory && (
-                  <span className="text-xs font-medium text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full">
+                  <span className="text-[10px] font-medium text-white bg-gray-900 px-1.5 py-0.5 rounded-full">
                     {assessmentInvitations.length}
                   </span>
                 )}
@@ -1725,8 +1831,9 @@ function AssessmentTab({ assessmentInvitations, isActive, canManage, sending, on
               {hasHistory ? (
                 <div className="divide-y divide-gray-100">
                   {assessmentInvitations.map((inv) => {
-                    const statusColor = ASSESSMENT_STATUS_COLORS[inv.status] || 'bg-gray-100 text-gray-700'
+                    const statusColor = ASSESSMENT_STATUS_COLORS[inv.status] || 'border-gray-200 bg-gray-50 text-gray-700'
                     const statusLabel = ASSESSMENT_STATUS_LABELS[inv.status] || inv.status
+                    const statusDot = ASSESSMENT_STATUS_DOT[inv.status] || 'bg-gray-400'
                     const borderColor = STATUS_BORDER[inv.status] || 'border-l-gray-300'
 
                     return (
@@ -1735,14 +1842,15 @@ function AssessmentTab({ assessmentInvitations, isActive, canManage, sending, on
                         <div className="flex items-start justify-between gap-3 mb-2">
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-1.5 flex-wrap">
-                              <p className="text-sm font-semibold text-gray-900 truncate">
+                              <p className="text-[13px] font-semibold text-gray-900 truncate">
                                 {inv.assessment_name || 'Assessment'}
                               </p>
-                              <span className={`shrink-0 text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${statusColor}`}>
+                              <span className={`shrink-0 inline-flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded-full border ${statusColor}`}>
+                                <span className={`w-1.5 h-1.5 rounded-full ${statusDot}`} />
                                 {statusLabel}
                               </span>
                             </div>
-                            <p className="text-xs text-gray-400 mt-0.5">
+                            <p className="text-[11px] text-gray-400 mt-0.5">
                               {new Date(inv.sent_at || inv.invited_at).toLocaleDateString()}
                               {inv.expiry_date && (
                                 <span className="ml-1.5 text-amber-500">· exp {new Date(inv.expiry_date).toLocaleDateString()}</span>
@@ -1750,8 +1858,8 @@ function AssessmentTab({ assessmentInvitations, isActive, canManage, sending, on
                             </p>
                           </div>
                           {inv.score != null && (
-                            <div className="shrink-0 w-10 h-10 rounded-full border-2 border-green-200 bg-green-50 flex items-center justify-center">
-                              <span className="text-xs font-bold text-green-700 leading-none">{Math.round(inv.score)}</span>
+                            <div className="shrink-0 w-10 h-10 rounded-xl border-2 border-emerald-200 bg-emerald-50 flex items-center justify-center">
+                              <span className="text-[11px] font-bold text-emerald-700 leading-none">{Math.round(inv.score)}</span>
                             </div>
                           )}
                         </div>
@@ -1762,7 +1870,7 @@ function AssessmentTab({ assessmentInvitations, isActive, canManage, sending, on
                             href={inv.assessment_link}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="inline-flex items-center gap-1 text-xs text-blue-600 hover:underline mb-2"
+                            className="inline-flex items-center gap-1 text-[11px] text-blue-600 hover:underline mb-2"
                           >
                             <ExternalLink className="w-3 h-3" />
                             Open link
@@ -1771,7 +1879,7 @@ function AssessmentTab({ assessmentInvitations, isActive, canManage, sending, on
 
                         {/* Instructions */}
                         {inv.instructions && (
-                          <p className="text-xs text-gray-500 bg-gray-50 rounded px-2 py-1.5 mb-2 whitespace-pre-wrap">
+                          <p className="text-[11px] text-gray-500 bg-gray-50 rounded-lg px-2 py-1.5 mb-2 whitespace-pre-wrap">
                             {inv.instructions}
                           </p>
                         )}
@@ -1784,19 +1892,19 @@ function AssessmentTab({ assessmentInvitations, isActive, canManage, sending, on
                               type="number"
                               min={0}
                               max={100}
-                              className="h-7 w-16 rounded-md border border-input bg-transparent px-2 text-xs text-center focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                              placeholder="0–100"
+                              className="h-7 w-16 rounded-lg border border-input bg-transparent px-2 text-[11px] text-center focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                              placeholder="0-100"
                               value={scoreInputs[inv.id] || ''}
                               onChange={(e) => setScoreInputs((prev) => ({ ...prev, [inv.id]: e.target.value }))}
                             />
                             <Button
                               size="sm"
                               variant="outline"
-                              className="h-7 text-xs px-2"
+                              className="h-7 text-[11px] px-2 rounded-lg"
                               onClick={() => handleScoreSave(inv.id)}
                               disabled={savingScore[inv.id] || !scoreInputs[inv.id]}
                             >
-                              {savingScore[inv.id] ? '…' : 'Save'}
+                              {savingScore[inv.id] ? '...' : 'Save'}
                             </Button>
                           </div>
                         )}
@@ -1807,7 +1915,7 @@ function AssessmentTab({ assessmentInvitations, isActive, canManage, sending, on
               ) : (
                 <div className="px-5 pb-5 text-center">
                   <Clock className="w-8 h-8 mx-auto text-gray-200 mb-2" />
-                  <p className="text-xs text-gray-400">No assessments sent yet</p>
+                  <p className="text-[11px] text-gray-400">No assessments sent yet</p>
                 </div>
               )}
             </div>
