@@ -72,6 +72,7 @@ export function ScheduleInterviewDialog({
   const [notes, setNotes] = useState('')
   const [scorecardId, setScorecardId] = useState<string>('')
   const [scorecards, setScorecards] = useState<ScorecardOption[]>([])
+  const [interviewLocations, setInterviewLocations] = useState<{ id: string; name: string }[]>([])
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -82,12 +83,16 @@ export function ScheduleInterviewDialog({
   const suggestionsRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
 
-  // Fetch members once when dialog opens
+  // Fetch members and interview locations once when dialog opens
   useEffect(() => {
     if (!open) return
     fetch('/api/members')
       .then((r) => r.json())
       .then(({ data }) => { if (data) setMembers(data) })
+      .catch(() => {})
+    fetch('/api/interview-locations')
+      .then((r) => r.json())
+      .then(({ data }) => { if (data) setInterviewLocations(data) })
       .catch(() => {})
   }, [open])
 
@@ -360,11 +365,27 @@ export function ScheduleInterviewDialog({
           {type === 'onsite' && (
             <div className="space-y-2">
               <Label>Location <span className="text-red-500">*</span></Label>
-              <Input
-                value={location}
-                onChange={(e) => setLocation(e.target.value)}
-                placeholder="e.g. Office, Room 3B, Building A"
-              />
+              {interviewLocations.length > 0 ? (
+                <Select value={location} onValueChange={setLocation}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select interview location" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {interviewLocations.map((loc) => (
+                      <SelectItem key={loc.id} value={loc.name}>{loc.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              ) : (
+                <Input
+                  value={location}
+                  onChange={(e) => setLocation(e.target.value)}
+                  placeholder="e.g. Office, Room 3B, Building A"
+                />
+              )}
+              {interviewLocations.length === 0 && (
+                <p className="text-[11px] text-gray-400">Tip: Add locations in Settings → Locations for a quick dropdown.</p>
+              )}
             </div>
           )}
 
