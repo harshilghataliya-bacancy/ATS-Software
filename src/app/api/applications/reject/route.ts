@@ -49,10 +49,11 @@ export async function POST(request: NextRequest) {
   const companyName = (membership.organization as any)?.name || 'Our Company'
 
   const body = await request.json()
-  const { applicationId, reason, stageId } = body as {
+  const { applicationId, reason, stageId, sendEmail } = body as {
     applicationId: string
     reason: string
     stageId?: string
+    sendEmail?: boolean
   }
 
   if (!applicationId) {
@@ -85,10 +86,12 @@ export async function POST(request: NextRequest) {
     job_title: appInfo?.jobs?.title || undefined,
   }).catch(() => {})
 
-  // 2. Send rejection email in background (don't block response)
-  sendRejectionEmail(supabase, user.id, orgId, applicationId, companyName).catch((err) => {
-    console.error('[Auto Rejection Email Error]', err)
-  })
+  // 2. Send rejection email only if explicitly requested
+  if (sendEmail) {
+    sendRejectionEmail(supabase, user.id, orgId, applicationId, companyName).catch((err) => {
+      console.error('[Auto Rejection Email Error]', err)
+    })
+  }
 
   return NextResponse.json({ success: true })
 }

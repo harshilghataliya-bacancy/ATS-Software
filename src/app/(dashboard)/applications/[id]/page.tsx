@@ -256,7 +256,7 @@ export default function ApplicationDetailPage() {
     loadApplication()
   }, [organization, loadApplication])
 
-  async function handleReject() {
+  async function handleReject(sendEmail: boolean) {
     if (!organization || !user || !application) return
     setRejecting(true)
     try {
@@ -266,6 +266,7 @@ export default function ApplicationDetailPage() {
         body: JSON.stringify({
           applicationId: application.id,
           reason: rejectReason,
+          sendEmail,
         }),
       })
       const data = await res.json()
@@ -1520,15 +1521,15 @@ export default function ApplicationDetailPage() {
 
       {/* Reject Dialog */}
       <Dialog open={rejectOpen} onOpenChange={setRejectOpen}>
-        <DialogContent className="rounded-xl">
-          <DialogHeader>
+        <DialogContent className="rounded-xl sm:max-w-[420px] p-5">
+          <DialogHeader className="space-y-1">
             <DialogTitle className="text-[15px]">Reject Application</DialogTitle>
             <DialogDescription className="text-[12px]">
               Provide a reason for rejecting {candidate?.first_name}&apos;s application for {job?.title}.
             </DialogDescription>
           </DialogHeader>
-          <div className="py-4">
-            <Label className="text-[12px]">Rejection Reason</Label>
+          <div className="pt-2 pb-1">
+            <Label className="text-[12px]">Reason for Rejection <span className="text-rose-500">*</span></Label>
             <Textarea
               rows={3}
               value={rejectReason}
@@ -1537,12 +1538,15 @@ export default function ApplicationDetailPage() {
               className="mt-1.5 text-[13px] rounded-lg"
             />
           </div>
-          <DialogFooter>
+          <div className="flex items-center justify-end gap-2 pt-2">
             <Button variant="outline" onClick={() => setRejectOpen(false)} className="text-[12px] h-8 rounded-lg">Cancel</Button>
-            <Button className="bg-rose-600 hover:bg-rose-700 text-white text-[12px] h-8 rounded-lg" onClick={handleReject} disabled={rejecting || !rejectReason.trim()}>
-              {rejecting ? 'Rejecting...' : 'Reject'}
+            <Button variant="outline" className="text-rose-600 border-rose-300 hover:bg-rose-50 text-[12px] h-8 rounded-lg" onClick={() => handleReject(false)} disabled={rejecting || !rejectReason.trim()}>
+              {rejecting ? 'Processing...' : 'Reject'}
             </Button>
-          </DialogFooter>
+            <Button className="bg-rose-600 hover:bg-rose-700 text-white text-[12px] h-8 rounded-lg" onClick={() => handleReject(true)} disabled={rejecting || !rejectReason.trim()}>
+              {rejecting ? 'Processing...' : 'Reject & Send Email'}
+            </Button>
+          </div>
         </DialogContent>
       </Dialog>
     </div>
