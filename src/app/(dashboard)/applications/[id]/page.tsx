@@ -590,7 +590,7 @@ export default function ApplicationDetailPage() {
                     <SelectValue placeholder="Move stage..." />
                   </SelectTrigger>
                   <SelectContent>
-                    {stages.map((s) => (
+                    {stages.filter((s) => s.stage_type !== 'hired' && s.stage_type !== 'rejected').map((s) => (
                       <SelectItem key={s.id} value={s.id} className="text-[12px]">{s.name}</SelectItem>
                     ))}
                   </SelectContent>

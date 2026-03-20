@@ -19,6 +19,10 @@ import {
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
 
 const CALC_TYPES: { value: SalaryComponentCalcType; label: string }[] = [
   { value: 'percentage_of_ctc', label: '% of CTC' },
@@ -56,6 +60,11 @@ export default function SalaryStructuresPage() {
   const [formDescription, setFormDescription] = useState('')
   const [formDefault, setFormDefault] = useState(false)
   const [formComponents, setFormComponents] = useState<SalaryStructureComponent[]>([])
+
+  // Delete dialog
+  const [deleteOpen, setDeleteOpen] = useState(false)
+  const [deleteId, setDeleteId] = useState<string | null>(null)
+  const [deleting, setDeleting] = useState(false)
 
   // Preview
   const [previewCtc, setPreviewCtc] = useState(1200000)
@@ -125,9 +134,12 @@ export default function SalaryStructuresPage() {
     setFormComponents(prev => [...prev, emptyComponent()])
   }
 
+  const [saveError, setSaveError] = useState<string | null>(null)
+
   async function handleSave() {
     if (!formName.trim() || formComponents.length === 0) return
     setSaving(true)
+    setSaveError(null)
 
     const payload = {
       name: formName.trim(),
@@ -136,28 +148,55 @@ export default function SalaryStructuresPage() {
       components: formComponents,
     }
 
-    if (isNew) {
-      await fetch('/api/salary-structures', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      })
-    } else if (editing) {
-      await fetch(`/api/salary-structures/${editing.id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      })
-    }
+    try {
+      let res: Response
+      const isBuiltIn = editing?.id?.startsWith('builtin-')
+      if (isNew || isBuiltIn) {
+        // Built-in structures don't exist in DB — create a new record
+        res = await fetch('/api/salary-structures', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        })
+      } else if (editing) {
+        res = await fetch(`/api/salary-structures/${editing.id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        })
+      } else {
+        setSaving(false)
+        return
+      }
 
-    setSaving(false)
-    cancelEdit()
-    fetchStructures()
+      if (!res.ok) {
+        const data = await res.json()
+        setSaveError(data.error || 'Failed to save salary structure')
+        setSaving(false)
+        return
+      }
+
+      setSaving(false)
+      cancelEdit()
+      fetchStructures()
+    } catch {
+      setSaveError('Failed to save salary structure')
+      setSaving(false)
+    }
   }
 
-  async function handleDelete(id: string) {
-    if (!confirm('Delete this salary structure?')) return
-    await fetch(`/api/salary-structures/${id}`, { method: 'DELETE' })
+  function handleDelete(id: string) {
+    setDeleteId(id)
+    setDeleteOpen(true)
+  }
+
+  async function confirmDelete() {
+    if (!deleteId) return
+    setDeleting(true)
+    await fetch(`/api/salary-structures/${deleteId}`, { method: 'DELETE' })
+    setDeleting(false)
+    setDeleteOpen(false)
+    setDeleteId(null)
     fetchStructures()
   }
 
@@ -388,6 +427,9 @@ export default function SalaryStructuresPage() {
         </Card>
 
         {/* Save */}
+        {saveError && (
+          <div className="bg-red-50 text-red-700 text-sm p-3 rounded-md">{saveError}</div>
+        )}
         <div className="flex justify-end gap-3">
           <Button variant="outline" onClick={cancelEdit}>Cancel</Button>
           <Button onClick={handleSave} disabled={saving || !formName.trim() || formComponents.length === 0}>
@@ -560,6 +602,28 @@ export default function SalaryStructuresPage() {
           })}
         </div>
       )}
+
+      {/* Delete confirmation dialog */}
+      <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Salary Structure</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete this salary structure? This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleting}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={confirmDelete}
+              disabled={deleting}
+              className="bg-red-600 hover:bg-red-700 text-white"
+            >
+              {deleting ? 'Deleting...' : 'Delete'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }

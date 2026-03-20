@@ -26,7 +26,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from '@/components/ui/table'
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Label } from '@/components/ui/label'
+import { Textarea } from '@/components/ui/textarea'
 import { ScoreBreakdownDialog } from './score-breakdown-dialog'
 import { BulkResumeUploadDialog } from '@/components/bulk-upload/bulk-resume-upload-dialog'
 import { AddCandidateDialog } from '@/components/add-candidate-dialog'
@@ -35,7 +37,8 @@ import {
 } from '@/components/ui/dropdown-menu'
 import {
   ArrowLeft, UserPlus, Upload, List, Columns3, Briefcase, Sparkles, User, Users,
-  Filter, MoreHorizontal, ChevronDown, ExternalLink, FileText, Mail, Search,
+  Filter, MoreHorizontal, ChevronDown, ExternalLink, Mail, Search,
+  CalendarDays, Gift, ClipboardCheck, UserCircle,
 } from 'lucide-react'
 
 // ---------------------------------------------------------------------------
@@ -244,9 +247,51 @@ function AppCardUI({
             </span>
           ))}
         </div>
-        <p className="text-[10px] text-gray-400 mt-2">
-          {new Date(app.applied_at).toLocaleDateString()}
-        </p>
+        <div className="flex items-center justify-between mt-2.5 pt-2 border-t border-gray-100">
+          <p className="text-[10px] text-gray-400">
+            {new Date(app.applied_at).toLocaleDateString()}
+          </p>
+          {app.current_stage?.stage_type === 'screening' && (
+            <Link
+              href={`/applications/${app.id}?tab=personal&from=applications`}
+              onClick={(e) => e.stopPropagation()}
+              className="flex items-center gap-1 text-[10px] font-medium text-violet-600 hover:text-violet-700 hover:bg-violet-50 px-1.5 py-0.5 rounded-md transition-colors"
+            >
+              <UserCircle className="w-3 h-3" />
+              Profile
+            </Link>
+          )}
+          {app.current_stage?.stage_type === 'interview' && (
+            <Link
+              href={`/applications/${app.id}?tab=interview&from=applications`}
+              onClick={(e) => e.stopPropagation()}
+              className="flex items-center gap-1 text-[10px] font-medium text-blue-600 hover:text-blue-700 hover:bg-blue-50 px-1.5 py-0.5 rounded-md transition-colors"
+            >
+              <CalendarDays className="w-3 h-3" />
+              Interview
+            </Link>
+          )}
+          {app.current_stage?.stage_type === 'offer' && (
+            <Link
+              href={`/applications/${app.id}?tab=offer&from=applications`}
+              onClick={(e) => e.stopPropagation()}
+              className="flex items-center gap-1 text-[10px] font-medium text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 px-1.5 py-0.5 rounded-md transition-colors"
+            >
+              <Gift className="w-3 h-3" />
+              Offer
+            </Link>
+          )}
+          {app.current_stage?.stage_type === 'assessment' && (
+            <Link
+              href={`/applications/${app.id}?tab=assessment&from=applications`}
+              onClick={(e) => e.stopPropagation()}
+              className="flex items-center gap-1 text-[10px] font-medium text-amber-600 hover:text-amber-700 hover:bg-amber-50 px-1.5 py-0.5 rounded-md transition-colors"
+            >
+              <ClipboardCheck className="w-3 h-3" />
+              Assessment
+            </Link>
+          )}
+        </div>
       </div>
     </div>
   )
@@ -290,6 +335,8 @@ export default function ApplicationsPage() {
   // View mode
   const [viewMode, setViewMode] = useState<ViewMode>('table')
 
+  // Status tab filter: 'all', 'active', 'hired', 'rejected'
+  const [statusTab, setStatusTab] = useState<string>('active')
   // Filters — single stage filter (includes hired/rejected as pseudo-stages)
   // Values: 'all', stage IDs, 'hired', 'rejected'
   const [stageFilter, setStageFilter] = useState<string>('all')
@@ -297,6 +344,13 @@ export default function ApplicationsPage() {
   const [filterScore, setFilterScore] = useState<string>('all')
   const [filterMyCandidates, setFilterMyCandidates] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
+
+  // Reject dialog state
+  const [rejectOpen, setRejectOpen] = useState(false)
+  const [rejectReason, setRejectReason] = useState('')
+  const [rejecting, setRejecting] = useState(false)
+  const [rejectApp, setRejectApp] = useState<ApplicationRow | null>(null)
+  const [rejectStageId, setRejectStageId] = useState<string | null>(null)
 
   // AI Match Scores
   const [matchScores, setMatchScores] = useState<Record<string, MatchScore>>({})
@@ -489,10 +543,30 @@ export default function ApplicationsPage() {
   // Stage change handler (shared by table + pipeline)
   // ---------------------------------------------------------------------------
 
+  // Hire block dialog
+  const [hireBlockOpen, setHireBlockOpen] = useState(false)
+  const [hireBlockApp, setHireBlockApp] = useState<ApplicationRow | null>(null)
+
   async function handleStageChange(app: ApplicationRow, newStageId: string) {
     if (!user || !organization || newStageId === app.current_stage_id) return
 
     const targetStage = stages.find((s) => s.id === newStageId)
+
+    // Block move to hired if no accepted offer exists
+    if (targetStage?.stage_type === 'hired') {
+      const supabase = createClient()
+      const { data: offers } = await supabase
+        .from('offer_letters')
+        .select('id, status')
+        .eq('application_id', app.id)
+        .eq('organization_id', organization.id)
+        .eq('status', 'accepted')
+      if (!offers || offers.length === 0) {
+        setHireBlockApp(app)
+        setHireBlockOpen(true)
+        return
+      }
+    }
 
     // Optimistic update on allApps (pipeline view derives from this)
     setAllApps((prev) =>
@@ -511,23 +585,12 @@ export default function ApplicationsPage() {
     )
 
     if (targetStage?.stage_type === 'rejected') {
-      try {
-        const res = await fetch('/api/applications/reject', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ applicationId: app.id, reason: '', stageId: newStageId }),
-        })
-        if (!res.ok) {
-          const data = await res.json()
-          setError(data.error || 'Failed to reject application')
-          await loadData()
-          return
-        }
-      } catch {
-        setError('Failed to reject application')
-        await loadData()
-        return
-      }
+      // Show reject dialog instead of auto-rejecting
+      setRejectApp(app)
+      setRejectStageId(newStageId)
+      setRejectReason('')
+      setRejectOpen(true)
+      return
     } else {
       const supabase = createClient()
       const { error: moveError } = await moveApplication(supabase, app.id, organization.id, newStageId, user.id)
@@ -544,6 +607,42 @@ export default function ApplicationsPage() {
       to_stage_id: newStageId,
       candidate_name: `${app.candidate.first_name} ${app.candidate.last_name}`,
     })
+  }
+
+  // ---------------------------------------------------------------------------
+  // Reject handler (called from reject dialog)
+  // ---------------------------------------------------------------------------
+
+  async function handleReject(sendEmail: boolean) {
+    if (!rejectApp || !organization || !user) return
+    setRejecting(true)
+    try {
+      const res = await fetch('/api/applications/reject', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          applicationId: rejectApp.id,
+          reason: rejectReason,
+          stageId: rejectStageId,
+          sendEmail,
+        }),
+      })
+      if (!res.ok) {
+        const data = await res.json()
+        setError(data.error || 'Failed to reject application')
+        await loadData()
+      } else {
+        setRejectOpen(false)
+        setRejectReason('')
+        setRejectApp(null)
+        setRejectStageId(null)
+        await loadData()
+      }
+    } catch {
+      setError('Failed to reject application')
+      await loadData()
+    }
+    setRejecting(false)
   }
 
   // ---------------------------------------------------------------------------
@@ -705,6 +804,7 @@ export default function ApplicationsPage() {
     ...stage,
     applications: allApps.filter((a) => {
       if (a.current_stage_id !== stage.id) return false
+      if (statusTab !== 'all' && a.status !== statusTab) return false
       if (searchQuery.trim()) {
         const q = searchQuery.toLowerCase()
         const name = `${a.candidate?.first_name || ''} ${a.candidate?.last_name || ''}`.toLowerCase()
@@ -793,6 +893,31 @@ export default function ApplicationsPage() {
         <div className="bg-red-50 text-red-700 text-sm p-3 rounded-md">{error}</div>
       )}
 
+      {/* Status Tabs */}
+      <div className="flex items-center gap-1 border-b border-gray-200">
+        {[
+          { value: 'all', label: 'All', count: allApps.length },
+          { value: 'active', label: 'Active', count: allApps.filter(a => a.status === 'active').length },
+          { value: 'hired', label: 'Hired', count: allApps.filter(a => a.status === 'hired').length },
+          { value: 'rejected', label: 'Rejected', count: allApps.filter(a => a.status === 'rejected').length },
+        ].map((tab) => (
+          <button
+            key={tab.value}
+            onClick={() => setStatusTab(tab.value)}
+            className={`px-3 py-2 text-[12px] font-medium border-b-2 transition-colors ${
+              statusTab === tab.value
+                ? 'border-gray-900 text-gray-900'
+                : 'border-transparent text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            {tab.label}
+            <span className={`ml-1.5 text-[11px] ${statusTab === tab.value ? 'text-gray-600' : 'text-gray-400'}`}>
+              {tab.count}
+            </span>
+          </button>
+        ))}
+      </div>
+
       {/* ── TABLE VIEW ──────────────────────────────────────────────────────── */}
       {viewMode === 'table' && (
         <>
@@ -827,7 +952,7 @@ export default function ApplicationsPage() {
               <Button
                 variant="ghost" size="sm"
                 className="h-8 text-[12px] text-gray-500"
-                onClick={() => { setStageFilter('all'); setFilterScore('all'); setFilterMyCandidates(false) }}
+                onClick={() => { setStatusTab('all'); setStageFilter('all'); setFilterScore('all'); setFilterMyCandidates(false) }}
               >
                 Clear all
               </Button>
@@ -904,6 +1029,8 @@ export default function ApplicationsPage() {
             <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
               {(() => {
                 const filteredApps = allApps.filter((app) => {
+                  // Status tab filter
+                  if (statusTab !== 'all' && app.status !== statusTab) return false
                   if (searchQuery.trim()) {
                     const q = searchQuery.toLowerCase()
                     const name = `${app.candidate?.first_name || ''} ${app.candidate?.last_name || ''}`.toLowerCase()
@@ -1056,28 +1183,12 @@ export default function ApplicationsPage() {
                               </span>
                             )}
                           </TableCell>
-                          <TableCell onClick={(e) => e.stopPropagation()}>
-                            {app.status === 'active' && canManageJobs ? (
-                              <Select
-                                value={app.current_stage_id}
-                                onValueChange={(val) => handleStageChange(app, val)}
-                              >
-                                <SelectTrigger className="w-[150px] h-7 text-[11px] rounded-lg border-gray-200">
-                                  <SelectValue />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  {stages.map((stage) => (
-                                    <SelectItem key={stage.id} value={stage.id}>{stage.name}</SelectItem>
-                                  ))}
-                                </SelectContent>
-                              </Select>
-                            ) : (
+                          <TableCell>
                               <span className={`inline-flex items-center text-[11px] font-medium px-2 py-0.5 rounded-full border ${
                                 STAGE_BG[app.current_stage?.stage_type ?? ''] ?? 'bg-gray-50 text-gray-700 border-gray-200'
                               }`}>
                                 {app.current_stage?.name ?? '-'}
                               </span>
-                            )}
                           </TableCell>
                           <TableCell className="text-[12px] text-gray-500">
                             {new Date(app.applied_at).toLocaleDateString()}
@@ -1098,12 +1209,6 @@ export default function ApplicationsPage() {
                                   <User className="w-3.5 h-3.5 mr-2" />
                                   View Profile
                                 </DropdownMenuItem>
-                                {app.candidate.resume_url && (
-                                  <DropdownMenuItem onClick={() => window.open(app.candidate.resume_url!, '_blank')}>
-                                    <FileText className="w-3.5 h-3.5 mr-2" />
-                                    View Resume
-                                  </DropdownMenuItem>
-                                )}
                                 <DropdownMenuSeparator />
                                 <DropdownMenuItem onClick={() => window.open(`mailto:${app.candidate.email}`, '_blank')}>
                                   <Mail className="w-3.5 h-3.5 mr-2" />
@@ -1375,6 +1480,59 @@ export default function ApplicationsPage() {
             >
               {savingRecruiters ? 'Saving...' : 'Save Changes'}
             </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Reject Dialog */}
+      <Dialog open={rejectOpen} onOpenChange={(open) => { if (!open) { setRejectOpen(false); setRejectApp(null); setRejectStageId(null); loadData() } }}>
+        <DialogContent className="rounded-xl sm:max-w-[420px] p-5">
+          <DialogHeader className="space-y-1">
+            <DialogTitle className="text-[15px]">Reject Application</DialogTitle>
+            <DialogDescription className="text-[12px]">
+              Provide a reason for rejecting {rejectApp?.candidate?.first_name}&apos;s application.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="pt-2 pb-1">
+            <Label className="text-[12px]">Reason for Rejection <span className="text-rose-500">*</span></Label>
+            <Textarea
+              rows={3}
+              value={rejectReason}
+              onChange={(e) => setRejectReason(e.target.value)}
+              placeholder="Enter the reason for rejection..."
+              className="mt-1.5 text-[13px] rounded-lg"
+            />
+          </div>
+          <div className="flex items-center justify-end gap-2 pt-2">
+            <Button variant="outline" onClick={() => { setRejectOpen(false); setRejectApp(null); setRejectStageId(null); loadData() }} className="text-[12px] h-8 rounded-lg">Cancel</Button>
+            <Button variant="outline" className="text-rose-600 border-rose-300 hover:bg-rose-50 text-[12px] h-8 rounded-lg" onClick={() => handleReject(false)} disabled={rejecting || !rejectReason.trim()}>
+              {rejecting ? 'Processing...' : 'Reject'}
+            </Button>
+            <Button className="bg-rose-600 hover:bg-rose-700 text-white text-[12px] h-8 rounded-lg" onClick={() => handleReject(true)} disabled={rejecting || !rejectReason.trim()}>
+              {rejecting ? 'Processing...' : 'Reject & Send Email'}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Hire Block Dialog */}
+      <Dialog open={hireBlockOpen} onOpenChange={setHireBlockOpen}>
+        <DialogContent className="rounded-xl sm:max-w-[400px] p-5">
+          <DialogHeader className="space-y-1">
+            <DialogTitle className="text-[15px]">Cannot Move to Hired</DialogTitle>
+            <DialogDescription className="text-[12px]">
+              {hireBlockApp?.candidate?.first_name} {hireBlockApp?.candidate?.last_name} does not have an accepted offer yet. Please create and get the offer accepted before moving to Hired.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex items-center justify-end gap-2 pt-3">
+            <Button variant="outline" onClick={() => setHireBlockOpen(false)} className="text-[12px] h-8 rounded-lg">
+              Close
+            </Button>
+            <Link href={`/applications/${hireBlockApp?.id}?tab=offer&from=applications`}>
+              <Button className="text-[12px] h-8 rounded-lg" onClick={() => setHireBlockOpen(false)}>
+                Go to Offer
+              </Button>
+            </Link>
           </div>
         </DialogContent>
       </Dialog>

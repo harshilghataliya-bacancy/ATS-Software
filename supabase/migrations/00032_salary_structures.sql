@@ -32,6 +32,8 @@ CREATE POLICY "Org members can manage salary structures"
   ));
 
 GRANT ALL ON salary_structures TO authenticated;
+GRANT ALL ON salary_structures TO service_role;
+GRANT ALL ON salary_structures TO anon;
 
 CREATE INDEX idx_salary_structures_org ON salary_structures(organization_id) WHERE deleted_at IS NULL;
 

@@ -3,7 +3,7 @@
 import { useState, useRef } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
-import { createCandidateSchema, type CreateCandidateInput } from '@/lib/validators/candidate'
+import { createCandidateSchema, NOTICE_PERIOD_OPTIONS, type CreateCandidateInput } from '@/lib/validators/candidate'
 import { useUser } from '@/lib/hooks/use-user'
 import { createClient } from '@/lib/supabase/client'
 import { createCandidate } from '@/lib/services/candidates'
@@ -67,7 +67,25 @@ export function AddCandidateDialog({
   }
 
   function resetForm() {
-    reset({ source: 'direct', tags: [] })
+    reset({
+      first_name: '',
+      last_name: '',
+      email: '',
+      phone: '',
+      linkedin_url: '',
+      portfolio_url: '',
+      current_company: '',
+      current_title: '',
+      location: '',
+      current_salary: null,
+      expected_salary: null,
+      notice_period: null,
+      source: 'direct',
+      source_details: '',
+      tags: [],
+      notes: '',
+      gdpr_consent: undefined as unknown as true,
+    })
     setResumeFile(null)
     setParsing(false)
     setParsed(false)
@@ -316,6 +334,42 @@ export function AddCandidateDialog({
                 <Label htmlFor="acd-portfolio_url">Portfolio URL</Label>
                 <Input id="acd-portfolio_url" placeholder="https://..." {...register('portfolio_url')} />
                 {errors.portfolio_url && <p className="text-xs text-red-600">{errors.portfolio_url.message}</p>}
+              </div>
+            </div>
+            <div className="grid grid-cols-3 gap-3">
+              <div className="space-y-1.5">
+                <Label htmlFor="acd-current_salary">Current CTC</Label>
+                <Input
+                  id="acd-current_salary"
+                  type="number"
+                  placeholder="e.g. 800000"
+                  {...register('current_salary', { setValueAs: (v: string) => v === '' ? null : Number(v) })}
+                />
+                {errors.current_salary && <p className="text-xs text-red-600">{errors.current_salary.message}</p>}
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="acd-expected_salary">Expected CTC</Label>
+                <Input
+                  id="acd-expected_salary"
+                  type="number"
+                  placeholder="e.g. 1200000"
+                  {...register('expected_salary', { setValueAs: (v: string) => v === '' ? null : Number(v) })}
+                />
+                {errors.expected_salary && <p className="text-xs text-red-600">{errors.expected_salary.message}</p>}
+              </div>
+              <div className="space-y-1.5">
+                <Label>Notice Period</Label>
+                <Select
+                  value={watch('notice_period') || ''}
+                  onValueChange={(val) => setValue('notice_period', val as CreateCandidateInput['notice_period'])}
+                >
+                  <SelectTrigger><SelectValue placeholder="Select" /></SelectTrigger>
+                  <SelectContent>
+                    {NOTICE_PERIOD_OPTIONS.map((o) => (
+                      <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
             </div>
           </div>
