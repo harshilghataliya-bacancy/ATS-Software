@@ -76,6 +76,10 @@ export function ScheduleInterviewDialog({
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
+  // Interviewer availability
+  const [availabilitySlots, setAvailabilitySlots] = useState<{ date: string; start_time: string; end_time: string }[]>([])
+  const [loadingAvailability, setLoadingAvailability] = useState(false)
+
   // Member suggestions
   const [members, setMembers] = useState<Member[]>([])
   const [showSuggestions, setShowSuggestions] = useState(false)
@@ -129,12 +133,21 @@ export function ScheduleInterviewDialog({
     setInterviewerEmail(value)
     setShowSuggestions(value.length > 0 && filtered.length > 0)
     setActiveIndex(0)
+    setAvailabilitySlots([])
   }
 
   function selectMember(member: Member) {
     setInterviewerEmail(member.email)
     setShowSuggestions(false)
     inputRef.current?.focus()
+    // Fetch availability for this member
+    setLoadingAvailability(true)
+    setAvailabilitySlots([])
+    fetch(`/api/availability?user_id=${member.user_id}`)
+      .then((r) => r.json())
+      .then(({ data }) => { if (data) setAvailabilitySlots(data) })
+      .catch(() => {})
+      .finally(() => setLoadingAvailability(false))
   }
 
   function handleKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
@@ -370,6 +383,49 @@ export function ScheduleInterviewDialog({
               )}
             </div>
           </div>
+
+          {/* Interviewer Availability */}
+          {interviewerEmail && members.some((m) => m.email === interviewerEmail) && (
+            <div className="bg-gray-50 rounded-lg p-3 -mt-2">
+              <p className="text-[11px] font-medium text-gray-500 uppercase tracking-wide mb-2">
+                Available Slots (This Week)
+              </p>
+              {loadingAvailability ? (
+                <p className="text-[12px] text-gray-400">Loading...</p>
+              ) : availabilitySlots.length === 0 ? (
+                <p className="text-[12px] text-gray-400">No availability set for this week</p>
+              ) : (
+                <div className="flex flex-wrap gap-1.5">
+                  {availabilitySlots.map((slot, idx) => {
+                    const d = new Date(slot.date + 'T00:00:00')
+                    const dayLabel = d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
+                    const startH = parseInt(slot.start_time)
+                    const endH = parseInt(slot.end_time)
+                    const fmtTime = (t: string) => {
+                      const [h, m] = t.split(':').map(Number)
+                      const p = h >= 12 ? 'PM' : 'AM'
+                      return `${h === 0 ? 12 : h > 12 ? h - 12 : h}:${m.toString().padStart(2, '0')} ${p}`
+                    }
+                    void startH; void endH;
+                    return (
+                      <button
+                        key={idx}
+                        type="button"
+                        onClick={() => {
+                          // Set date to this slot's date + start time
+                          const dateTime = `${slot.date}T${slot.start_time.slice(0, 5)}`
+                          setDate(dateTime)
+                        }}
+                        className="text-[11px] bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-md px-2 py-1 hover:bg-emerald-100 transition-colors"
+                      >
+                        {dayLabel} · {fmtTime(slot.start_time)} - {fmtTime(slot.end_time)}
+                      </button>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Location — only for face to face */}
           {type === 'onsite' && (

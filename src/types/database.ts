@@ -578,3 +578,14 @@ export interface AssessmentInvitation {
   created_at: string
   updated_at: string
 }
+
+export interface InterviewerAvailability {
+  id: string
+  organization_id: string
+  user_id: string
+  date: string
+  start_time: string
+  end_time: string
+  created_at: string
+  updated_at: string
+}

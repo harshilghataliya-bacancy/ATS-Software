@@ -129,7 +129,7 @@ export function Sidebar() {
         <nav className={`flex-1 overflow-y-auto ${collapsed ? 'p-2' : 'px-3 py-3'} space-y-0.5`}>
           {mainNav
             .filter((item) => {
-              if (item.href === '/dashboard' && !canViewDashboard && !isInterviewer) return false
+              if (item.href === '/dashboard' && !canViewDashboard && !isInterviewer && role !== 'recruiter') return false
               if (item.href === '/reports' && !canViewReports) return false
               if (item.href === '/banks' && !canAccessBanks) return false
               if (isInterviewer && !['/dashboard', '/interviews'].includes(item.href)) return false
