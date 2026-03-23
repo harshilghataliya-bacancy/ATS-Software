@@ -1111,9 +1111,6 @@ function InterviewsTab({
 
   return (
     <div className="space-y-8">
-      {/* My Availability */}
-      {userId && <AvailabilitySection userId={userId} />}
-
       {/* Upcoming Interviews */}
       <div>
         <div className="flex items-center justify-between mb-4">
@@ -1205,6 +1202,9 @@ function InterviewsTab({
         </div>
       )}
 
+      {/* My Availability */}
+      {userId && <AvailabilitySection userId={userId} />}
+
       {/* New Feedbacks (last 7 days) */}
       <div>
         <h2 className="text-[15px] font-semibold text-gray-900 mb-4">New Feedbacks (Last 7 Days)</h2>
@@ -1261,11 +1261,6 @@ function InterviewsTab({
       <div>
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-[15px] font-semibold text-gray-900">Pending Feedbacks (Last 30 Days)</h2>
-          {pendingFeedbacks.length > 0 && (
-            <Link href="/interviews" className="text-[12px] text-blue-600 hover:text-blue-700 font-medium">
-              View All
-            </Link>
-          )}
         </div>
 
         {pendingFeedbacks.length === 0 ? (
@@ -1338,6 +1333,7 @@ function InterviewsTab({
         getGradient={getGrad}
         creatorNames={creatorNames}
       />
+
     </div>
   )
 }
