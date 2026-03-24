@@ -382,8 +382,28 @@ export default function DashboardPage() {
     const supabase = createClient()
     const now = new Date().toISOString()
 
+    // For recruiters (non-admin), get their assigned job IDs to filter interviews
+    let recruiterJobIds: string[] | null = null
+    if (isRecruiter && !isAdmin && user) {
+      const { data: assignedJobs } = await supabase
+        .from('job_recruiters')
+        .select('job_id')
+        .eq('user_id', user.id)
+      const jobIds = assignedJobs?.map((j: { job_id: string }) => j.job_id) ?? []
+      if (jobIds.length === 0) {
+        // Recruiter has no assigned jobs — show empty state
+        setDetailedInterviews([])
+        setPastInterviews([])
+        setPendingFeedbacks([])
+        setRecentFeedbacks([])
+        setInterviewsLoaded(true)
+        return
+      }
+      recruiterJobIds = jobIds
+    }
+
     // Upcoming interviews
-    const { data: upcoming } = await supabase
+    let upcomingQuery = supabase
       .from('interviews')
       .select(`
         id, scheduled_at, duration_minutes, interview_type, location, meeting_link, status, notes, created_by,
@@ -399,10 +419,12 @@ export default function DashboardPage() {
       .gte('scheduled_at', now)
       .order('scheduled_at', { ascending: true })
       .limit(20)
+    if (recruiterJobIds) upcomingQuery = upcomingQuery.in('job_id', recruiterJobIds)
+    const { data: upcoming } = await upcomingQuery
 
     // Past interviews (last 7 days)
     const weekAgo = new Date(Date.now() - 7 * 86400000).toISOString()
-    const { data: past } = await supabase
+    let pastQuery = supabase
       .from('interviews')
       .select(`
         id, scheduled_at, duration_minutes, interview_type, location, meeting_link, status, notes, created_by,
@@ -419,6 +441,8 @@ export default function DashboardPage() {
       .gte('scheduled_at', weekAgo)
       .order('scheduled_at', { ascending: false })
       .limit(20)
+    if (recruiterJobIds) pastQuery = pastQuery.in('job_id', recruiterJobIds)
+    const { data: past } = await pastQuery
 
     // Resolve all user names via server action (uses admin client)
     const allInterviews = [...(upcoming ?? []), ...(past ?? [])]
@@ -439,7 +463,7 @@ export default function DashboardPage() {
 
     // Fetch pending feedbacks — completed interviews in last 30 days without feedback
     const thirtyDaysAgo = new Date(Date.now() - 30 * 86400000).toISOString()
-    const { data: completedInterviews } = await supabase
+    let completedQuery = supabase
       .from('interviews')
       .select(`
         id, scheduled_at, interview_type, status, application_id,
@@ -455,6 +479,8 @@ export default function DashboardPage() {
       .gte('scheduled_at', thirtyDaysAgo)
       .order('scheduled_at', { ascending: false })
       .limit(50)
+    if (recruiterJobIds) completedQuery = completedQuery.in('job_id', recruiterJobIds)
+    const { data: completedInterviews } = await completedQuery
 
     if (completedInterviews && completedInterviews.length > 0 && user) {
       const completedIds = completedInterviews.map((i: { id: string }) => i.id)
@@ -497,12 +523,12 @@ export default function DashboardPage() {
 
     // Fetch new feedbacks (last 7 days)
     const sevenDaysAgo = new Date(Date.now() - 7 * 86400000).toISOString()
-    const { data: recentFb } = await supabase
+    let recentFbQuery = supabase
       .from('interview_feedback')
       .select(`
         id, interview_id, overall_rating, recommendation, submitted_at, user_id,
         interview:interview_id(
-          scheduled_at,
+          scheduled_at, job_id,
           application:applications(
             candidate:candidates(first_name, last_name),
             job:jobs(title)
@@ -513,6 +539,24 @@ export default function DashboardPage() {
       .gte('submitted_at', sevenDaysAgo)
       .order('submitted_at', { ascending: false })
       .limit(20)
+    // For recruiters, filter feedback by interview IDs from their assigned jobs
+    if (recruiterJobIds) {
+      const allFetchedInterviewIds = [
+        ...(upcoming ?? []).map((i: { id: string }) => i.id),
+        ...(past ?? []).map((i: { id: string }) => i.id),
+        ...(completedInterviews ?? []).map((i: { id: string }) => i.id),
+      ]
+      const uniqueInterviewIds = Array.from(new Set(allFetchedInterviewIds))
+      if (uniqueInterviewIds.length > 0) {
+        recentFbQuery = recentFbQuery.in('interview_id', uniqueInterviewIds)
+      } else {
+        // No interviews for this recruiter — skip feedback fetch
+        setRecentFeedbacks([])
+        setInterviewsLoaded(true)
+        return
+      }
+    }
+    const { data: recentFb } = await recentFbQuery
 
     if (recentFb && recentFb.length > 0) {
       // Resolve feedback submitter names via server action
@@ -541,7 +585,7 @@ export default function DashboardPage() {
     }
 
     setInterviewsLoaded(true)
-  }, [organization, interviewsLoaded])
+  }, [organization, interviewsLoaded, isRecruiter, isAdmin, user])
 
   const [creatorNames, setCreatorNames] = useState<Record<string, string>>({})
 
