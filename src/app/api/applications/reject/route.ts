@@ -25,6 +25,16 @@ function substituteVariables(
   return result
 }
 
+// Ensure plain text gets wrapped in <p> tags for proper email rendering
+function ensureHtml(text: string): string {
+  if (/<(p|br|div|h[1-6]|ul|ol|li|table)\b/i.test(text)) return text
+  return text
+    .split(/\n\s*\n/)
+    .map((para) => `<p>${para.trim().replace(/\n/g, '<br/>')}</p>`)
+    .filter((p) => p !== '<p></p>')
+    .join('\n')
+}
+
 export async function POST(request: NextRequest) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
@@ -49,11 +59,14 @@ export async function POST(request: NextRequest) {
   const companyName = (membership.organization as any)?.name || 'Our Company'
 
   const body = await request.json()
-  const { applicationId, reason, stageId, sendEmail } = body as {
+  const { applicationId, reason, stageId, sendEmail, templateId, customSubject, customBody } = body as {
     applicationId: string
     reason: string
     stageId?: string
     sendEmail?: boolean
+    templateId?: string
+    customSubject?: string
+    customBody?: string
   }
 
   if (!applicationId) {
@@ -88,7 +101,7 @@ export async function POST(request: NextRequest) {
 
   // 2. Send rejection email only if explicitly requested
   if (sendEmail) {
-    sendRejectionEmail(supabase, user.id, orgId, applicationId, companyName).catch((err) => {
+    sendRejectionEmail(supabase, user.id, orgId, applicationId, companyName, customSubject, customBody, templateId).catch((err) => {
       console.error('[Auto Rejection Email Error]', err)
     })
   }
@@ -101,7 +114,10 @@ async function sendRejectionEmail(
   userId: string,
   orgId: string,
   applicationId: string,
-  companyName: string
+  companyName: string,
+  customSubject?: string,
+  customBody?: string,
+  customTemplateId?: string
 ) {
   const adminSupabase = createAdminClient()
 
@@ -126,28 +142,33 @@ async function sendRejectionEmail(
   const candidateEmail = candidate.email
   if (!candidateEmail) return
 
-  const vars: Record<string, string> = {
-    candidate_name: `${candidate.first_name} ${candidate.last_name}`.trim(),
-    job_title: job.title || 'the position',
-    company_name: companyName,
-    department: job.department || '',
-  }
-
-  // Try to find a rejection email template for this org
-  const { data: templates } = await getEmailTemplates(supabase, orgId, 'rejection')
   let subject: string
   let bodyHtml: string
-  let templateId: string | undefined
+  let templateId: string | undefined = customTemplateId
 
-  if (templates && templates.length > 0) {
-    const template = templates[0]
-    subject = substituteVariables(template.subject, vars)
-    bodyHtml = substituteVariables(template.body_html, vars)
-    templateId = template.id
+  // If custom subject/body provided (user edited in dialog), use those directly
+  if (customSubject && customBody) {
+    subject = customSubject
+    bodyHtml = ensureHtml(customBody)
   } else {
-    // Use default built-in template
-    subject = substituteVariables(DEFAULT_REJECTION_SUBJECT, vars)
-    bodyHtml = substituteVariables(DEFAULT_REJECTION_BODY, vars)
+    // Fallback: auto-fetch template
+    const vars: Record<string, string> = {
+      candidate_name: `${candidate.first_name} ${candidate.last_name}`.trim(),
+      job_title: job.title || 'the position',
+      company_name: companyName,
+      department: job.department || '',
+    }
+
+    const { data: templates } = await getEmailTemplates(supabase, orgId, 'rejection')
+    if (templates && templates.length > 0) {
+      const template = templates[0]
+      subject = substituteVariables(template.subject, vars)
+      bodyHtml = ensureHtml(substituteVariables(template.body_html, vars))
+      templateId = template.id
+    } else {
+      subject = substituteVariables(DEFAULT_REJECTION_SUBJECT, vars)
+      bodyHtml = substituteVariables(DEFAULT_REJECTION_BODY, vars)
+    }
   }
 
   // Get Gmail access token (falls back to admin's token)

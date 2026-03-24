@@ -104,6 +104,33 @@ export default function EmailTemplatesPage() {
     setLoading(false)
   }
 
+  // Convert plain text to HTML paragraphs (if not already HTML)
+  function textToHtml(text: string): string {
+    // If it already contains HTML tags like <p>, <br>, <div>, return as-is
+    if (/<(p|br|div|h[1-6]|ul|ol|li|table|strong|em)\b/i.test(text)) return text
+    // Split by double newlines for paragraphs, single newlines become <br>
+    return text
+      .split(/\n\s*\n/)
+      .map((para) => `<p>${para.trim().replace(/\n/g, '<br/>')}</p>`)
+      .filter((p) => p !== '<p></p>')
+      .join('\n')
+  }
+
+  // Convert HTML to readable plain text for editing
+  function htmlToText(html: string): string {
+    return html
+      .replace(/<\/p>\s*<p>/gi, '\n\n')
+      .replace(/<br\s*\/?>/gi, '\n')
+      .replace(/<\/?(p|div|h[1-6]|ul|ol|li|table|tr|td|th|thead|tbody)\b[^>]*>/gi, '\n')
+      .replace(/<\/?(strong|b|em|i|a|span|font)\b[^>]*>/gi, '')
+      .replace(/&nbsp;/g, ' ')
+      .replace(/&amp;/g, '&')
+      .replace(/&lt;/g, '<')
+      .replace(/&gt;/g, '>')
+      .replace(/\n{3,}/g, '\n\n')
+      .trim()
+  }
+
   function openCreate() {
     setEditing(null)
     setFormName('')
@@ -119,7 +146,7 @@ export default function EmailTemplatesPage() {
     setEditing(template)
     setFormName(template.name)
     setFormSubject(template.subject)
-    setFormBody(template.body_html)
+    setFormBody(htmlToText(template.body_html))
     setFormType(template.template_type)
     setError(null)
     setShowPreview(false)
@@ -135,15 +162,16 @@ export default function EmailTemplatesPage() {
     setSaving(true)
     setError(null)
     const supabase = createClient()
+    const bodyHtml = textToHtml(formBody)
     if (editing) {
       const { error: updateError } = await updateEmailTemplate(supabase, editing.id, organization.id, {
-        name: formName, subject: formSubject, body_html: formBody, template_type: formType,
+        name: formName, subject: formSubject, body_html: bodyHtml, template_type: formType,
       })
       if (updateError) { setError(updateError.message) } else { setDialogOpen(false); loadTemplates() }
     } else {
       const { error: createError } = await createEmailTemplate(
         supabase, organization.id,
-        { name: formName, subject: formSubject, body_html: formBody, template_type: formType },
+        { name: formName, subject: formSubject, body_html: bodyHtml, template_type: formType },
         user.id
       )
       if (createError) { setError(createError.message) } else { setDialogOpen(false); loadTemplates() }
@@ -426,7 +454,7 @@ export default function EmailTemplatesPage() {
               <div className="border border-gray-200 rounded-lg overflow-hidden">
                 {formBody ? (
                   <iframe
-                    srcDoc={formBody}
+                    srcDoc={`<html><body style="font-family: Arial, sans-serif; font-size: 14px; line-height: 1.6; color: #333; padding: 16px;">${textToHtml(formBody)}</body></html>`}
                     className="w-full"
                     style={{ height: '400px', border: 'none' }}
                     sandbox="allow-same-origin"
@@ -463,12 +491,13 @@ export default function EmailTemplatesPage() {
                 <Input value={formSubject} onChange={(e) => setFormSubject(e.target.value)} placeholder="e.g. Interview for {{job_title}} at {{company_name}}" />
               </div>
               <div className="space-y-2">
-                <Label>Body (HTML) *</Label>
+                <Label>Body *</Label>
+                <p className="text-[11px] text-gray-400">Use blank lines to separate paragraphs. HTML tags are also supported.</p>
                 <Textarea
                   rows={10}
                   value={formBody}
                   onChange={(e) => setFormBody(e.target.value)}
-                  placeholder="Write the email body here..."
+                  placeholder="Write the email body here. Use blank lines for paragraph breaks..."
                   className="font-mono text-sm"
                 />
               </div>

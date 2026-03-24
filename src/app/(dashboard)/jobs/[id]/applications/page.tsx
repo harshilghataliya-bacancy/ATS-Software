@@ -1087,7 +1087,7 @@ export default function ApplicationsPage() {
                         <TableRow
                           key={app.id}
                           className="group cursor-pointer hover:bg-gray-50/80 transition-colors"
-                          onClick={() => router.push(`/applications/${app.id}?from=applications`)}
+                          onClick={() => router.push(`/applications/${app.id}?from=applications&status=${statusTab}`)}
                         >
                           <TableCell>
                             <div className="flex items-center gap-2.5">
@@ -1201,7 +1201,7 @@ export default function ApplicationsPage() {
                                 </button>
                               </DropdownMenuTrigger>
                               <DropdownMenuContent align="end" className="w-48">
-                                <DropdownMenuItem onClick={() => router.push(`/applications/${app.id}?from=applications`)}>
+                                <DropdownMenuItem onClick={() => router.push(`/applications/${app.id}?from=applications&status=${statusTab}`)}>
                                   <ExternalLink className="w-3.5 h-3.5 mr-2" />
                                   View Application
                                 </DropdownMenuItem>
@@ -1528,7 +1528,7 @@ export default function ApplicationsPage() {
             <Button variant="outline" onClick={() => setHireBlockOpen(false)} className="text-[12px] h-8 rounded-lg">
               Close
             </Button>
-            <Link href={`/applications/${hireBlockApp?.id}?tab=offer&from=applications`}>
+            <Link href={`/applications/${hireBlockApp?.id}?tab=offer&from=applications&status=${statusTab}`}>
               <Button className="text-[12px] h-8 rounded-lg" onClick={() => setHireBlockOpen(false)}>
                 Go to Offer
               </Button>

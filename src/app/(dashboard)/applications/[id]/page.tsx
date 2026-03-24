@@ -37,7 +37,7 @@ import {
   ArrowLeft, Mail, MessageSquare, FileText, UserCircle, Calendar, Link as LinkIcon,
   Download, X, Eye, Plus, Trash2, CheckCircle2, XCircle, Clock, ChevronDown,
   ClipboardList, Loader2, PenLine, Info, ExternalLink,
-  User, MoreHorizontal,
+  User, MoreHorizontal, ChevronLeft, ChevronRight,
 } from 'lucide-react'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -154,6 +154,11 @@ export default function ApplicationDetailPage() {
   const [rejectOpen, setRejectOpen] = useState(false)
   const [rejectReason, setRejectReason] = useState('')
   const [rejecting, setRejecting] = useState(false)
+  const [rejectTemplates, setRejectTemplates] = useState<{ id: string; name: string; subject: string; body_html: string }[]>([])
+  const [selectedTemplateId, setSelectedTemplateId] = useState('')
+  const [emailSubject, setEmailSubject] = useState('')
+  const [emailBody, setEmailBody] = useState('')
+  const [showEmailPreview, setShowEmailPreview] = useState(false)
   const [userNames, setUserNames] = useState<Record<string, string>>({})
 
   // Assessment state
@@ -176,6 +181,10 @@ export default function ApplicationDetailPage() {
   // Recruiter assignment
   const [jobRecruiterIds, setJobRecruiterIds] = useState<string[]>([])
   const [recruiterNames, setRecruiterNames] = useState<Record<string, string>>({})
+
+  // Prev/Next navigation
+  const [siblingIds, setSiblingIds] = useState<string[]>([])
+  const [siblingNames, setSiblingNames] = useState<Record<string, string>>({})
 
   // Interviewers only have access to Dashboard + Interviews
   useEffect(() => {
@@ -247,6 +256,30 @@ export default function ApplicationDetailPage() {
           setRecruiterNames(rNames)
         }
       }
+
+      // Load sibling application IDs for prev/next navigation
+      if (data.job?.id) {
+        const supabaseSib = createClient()
+        const statusFilter = searchParams.get('status')
+        let sibQuery = supabaseSib
+          .from('applications')
+          .select('id, status, candidate:candidates(first_name, last_name)')
+          .eq('job_id', data.job.id)
+          .eq('organization_id', organization.id)
+          .order('created_at', { ascending: true })
+        if (statusFilter && statusFilter !== 'all') {
+          sibQuery = sibQuery.eq('status', statusFilter)
+        }
+        const { data: siblings } = await sibQuery
+        if (siblings) {
+          setSiblingIds(siblings.map((s: AnyData) => s.id))
+          const names: Record<string, string> = {}
+          siblings.forEach((s: AnyData) => {
+            if (s.candidate) names[s.id] = `${s.candidate.first_name || ''} ${s.candidate.last_name || ''}`.trim()
+          })
+          setSiblingNames(names)
+        }
+      }
     }
     setLoading(false)
   }, [organization, params.id])
@@ -256,8 +289,70 @@ export default function ApplicationDetailPage() {
     loadApplication()
   }, [organization, loadApplication])
 
+  // Load rejection email templates when dialog opens
+  useEffect(() => {
+    if (!rejectOpen || !organization) return
+    const supabase = createClient()
+    supabase
+      .from('email_templates')
+      .select('id, name, subject, body_html')
+      .eq('organization_id', organization.id)
+      .eq('template_type', 'rejection')
+      .is('deleted_at', null)
+      .order('name')
+      .then(({ data: tpls }: { data: { id: string; name: string; subject: string; body_html: string }[] | null }) => {
+        if (tpls) setRejectTemplates(tpls)
+      })
+  }, [rejectOpen, organization])
+
+  function substituteVars(text: string) {
+    const candidate = application?.candidate as AnyData
+    const job = application?.job as AnyData
+    const vars: Record<string, string> = {
+      candidate_name: `${candidate?.first_name ?? ''} ${candidate?.last_name ?? ''}`.trim(),
+      job_title: job?.title || 'the position',
+      company_name: organization?.name || 'Our Company',
+      department: job?.department || '',
+    }
+    let result = text
+    for (const [key, value] of Object.entries(vars)) {
+      result = result.replace(new RegExp(`\\{\\{${key}\\}\\}`, 'g'), value)
+    }
+    return result
+  }
+
+  // Convert plain text to HTML paragraphs if not already HTML
+  function ensureHtml(text: string): string {
+    if (/<(p|br|div|h[1-6]|ul|ol|li|table)\b/i.test(text)) return text
+    return text
+      .split(/\n\s*\n/)
+      .map((para) => `<p>${para.trim().replace(/\n/g, '<br/>')}</p>`)
+      .filter((p) => p !== '<p></p>')
+      .join('\n')
+  }
+
+  function handleTemplateSelect(templateId: string) {
+    setSelectedTemplateId(templateId)
+    if (templateId === 'default') {
+      setEmailSubject(substituteVars('Update on Your Application for {{job_title}}'))
+      setEmailBody(substituteVars(`<p>Dear {{candidate_name}},</p><p>Thank you for your interest in the <strong>{{job_title}}</strong> position at <strong>{{company_name}}</strong>.</p><p>After careful consideration, we have decided to move forward with other candidates.</p><p>We wish you all the best.</p><p>Warm regards,<br/>{{company_name}} Hiring Team</p>`))
+      setShowEmailPreview(true)
+    } else {
+      const tpl = rejectTemplates.find((t) => t.id === templateId)
+      if (tpl) {
+        setEmailSubject(substituteVars(tpl.subject))
+        setEmailBody(ensureHtml(substituteVars(tpl.body_html)))
+        setShowEmailPreview(true)
+      }
+    }
+  }
+
   async function handleReject(sendEmail: boolean) {
     if (!organization || !user || !application) return
+    if (sendEmail && !selectedTemplateId) {
+      setError('Please select an email template to send rejection email')
+      return
+    }
     setRejecting(true)
     try {
       const res = await fetch('/api/applications/reject', {
@@ -267,6 +362,11 @@ export default function ApplicationDetailPage() {
           applicationId: application.id,
           reason: rejectReason,
           sendEmail,
+          ...(sendEmail && {
+            templateId: selectedTemplateId !== 'default' ? selectedTemplateId : undefined,
+            customSubject: emailSubject,
+            customBody: emailBody,
+          }),
         }),
       })
       const data = await res.json()
@@ -275,6 +375,10 @@ export default function ApplicationDetailPage() {
       } else {
         setRejectOpen(false)
         setRejectReason('')
+        setSelectedTemplateId('')
+        setEmailSubject('')
+        setEmailBody('')
+        setShowEmailPreview(false)
         await loadApplication()
       }
     } catch {
@@ -495,20 +599,73 @@ export default function ApplicationDetailPage() {
   const candidateFullName = `${candidate?.first_name || ''} ${candidate?.last_name || ''}`.trim()
   const avatarGradient = getAvatarGradient(candidateFullName || 'U')
 
+  // Prev/Next navigation
+  const currentIndex = siblingIds.indexOf(application.id)
+  const prevId = currentIndex > 0 ? siblingIds[currentIndex - 1] : null
+  const nextId = currentIndex < siblingIds.length - 1 ? siblingIds[currentIndex + 1] : null
+
   return (
     <div className="max-w-6xl space-y-6">
-      {/* Back + Header */}
+      {/* Navigation bar: Back + Prev/Next */}
+      <div className="flex items-center justify-between">
+        <button
+          type="button"
+          onClick={() => {
+            const jobId = application?.job?.id
+            if (jobId) {
+              const statusParam = searchParams.get('status')
+              router.push(`/jobs/${jobId}/applications${statusParam ? `?status=${statusParam}` : ''}`)
+            } else {
+              router.back()
+            }
+          }}
+          className="inline-flex items-center gap-1.5 text-[12px] text-gray-500 hover:text-gray-800 transition-colors"
+        >
+          <ArrowLeft className="w-3.5 h-3.5" />
+          Back to list
+        </button>
+        {siblingIds.length > 1 && (() => {
+          const navParams = new URLSearchParams()
+          navParams.set('tab', activeTab)
+          const fromParam = searchParams.get('from')
+          const statusParam = searchParams.get('status')
+          if (fromParam) navParams.set('from', fromParam)
+          if (statusParam) navParams.set('status', statusParam)
+          const qs = navParams.toString()
+          return (
+          <div className="flex items-center gap-1.5">
+            <span className="text-[11px] text-gray-400 mr-1">
+              {currentIndex + 1} of {siblingIds.length}
+            </span>
+            <button
+              type="button"
+              disabled={!prevId}
+              onClick={() => prevId && router.push(`/applications/${prevId}?${qs}`)}
+              className="inline-flex items-center gap-1 text-[12px] font-medium px-2.5 py-1.5 rounded-lg border border-gray-200 bg-white hover:bg-gray-50 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+              title={prevId ? `Previous: ${siblingNames[prevId] || 'candidate'}` : 'No previous candidate'}
+            >
+              <ChevronLeft className="w-3.5 h-3.5" />
+              Prev
+            </button>
+            <button
+              type="button"
+              disabled={!nextId}
+              onClick={() => nextId && router.push(`/applications/${nextId}?${qs}`)}
+              className="inline-flex items-center gap-1 text-[12px] font-medium px-2.5 py-1.5 rounded-lg border border-gray-200 bg-white hover:bg-gray-50 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+              title={nextId ? `Next: ${siblingNames[nextId] || 'candidate'}` : 'No next candidate'}
+            >
+              Next
+              <ChevronRight className="w-3.5 h-3.5" />
+            </button>
+          </div>
+          )})()}
+      </div>
+
+      {/* Header */}
       <div className="rounded-xl border border-gray-200 bg-white shadow-sm">
         <div className="px-6 py-5">
           <div className="flex items-start justify-between">
             <div className="flex items-center gap-4">
-              <button
-                type="button"
-                onClick={() => router.back()}
-                className="flex items-center justify-center w-8 h-8 rounded-lg text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-colors"
-              >
-                <ArrowLeft className="w-4 h-4" />
-              </button>
               <div className={`w-11 h-11 rounded-xl bg-gradient-to-br ${avatarGradient} text-white flex items-center justify-center text-[13px] font-semibold shadow-sm`}>
                 {candidate?.first_name?.[0]}{candidate?.last_name?.[0]}
               </div>
@@ -1520,14 +1677,24 @@ export default function ApplicationDetailPage() {
       </div>
 
       {/* Reject Dialog */}
-      <Dialog open={rejectOpen} onOpenChange={setRejectOpen}>
-        <DialogContent className="rounded-xl sm:max-w-[420px] p-5">
+      <Dialog open={rejectOpen} onOpenChange={(open) => {
+        setRejectOpen(open)
+        if (!open) {
+          setSelectedTemplateId('')
+          setEmailSubject('')
+          setEmailBody('')
+          setShowEmailPreview(false)
+        }
+      }}>
+        <DialogContent className="rounded-xl sm:max-w-[560px] p-5 max-h-[85vh] overflow-y-auto">
           <DialogHeader className="space-y-1">
             <DialogTitle className="text-[15px]">Reject Application</DialogTitle>
             <DialogDescription className="text-[12px]">
-              Provide a reason for rejecting {candidate?.first_name}&apos;s application for {job?.title}.
+              Reject {candidate?.first_name}&apos;s application for {job?.title}. Optionally send a rejection email.
             </DialogDescription>
           </DialogHeader>
+
+          {/* Reason */}
           <div className="pt-2 pb-1">
             <Label className="text-[12px]">Reason for Rejection <span className="text-rose-500">*</span></Label>
             <Textarea
@@ -1538,12 +1705,90 @@ export default function ApplicationDetailPage() {
               className="mt-1.5 text-[13px] rounded-lg"
             />
           </div>
-          <div className="flex items-center justify-end gap-2 pt-2">
+
+          {/* Email Template Selection */}
+          <div className="pt-1 pb-1">
+            <Label className="text-[12px]">Select Email Template <span className="text-gray-400">(optional)</span></Label>
+            <Select value={selectedTemplateId} onValueChange={handleTemplateSelect}>
+              <SelectTrigger className="mt-1.5 text-[13px] rounded-lg h-9">
+                <SelectValue placeholder="Choose a template to send rejection email..." />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="default">Default Rejection Template</SelectItem>
+                {rejectTemplates.map((tpl) => (
+                  <SelectItem key={tpl.id} value={tpl.id}>{tpl.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          {/* Email Preview & Edit */}
+          {showEmailPreview && (
+            <div className="space-y-3 pt-1 border-t border-gray-100 mt-2">
+              <div className="flex items-center justify-between">
+                <p className="text-[12px] font-medium text-gray-700">Email Preview</p>
+                <button
+                  type="button"
+                  onClick={() => { setShowEmailPreview(false); setSelectedTemplateId(''); setEmailSubject(''); setEmailBody('') }}
+                  className="text-[11px] text-gray-400 hover:text-gray-600"
+                >
+                  Clear template
+                </button>
+              </div>
+              <div>
+                <Label className="text-[11px] text-gray-500">Subject</Label>
+                <input
+                  type="text"
+                  value={emailSubject}
+                  onChange={(e) => setEmailSubject(e.target.value)}
+                  className="mt-1 w-full border border-gray-200 rounded-lg px-3 py-1.5 text-[13px] focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400"
+                />
+              </div>
+              <div>
+                <Label className="text-[11px] text-gray-500">Body</Label>
+                <Textarea
+                  rows={6}
+                  value={emailBody
+                    .replace(/<\/p>\s*<p>/gi, '\n\n')
+                    .replace(/<br\s*\/?>/gi, '\n')
+                    .replace(/<\/?(p|div|h[1-6]|ul|ol|li|table|tr|td|th|thead|tbody)\b[^>]*>/gi, '\n')
+                    .replace(/<\/?(strong|b|em|i|a|span|font)\b[^>]*>/gi, '')
+                    .replace(/&nbsp;/g, ' ')
+                    .replace(/\n{3,}/g, '\n\n')
+                    .trim()}
+                  onChange={(e) => {
+                    const text = e.target.value
+                    const html = text
+                      .split(/\n\s*\n/)
+                      .map((para) => `<p>${para.trim().replace(/\n/g, '<br/>')}</p>`)
+                      .filter((p) => p !== '<p></p>')
+                      .join('\n')
+                    setEmailBody(html)
+                  }}
+                  className="mt-1 text-[13px] rounded-lg"
+                />
+              </div>
+              <div className="bg-gray-50 rounded-lg p-3 border border-gray-100">
+                <p className="text-[11px] font-medium text-gray-500 mb-2">Preview:</p>
+                <p className="text-[12px] font-medium text-gray-700 mb-1">{emailSubject}</p>
+                <iframe
+                  srcDoc={`<html><body style="font-family: Arial, sans-serif; font-size: 13px; line-height: 1.6; color: #444; margin: 0; padding: 0;">${emailBody}</body></html>`}
+                  className="w-full rounded"
+                  style={{ height: '150px', border: 'none' }}
+                  sandbox="allow-same-origin"
+                  title="Email Preview"
+                />
+              </div>
+            </div>
+          )}
+
+          {/* Actions */}
+          <div className="flex items-center justify-end gap-2 pt-3">
             <Button variant="outline" onClick={() => setRejectOpen(false)} className="text-[12px] h-8 rounded-lg">Cancel</Button>
             <Button variant="outline" className="text-rose-600 border-rose-300 hover:bg-rose-50 text-[12px] h-8 rounded-lg" onClick={() => handleReject(false)} disabled={rejecting || !rejectReason.trim()}>
               {rejecting ? 'Processing...' : 'Reject'}
             </Button>
-            <Button className="bg-rose-600 hover:bg-rose-700 text-white text-[12px] h-8 rounded-lg" onClick={() => handleReject(true)} disabled={rejecting || !rejectReason.trim()}>
+            <Button className="bg-rose-600 hover:bg-rose-700 text-white text-[12px] h-8 rounded-lg" onClick={() => handleReject(true)} disabled={rejecting || !rejectReason.trim() || !selectedTemplateId}>
               {rejecting ? 'Processing...' : 'Reject & Send Email'}
             </Button>
           </div>
