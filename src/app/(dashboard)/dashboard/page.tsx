@@ -382,16 +382,18 @@ export default function DashboardPage() {
     const supabase = createClient()
     const now = new Date().toISOString()
 
-    // For recruiters (non-admin), get their assigned job IDs to filter interviews
-    let recruiterJobIds: string[] | null = null
-    if (isRecruiter && !isAdmin && user) {
-      const { data: assignedJobs } = await supabase
-        .from('job_recruiters')
-        .select('job_id')
-        .eq('user_id', user.id)
-      const jobIds = assignedJobs?.map((j: { job_id: string }) => j.job_id) ?? []
-      if (jobIds.length === 0) {
-        // Recruiter has no assigned jobs — show empty state
+    // For non-admin users, filter interviews by candidates assigned to them
+    let recruiterAppIds: string[] | null = null
+    if (!isAdmin && user) {
+      const { data: assignedApps } = await supabase
+        .from('applications')
+        .select('id')
+        .eq('organization_id', organization.id)
+        .eq('assigned_recruiter_id', user.id)
+        .is('deleted_at', null)
+      const appIds = assignedApps?.map((a: { id: string }) => a.id) ?? []
+      if (appIds.length === 0) {
+        // No assigned candidates — show empty state
         setDetailedInterviews([])
         setPastInterviews([])
         setPendingFeedbacks([])
@@ -399,7 +401,7 @@ export default function DashboardPage() {
         setInterviewsLoaded(true)
         return
       }
-      recruiterJobIds = jobIds
+      recruiterAppIds = appIds
     }
 
     // Upcoming interviews
@@ -419,7 +421,7 @@ export default function DashboardPage() {
       .gte('scheduled_at', now)
       .order('scheduled_at', { ascending: true })
       .limit(20)
-    if (recruiterJobIds) upcomingQuery = upcomingQuery.in('job_id', recruiterJobIds)
+    if (recruiterAppIds) upcomingQuery = upcomingQuery.in('application_id', recruiterAppIds)
     const { data: upcoming } = await upcomingQuery
 
     // Past interviews (last 7 days)
@@ -441,7 +443,7 @@ export default function DashboardPage() {
       .gte('scheduled_at', weekAgo)
       .order('scheduled_at', { ascending: false })
       .limit(20)
-    if (recruiterJobIds) pastQuery = pastQuery.in('job_id', recruiterJobIds)
+    if (recruiterAppIds) pastQuery = pastQuery.in('application_id', recruiterAppIds)
     const { data: past } = await pastQuery
 
     // Resolve all user names via server action (uses admin client)
@@ -479,7 +481,7 @@ export default function DashboardPage() {
       .gte('scheduled_at', thirtyDaysAgo)
       .order('scheduled_at', { ascending: false })
       .limit(50)
-    if (recruiterJobIds) completedQuery = completedQuery.in('job_id', recruiterJobIds)
+    if (recruiterAppIds) completedQuery = completedQuery.in('application_id', recruiterAppIds)
     const { data: completedInterviews } = await completedQuery
 
     if (completedInterviews && completedInterviews.length > 0 && user) {
@@ -539,8 +541,8 @@ export default function DashboardPage() {
       .gte('submitted_at', sevenDaysAgo)
       .order('submitted_at', { ascending: false })
       .limit(20)
-    // For recruiters, filter feedback by interview IDs from their assigned jobs
-    if (recruiterJobIds) {
+    // For non-admin, filter feedback by interview IDs from their assigned candidates
+    if (recruiterAppIds) {
       const allFetchedInterviewIds = [
         ...(upcoming ?? []).map((i: { id: string }) => i.id),
         ...(past ?? []).map((i: { id: string }) => i.id),
@@ -550,7 +552,7 @@ export default function DashboardPage() {
       if (uniqueInterviewIds.length > 0) {
         recentFbQuery = recentFbQuery.in('interview_id', uniqueInterviewIds)
       } else {
-        // No interviews for this recruiter — skip feedback fetch
+        // No interviews for assigned candidates — skip feedback fetch
         setRecentFeedbacks([])
         setInterviewsLoaded(true)
         return
@@ -585,7 +587,7 @@ export default function DashboardPage() {
     }
 
     setInterviewsLoaded(true)
-  }, [organization, interviewsLoaded, isRecruiter, isAdmin, user])
+  }, [organization, interviewsLoaded, isAdmin, user])
 
   const [creatorNames, setCreatorNames] = useState<Record<string, string>>({})
 
