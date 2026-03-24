@@ -37,7 +37,7 @@ import {
   ArrowLeft, Mail, MessageSquare, FileText, UserCircle, Calendar, Link as LinkIcon,
   Download, X, Eye, Plus, Trash2, CheckCircle2, XCircle, Clock, ChevronDown,
   ClipboardList, Loader2, PenLine, Info, ExternalLink,
-  User, MoreHorizontal, ChevronLeft, ChevronRight,
+  User, MoreHorizontal, ChevronLeft, ChevronRight, Landmark, CheckCircle, RotateCcw,
 } from 'lucide-react'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -186,6 +186,14 @@ export default function ApplicationDetailPage() {
   const [siblingIds, setSiblingIds] = useState<string[]>([])
   const [siblingNames, setSiblingNames] = useState<Record<string, string>>({})
 
+  // Move to bank
+  const [inDefaultBank, setInDefaultBank] = useState(false)
+  const [movingToBank, setMovingToBank] = useState(false)
+
+  // Rollback
+  const [rollbackOpen, setRollbackOpen] = useState(false)
+  const [rollingBack, setRollingBack] = useState(false)
+
   // Interviewers only have access to Dashboard + Interviews
   useEffect(() => {
     if (!userLoading && isInterviewer) {
@@ -279,6 +287,18 @@ export default function ApplicationDetailPage() {
           })
           setSiblingNames(names)
         }
+      }
+
+      // Check if candidate is already in default bank
+      if (data.candidate_id) {
+        fetch('/api/banks', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'check_default', candidateId: data.candidate_id }),
+        })
+          .then((r) => r.json())
+          .then((r) => setInDefaultBank(r.inBank === true))
+          .catch(() => {})
       }
     }
     setLoading(false)
@@ -385,6 +405,51 @@ export default function ApplicationDetailPage() {
       setError('Failed to reject application')
     }
     setRejecting(false)
+  }
+
+  async function handleMoveToBank() {
+    if (!application?.candidate_id) return
+    setMovingToBank(true)
+    try {
+      const res = await fetch('/api/banks', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'move_to_default', candidateId: application.candidate_id }),
+      })
+      const data = await res.json()
+      if (res.ok) {
+        setInDefaultBank(true)
+      } else if (data.alreadyExists) {
+        setInDefaultBank(true)
+      } else {
+        setError(data.error || 'Failed to move candidate to bank')
+      }
+    } catch {
+      setError('Failed to move candidate to bank')
+    }
+    setMovingToBank(false)
+  }
+
+  async function handleRollback() {
+    if (!application) return
+    setRollingBack(true)
+    try {
+      const res = await fetch('/api/applications/rollback', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ applicationId: application.id }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        setError(data.error || 'Failed to rollback')
+      } else {
+        setRollbackOpen(false)
+        await loadApplication()
+      }
+    } catch {
+      setError('Failed to rollback application')
+    }
+    setRollingBack(false)
   }
 
   async function handleHire() {
@@ -709,6 +774,12 @@ export default function ApplicationDetailPage() {
                   Reject
                 </Button>
               )}
+              {application.status === 'rejected' && canManageCandidates && (
+                <Button size="sm" variant="outline" className="gap-1.5 text-amber-600 border-amber-200 hover:bg-amber-50 h-8 text-[12px]" onClick={() => setRollbackOpen(true)}>
+                  <RotateCcw className="w-3.5 h-3.5" />
+                  Rollback
+                </Button>
+              )}
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button size="sm" variant="outline" className="h-8 w-8 p-0">
@@ -730,6 +801,12 @@ export default function ApplicationDetailPage() {
                         <UserCircle className="w-3.5 h-3.5 text-gray-500" />
                         View Candidate Profile
                       </Link>
+                    </DropdownMenuItem>
+                  )}
+                  {application.status === 'rejected' && canManageCandidates && (
+                    <DropdownMenuItem onClick={() => setRollbackOpen(true)} className="flex items-center gap-2 text-[12px] text-amber-600">
+                      <RotateCcw className="w-3.5 h-3.5" />
+                      Rollback to Previous Stage
                     </DropdownMenuItem>
                   )}
                 </DropdownMenuContent>
@@ -983,6 +1060,31 @@ export default function ApplicationDetailPage() {
                         <Button size="sm" variant="outline" className="w-full justify-start gap-2 h-8 text-[12px] text-green-700 border-green-200 hover:bg-green-50 rounded-lg" onClick={() => setWhatsappOpen(true)}>
                           <MessageSquare className="w-3.5 h-3.5" />
                           Send WhatsApp
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* Move to Default Bank — only for rejected candidates */}
+                {canManageCandidates && application.status === 'rejected' && (
+                  <div className="rounded-xl border border-gray-200 bg-white shadow-sm">
+                    <div className="p-4">
+                      {inDefaultBank ? (
+                        <div className="flex items-center gap-2 text-[12px] text-emerald-600">
+                          <CheckCircle className="w-4 h-4" />
+                          <span className="font-medium">In Default Bank</span>
+                        </div>
+                      ) : (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="w-full justify-center gap-2 h-8 text-[12px] rounded-lg border-amber-200 text-amber-700 hover:bg-amber-50"
+                          onClick={handleMoveToBank}
+                          disabled={movingToBank}
+                        >
+                          <Landmark className="w-3.5 h-3.5" />
+                          {movingToBank ? 'Moving...' : 'Move to Default Bank'}
                         </Button>
                       )}
                     </div>
@@ -1790,6 +1892,40 @@ export default function ApplicationDetailPage() {
             </Button>
             <Button className="bg-rose-600 hover:bg-rose-700 text-white text-[12px] h-8 rounded-lg" onClick={() => handleReject(true)} disabled={rejecting || !rejectReason.trim() || !selectedTemplateId}>
               {rejecting ? 'Processing...' : 'Reject & Send Email'}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Rollback Confirmation Dialog */}
+      <Dialog open={rollbackOpen} onOpenChange={setRollbackOpen}>
+        <DialogContent className="rounded-xl sm:max-w-[400px] p-5">
+          <DialogHeader className="space-y-1">
+            <DialogTitle className="text-[15px]">Rollback Application</DialogTitle>
+            <DialogDescription className="text-[12px]">
+              Are you sure you want to move {candidate?.first_name} back to the previous stage?
+            </DialogDescription>
+          </DialogHeader>
+          <div className="pt-2 pb-1">
+            <div className="rounded-lg bg-amber-50 border border-amber-200 p-3">
+              <div className="flex items-start gap-2">
+                <RotateCcw className="w-4 h-4 text-amber-500 mt-0.5 shrink-0" />
+                <div className="text-[12px] text-amber-700">
+                  <p className="font-medium">This will:</p>
+                  <ul className="mt-1 space-y-0.5 list-disc list-inside text-[11px]">
+                    <li>Change status from <span className="font-medium">Rejected</span> to <span className="font-medium">Active</span></li>
+                    <li>Move candidate back to their previous pipeline stage</li>
+                    <li>Clear the rejection reason</li>
+                  </ul>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div className="flex items-center justify-end gap-2 pt-2">
+            <Button variant="outline" onClick={() => setRollbackOpen(false)} className="text-[12px] h-8 rounded-lg">Cancel</Button>
+            <Button className="bg-amber-600 hover:bg-amber-700 text-white text-[12px] h-8 rounded-lg gap-1.5" onClick={handleRollback} disabled={rollingBack}>
+              <RotateCcw className="w-3.5 h-3.5" />
+              {rollingBack ? 'Rolling back...' : 'Confirm Rollback'}
             </Button>
           </div>
         </DialogContent>

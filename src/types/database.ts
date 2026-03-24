@@ -136,6 +136,7 @@ export interface Application {
   hired_at: string | null
   rejection_reason: string | null
   assigned_recruiter_id: string | null
+  previous_stage_id: string | null
   created_at: string
   updated_at: string
   deleted_at: string | null

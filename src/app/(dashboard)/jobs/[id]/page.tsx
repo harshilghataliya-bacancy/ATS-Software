@@ -10,7 +10,6 @@ import { useUser, useRole } from '@/lib/hooks/use-user'
 import { getAssignableRecruiters } from '../actions'
 import { createClient } from '@/lib/supabase/client'
 import { getJobById, updateJob, getScorecardCriteria, upsertScorecardCriteria, getJobRecruiters } from '@/lib/services/jobs'
-import { moveJobCandidatesToDefaultBank } from '@/lib/services/candidate-banks'
 import {
   EMPLOYMENT_TYPES, CURRENCIES, JOB_STATUS_CONFIG, EXPERIENCE_LEVELS,
   REMOTE_POLICIES, JOB_PRIORITIES, JOB_EDUCATION_LEVELS,
@@ -192,7 +191,6 @@ export default function JobDetailPage() {
 
       // When job is closed or archived, reject all active candidates and send emails
       if (data.status === 'closed' || data.status === 'archived') {
-        await moveJobCandidatesToDefaultBank(supabase, params.id as string, organization.id)
         // Reject all active applications and send rejection emails
         fetch('/api/applications/reject-by-job', {
           method: 'POST',

@@ -96,7 +96,7 @@ export async function getCandidateById(
       applications(
         *,
         job:jobs(id, title, department, status),
-        current_stage:pipeline_stages(id, name, stage_type),
+        current_stage:pipeline_stages!current_stage_id(id, name, stage_type),
         interviews(id, status, scheduled_at, interview_type, duration_minutes, interview_feedback(id, overall_rating, recommendation)),
         offer_letters(id, status, salary, salary_currency, sent_at)
       )

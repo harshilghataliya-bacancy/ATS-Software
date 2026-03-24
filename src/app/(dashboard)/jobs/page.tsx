@@ -109,7 +109,7 @@ export default function JobsPage() {
   const [jobs, setJobs] = useState<Job[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
-  const [statusFilter, setStatusFilter] = useState<string>('all')
+  const [statusFilter, setStatusFilter] = useState<string>('published')
   const [deptFilter, setDeptFilter] = useState<string>('all')
   const [locationFilter, setLocationFilter] = useState<string>('all')
   const [typeFilter, setTypeFilter] = useState<string>('all')
@@ -154,11 +154,11 @@ export default function JobsPage() {
     if (data) {
       const jobList = data as Job[]
       setJobs(jobList)
-      if (deptFilter === 'all' && locationFilter === 'all' && typeFilter === 'all' && statusFilter === 'all' && !search) {
+      if (departments.length === 0 || (deptFilter === 'all' && locationFilter === 'all' && typeFilter === 'all' && !search)) {
         const depts = Array.from(new Set(jobList.map((j) => j.department).filter(Boolean))).sort()
         const locs = Array.from(new Set(jobList.map((j) => j.location).filter(Boolean))).sort()
-        setDepartments(depts)
-        setLocations(locs)
+        if (depts.length > 0) setDepartments(depts)
+        if (locs.length > 0) setLocations(locs)
       }
       const recruiterMap: Record<string, string[]> = {}
       await Promise.all(

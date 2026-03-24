@@ -8,6 +8,8 @@ import {
   removeCandidatesFromBank,
   moveCandidatesToBank,
   deleteBank,
+  addCandidateToDefaultBank,
+  isCandidateInDefaultBank,
 } from '@/lib/services/candidate-banks'
 
 export async function GET() {
@@ -111,6 +113,24 @@ export async function POST(request: NextRequest) {
     const { error } = await moveCandidatesToBank(supabase, fromBankId || null, toBankId, orgId, candidateIds, user.id)
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
     return NextResponse.json({ success: true })
+  }
+
+  // Move candidate to default bank
+  if (action === 'move_to_default') {
+    const { candidateId } = body
+    if (!candidateId) return NextResponse.json({ error: 'candidateId is required' }, { status: 400 })
+    const { error, alreadyExists } = await addCandidateToDefaultBank(supabase, orgId, candidateId, user.id)
+    if (alreadyExists) return NextResponse.json({ error: error?.message, alreadyExists: true }, { status: 409 })
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    return NextResponse.json({ success: true })
+  }
+
+  // Check if candidate is in default bank
+  if (action === 'check_default') {
+    const { candidateId } = body
+    if (!candidateId) return NextResponse.json({ error: 'candidateId is required' }, { status: 400 })
+    const inBank = await isCandidateInDefaultBank(supabase, orgId, candidateId)
+    return NextResponse.json({ inBank })
   }
 
   return NextResponse.json({ error: 'Invalid action' }, { status: 400 })

@@ -40,7 +40,7 @@ export async function getApplicationsForJob(
       `
       *,
       candidate:candidates(id, first_name, last_name, email, phone, resume_url, tags, resume_parsed_data),
-      current_stage:pipeline_stages(id, name, stage_type, display_order),
+      current_stage:pipeline_stages!current_stage_id(id, name, stage_type, display_order),
       interviews(id, status, scheduled_at, interview_type, duration_minutes),
       offer_letters(id, status)
     `
@@ -82,7 +82,7 @@ export async function getApplicationById(
       *,
       candidate:candidates(*),
       job:jobs(id, title, department, status, employment_type, pipeline_stages(id, name, stage_type, display_order)),
-      current_stage:pipeline_stages(id, name, stage_type, display_order),
+      current_stage:pipeline_stages!current_stage_id(id, name, stage_type, display_order),
       interviews(
         *,
         interview_panelists(*),
@@ -173,7 +173,7 @@ export async function createApplication(
       `
       *,
       candidate:candidates(id, first_name, last_name, email),
-      current_stage:pipeline_stages(id, name, stage_type)
+      current_stage:pipeline_stages!current_stage_id(id, name, stage_type)
     `
     )
     .single()
@@ -236,7 +236,7 @@ export async function moveApplication(
       `
       *,
       candidate:candidates(id, first_name, last_name, email),
-      current_stage:pipeline_stages(id, name, stage_type)
+      current_stage:pipeline_stages!current_stage_id(id, name, stage_type)
     `
     )
     .single()
@@ -342,23 +342,21 @@ export async function rejectApplication(
   userId: string,
   stageId?: string
 ) {
-  // If stageId provided, get current stage for movement log
-  let fromStageId: string | null = null
-  if (stageId) {
-    const { data: app } = await supabase
-      .from('applications')
-      .select('current_stage_id')
-      .eq('id', applicationId)
-      .eq('organization_id', orgId)
-      .single()
-    fromStageId = app?.current_stage_id ?? null
-  }
+  // Always get current stage to save as previous_stage_id for rollback
+  const { data: currentApp } = await supabase
+    .from('applications')
+    .select('current_stage_id')
+    .eq('id', applicationId)
+    .eq('organization_id', orgId)
+    .single()
+  const fromStageId = currentApp?.current_stage_id ?? null
 
   const updatePayload: Record<string, unknown> = {
     status: 'rejected',
     rejection_reason: reason,
     rejected_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
+    previous_stage_id: fromStageId,
   }
 
   if (stageId) {
@@ -381,6 +379,85 @@ export async function rejectApplication(
       organization_id: orgId,
       from_stage_id: fromStageId,
       to_stage_id: stageId,
+      moved_by: userId,
+      moved_at: new Date().toISOString(),
+    })
+  }
+
+  return { data, error }
+}
+
+export async function rollbackApplication(
+  supabase: SupabaseClient,
+  applicationId: string,
+  orgId: string,
+  userId: string
+) {
+  // Get the rejected application with its previous stage
+  const { data: app } = await supabase
+    .from('applications')
+    .select('id, current_stage_id, previous_stage_id, job_id')
+    .eq('id', applicationId)
+    .eq('organization_id', orgId)
+    .eq('status', 'rejected')
+    .single()
+
+  if (!app) return { data: null, error: { message: 'Application not found or not rejected' } }
+
+  // Determine rollback stage: previous_stage_id first, then stage_movements, then first stage
+  let rollbackStageId = app.previous_stage_id
+
+  if (!rollbackStageId) {
+    // Fallback 1: check stage_movements for the last movement INTO the rejected stage
+    const { data: lastMovement } = await supabase
+      .from('stage_movements')
+      .select('from_stage_id')
+      .eq('application_id', applicationId)
+      .eq('organization_id', orgId)
+      .order('moved_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+
+    rollbackStageId = lastMovement?.from_stage_id ?? null
+  }
+
+  if (!rollbackStageId) {
+    // Fallback 2: get the first pipeline stage for this job
+    const { data: firstStage } = await supabase
+      .from('pipeline_stages')
+      .select('id')
+      .eq('job_id', app.job_id)
+      .eq('organization_id', orgId)
+      .order('display_order', { ascending: true })
+      .limit(1)
+      .maybeSingle()
+
+    rollbackStageId = firstStage?.id ?? app.current_stage_id
+  }
+
+  // Update application: restore to active with previous stage
+  const { data, error } = await supabase
+    .from('applications')
+    .update({
+      status: 'active',
+      current_stage_id: rollbackStageId,
+      rejection_reason: null,
+      rejected_at: null,
+      previous_stage_id: null,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', applicationId)
+    .eq('organization_id', orgId)
+    .select()
+    .single()
+
+  // Log stage movement
+  if (!error && rollbackStageId && app.current_stage_id) {
+    await supabase.from('stage_movements').insert({
+      application_id: applicationId,
+      organization_id: orgId,
+      from_stage_id: app.current_stage_id,
+      to_stage_id: rollbackStageId,
       moved_by: userId,
       moved_at: new Date().toISOString(),
     })
@@ -555,7 +632,7 @@ export async function hireApplication(
       `
       *,
       candidate:candidates(id, first_name, last_name, email),
-      current_stage:pipeline_stages(id, name, stage_type)
+      current_stage:pipeline_stages!current_stage_id(id, name, stage_type)
     `
     )
     .single()

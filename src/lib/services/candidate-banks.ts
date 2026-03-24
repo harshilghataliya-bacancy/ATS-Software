@@ -115,7 +115,7 @@ export async function ensureDefaultBank(supabase: SupabaseClient, orgId: string)
     .insert({
       organization_id: orgId,
       name: 'Default Bank',
-      description: 'Rejected candidates and candidates from closed/archived jobs',
+      description: 'Candidates manually added to the bank',
       is_default: true,
     })
     .select()
@@ -125,7 +125,7 @@ export async function ensureDefaultBank(supabase: SupabaseClient, orgId: string)
 }
 
 // ---------------------------------------------------------------------------
-// Default Bank Candidates (non-rejected, NOT in any custom bank)
+// Default Bank Candidates (only explicitly added candidates)
 // ---------------------------------------------------------------------------
 
 export async function getDefaultBankCandidates(
@@ -133,77 +133,82 @@ export async function getDefaultBankCandidates(
   orgId: string,
   filters: BankFilters = {}
 ) {
-  const { search, source, location, tags, page = 1, limit = ITEMS_PER_PAGE } = filters
-  const from = (page - 1) * limit
-  const to = from + limit - 1
+  // Get the default bank ID
+  const { data: defaultBank } = await supabase
+    .from('candidate_banks')
+    .select('id')
+    .eq('organization_id', orgId)
+    .eq('is_default', true)
+    .maybeSingle()
 
-  // Get candidate IDs already in custom banks
-  const { data: bankedIds } = await supabase
+  if (!defaultBank) return { data: [], error: null, count: 0 }
+
+  // Use the same logic as custom banks — only explicitly added members
+  return getBankCandidates(supabase, defaultBank.id, orgId, filters)
+}
+
+// ---------------------------------------------------------------------------
+// Add candidate to default bank (manual move)
+// ---------------------------------------------------------------------------
+
+export async function addCandidateToDefaultBank(
+  supabase: SupabaseClient,
+  orgId: string,
+  candidateId: string,
+  userId: string
+) {
+  // Ensure default bank exists
+  const { data: bank, error: bankError } = await ensureDefaultBank(supabase, orgId)
+  if (bankError || !bank) return { error: bankError || new Error('Failed to get default bank'), alreadyExists: false }
+
+  // Check if already in default bank
+  const { data: existing } = await supabase
     .from('candidate_bank_members')
-    .select('candidate_id')
-    .eq('organization_id', orgId)
+    .select('id')
+    .eq('bank_id', bank.id)
+    .eq('candidate_id', candidateId)
+    .maybeSingle()
 
-  const excludeIds = bankedIds?.map((b) => b.candidate_id) ?? []
+  if (existing) return { error: { message: 'Candidate is already in the Default Bank' }, alreadyExists: true }
 
-  // Build query for candidates who are NOT rejected in all applications
-  // A candidate is in the default bank if:
-  // 1. They have no applications at all, OR
-  // 2. At least one of their applications is NOT rejected
-  // AND they are not already in a custom bank
-
-  let query = supabase
-    .from('candidates')
-    .select(
-      `
-      *,
-      applications(id, status, job:jobs(id, title, department, status))
-    `,
-      { count: 'exact' }
-    )
-    .eq('organization_id', orgId)
-    .is('deleted_at', null)
-    .order('created_at', { ascending: false })
-    .range(from, to)
-
-  // Exclude candidates already in custom banks
-  if (excludeIds.length > 0) {
-    query = query.not('id', 'in', `(${excludeIds.join(',')})`)
-  }
-
-  if (search) {
-    query = query.or(`first_name.ilike.%${search}%,last_name.ilike.%${search}%,email.ilike.%${search}%`)
-  }
-  if (source) {
-    query = query.eq('source', source)
-  }
-  if (location) {
-    query = query.ilike('location', `%${location}%`)
-  }
-  if (tags && tags.length > 0) {
-    query = query.overlaps('tags', tags)
-  }
-
-  const { data, error } = await query
-
-  // Only show candidates who are rejected OR whose job is closed/archived
-  // Exclude hired candidates and candidates with active applications on open jobs
-  const filtered = data?.filter((c) => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const apps = (c as any).applications || []
-    if (apps.length === 0) return false
-    // Exclude if any application is hired
-    const hasHired = apps.some((a: { status: string }) => a.status === 'hired')
-    if (hasHired) return false
-    // Exclude if any application is active on an open job
-    const hasActiveOnOpenJob = apps.some((a: { status: string; job?: { status?: string } }) => {
-      const jobStatus = a.job?.status
-      const isJobOpen = jobStatus !== 'closed' && jobStatus !== 'archived'
-      return a.status === 'active' && isJobOpen
+  // Add to default bank
+  const { data, error } = await supabase
+    .from('candidate_bank_members')
+    .insert({
+      bank_id: bank.id,
+      candidate_id: candidateId,
+      organization_id: orgId,
+      added_by: userId,
     })
-    return !hasActiveOnOpenJob
-  }) ?? []
+    .select()
+    .single()
 
-  return { data: filtered, error, count: filtered.length }
+  return { data, error, alreadyExists: false }
+}
+
+// Check if candidate is in default bank
+export async function isCandidateInDefaultBank(
+  supabase: SupabaseClient,
+  orgId: string,
+  candidateId: string
+) {
+  const { data: defaultBank } = await supabase
+    .from('candidate_banks')
+    .select('id')
+    .eq('organization_id', orgId)
+    .eq('is_default', true)
+    .maybeSingle()
+
+  if (!defaultBank) return false
+
+  const { data } = await supabase
+    .from('candidate_bank_members')
+    .select('id')
+    .eq('bank_id', defaultBank.id)
+    .eq('candidate_id', candidateId)
+    .maybeSingle()
+
+  return !!data
 }
 
 // ---------------------------------------------------------------------------

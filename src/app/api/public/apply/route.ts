@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { checkReapplyRestriction } from '@/lib/services/applications'
+import { sendGmailEmail } from '@/lib/services/gmail'
+import { logEmail } from '@/lib/services/email'
 
 /** Prepend https:// if a URL-like string is missing a protocol */
 function normalizeUrl(url: string | null | undefined): string | null {
@@ -188,5 +190,116 @@ export async function POST(request: NextRequest) {
     }).catch(() => {})
   }
 
+  // 7. Fire-and-forget acknowledgment email to candidate
+  sendApplicationAcknowledgment(supabase, orgId, candidateId, jobId, form).catch((err) => {
+    console.error('[Application Acknowledgment Email Error]', err)
+  })
+
   return NextResponse.json({ success: true, candidateId })
+}
+
+// ---------------------------------------------------------------------------
+// Acknowledgment email — sent automatically after public application
+// ---------------------------------------------------------------------------
+
+async function sendApplicationAcknowledgment(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  supabase: any,
+  orgId: string,
+  candidateId: string,
+  jobId: string,
+  form: Record<string, string>
+) {
+  const adminSupabase = createAdminClient()
+
+  // Fetch org name + job title
+  const [orgResult, jobResult] = await Promise.all([
+    adminSupabase.from('organizations').select('name').eq('id', orgId).single(),
+    adminSupabase.from('jobs').select('title, department').eq('id', jobId).single(),
+  ])
+
+  const companyName = orgResult.data?.name || 'Our Company'
+  const jobTitle = jobResult.data?.title || 'the position'
+  const candidateName = `${form.first_name} ${form.last_name}`.trim()
+  const candidateEmail = form.email
+
+  if (!candidateEmail) return
+
+  // Find any admin's Gmail token to send from
+  const { data: adminMembers } = await adminSupabase
+    .from('organization_members')
+    .select('user_id')
+    .eq('organization_id', orgId)
+    .eq('role', 'admin')
+    .is('deleted_at', null)
+
+  if (!adminMembers || adminMembers.length === 0) return
+
+  // Try each admin until we find one with a Gmail token
+  let accessToken: string | null = null
+  let fromEmail = ''
+
+  for (const admin of adminMembers) {
+    const { data: tokenRow } = await adminSupabase
+      .from('google_oauth_tokens')
+      .select('*')
+      .eq('user_id', admin.user_id)
+      .eq('organization_id', orgId)
+      .eq('provider', 'gmail')
+      .maybeSingle()
+
+    if (tokenRow) {
+      const { getValidAccessToken } = await import('@/lib/services/gmail')
+      const result = await getValidAccessToken(supabase, admin.user_id, orgId)
+      if (result.accessToken) {
+        accessToken = result.accessToken
+        fromEmail = result.fromEmail
+        break
+      }
+    }
+  }
+
+  if (!accessToken) return
+
+  const subject = `Application Received — ${jobTitle} at ${companyName}`
+  const bodyHtml = `<p>Dear ${candidateName},</p>
+
+<p>Thank you for applying for the <strong>${jobTitle}</strong> position at <strong>${companyName}</strong>. We have successfully received your application.</p>
+
+<p>Our hiring team will carefully review your profile and qualifications. If your background aligns with our requirements, we will reach out to you with the next steps in the process.</p>
+
+<p>In the meantime, please feel free to reach out if you have any questions.</p>
+
+<p>We appreciate your interest in joining <strong>${companyName}</strong> and wish you the best!</p>
+
+<p>Warm regards,<br/>${companyName} Hiring Team</p>`
+
+  try {
+    await sendGmailEmail(accessToken, {
+      from: fromEmail,
+      to: candidateEmail,
+      subject,
+      html: bodyHtml,
+    })
+
+    await logEmail(adminSupabase, orgId, {
+      candidate_id: candidateId,
+      subject,
+      body_html: bodyHtml,
+      to_email: candidateEmail,
+      from_email: fromEmail,
+      status: 'sent',
+      sent_at: new Date().toISOString(),
+    })
+  } catch (err) {
+    console.error('[Acknowledgment Email Send Error]', err)
+    await logEmail(adminSupabase, orgId, {
+      candidate_id: candidateId,
+      subject,
+      body_html: bodyHtml,
+      to_email: candidateEmail,
+      from_email: fromEmail,
+      status: 'failed',
+    }).catch(() => {})
+  }
 }

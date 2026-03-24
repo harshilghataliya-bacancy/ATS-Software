@@ -109,7 +109,7 @@ export async function getInterviewById(
         *,
         candidate:candidates(*),
         job:jobs(id, title, department, status),
-        current_stage:pipeline_stages(id, name, stage_type)
+        current_stage:pipeline_stages!current_stage_id(id, name, stage_type)
       ),
       interview_panelists(*),
       feedback:interview_feedback(*)

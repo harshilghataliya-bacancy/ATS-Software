@@ -38,7 +38,7 @@ import {
 import {
   ArrowLeft, UserPlus, Upload, List, Columns3, Briefcase, Sparkles, User, Users,
   Filter, MoreHorizontal, ChevronDown, ExternalLink, Mail, Search,
-  CalendarDays, Gift, ClipboardCheck, UserCircle,
+  CalendarDays, Gift, ClipboardCheck, UserCircle, RotateCcw,
 } from 'lucide-react'
 
 // ---------------------------------------------------------------------------
@@ -383,6 +383,11 @@ export default function ApplicationsPage() {
   const [activeApp, setActiveApp] = useState<ApplicationRow | null>(null)
   const [moving, setMoving] = useState(false)
 
+  // Rollback state
+  const [rollbackOpen, setRollbackOpen] = useState(false)
+  const [rollbackApp, setRollbackApp] = useState<ApplicationRow | null>(null)
+  const [rollingBack, setRollingBack] = useState(false)
+
   // DnD sensors — must always be called (hooks rule)
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
@@ -643,6 +648,33 @@ export default function ApplicationsPage() {
       await loadData()
     }
     setRejecting(false)
+  }
+
+  // ---------------------------------------------------------------------------
+  // Rollback rejected application
+  // ---------------------------------------------------------------------------
+
+  async function handleRollback() {
+    if (!rollbackApp || !organization || !user) return
+    setRollingBack(true)
+    try {
+      const res = await fetch('/api/applications/rollback', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ applicationId: rollbackApp.id }),
+      })
+      if (!res.ok) {
+        const data = await res.json()
+        setError(data.error || 'Failed to rollback application')
+      } else {
+        await loadData()
+      }
+    } catch {
+      setError('Failed to rollback application')
+    }
+    setRollingBack(false)
+    setRollbackOpen(false)
+    setRollbackApp(null)
   }
 
   // ---------------------------------------------------------------------------
@@ -1214,6 +1246,15 @@ export default function ApplicationsPage() {
                                   <Mail className="w-3.5 h-3.5 mr-2" />
                                   Send Email
                                 </DropdownMenuItem>
+                                {app.status === 'rejected' && canManageJobs && (
+                                  <>
+                                    <DropdownMenuSeparator />
+                                    <DropdownMenuItem onClick={() => { setRollbackApp(app); setRollbackOpen(true) }}>
+                                      <RotateCcw className="w-3.5 h-3.5 mr-2" />
+                                      Rollback to Previous Stage
+                                    </DropdownMenuItem>
+                                  </>
+                                )}
                               </DropdownMenuContent>
                             </DropdownMenu>
                           </TableCell>
@@ -1533,6 +1574,29 @@ export default function ApplicationsPage() {
                 Go to Offer
               </Button>
             </Link>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Rollback Confirmation Dialog */}
+      <Dialog open={rollbackOpen} onOpenChange={setRollbackOpen}>
+        <DialogContent className="rounded-xl sm:max-w-[400px] p-5">
+          <DialogHeader className="space-y-1">
+            <DialogTitle className="text-[15px] flex items-center gap-2">
+              <RotateCcw className="w-4 h-4" />
+              Rollback Candidate
+            </DialogTitle>
+            <DialogDescription className="text-[12px]">
+              Are you sure you want to rollback <strong>{rollbackApp?.candidate?.first_name} {rollbackApp?.candidate?.last_name}</strong> to their previous pipeline stage? This will change their status from rejected back to active.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex items-center justify-end gap-2 pt-3">
+            <Button variant="outline" onClick={() => { setRollbackOpen(false); setRollbackApp(null) }} className="text-[12px] h-8 rounded-lg">
+              Cancel
+            </Button>
+            <Button onClick={handleRollback} disabled={rollingBack} className="text-[12px] h-8 rounded-lg">
+              {rollingBack ? 'Rolling back…' : 'Rollback'}
+            </Button>
           </div>
         </DialogContent>
       </Dialog>

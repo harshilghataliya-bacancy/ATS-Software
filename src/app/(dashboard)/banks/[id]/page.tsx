@@ -30,6 +30,7 @@ import {
 import {
   ArrowLeft, Search, MapPin, ArrowRightLeft, X, ChevronLeft, ChevronRight,
   Landmark, FolderOpen, Users, UserPlus, Upload, MoreHorizontal, Eye, Filter,
+  Trash2,
 } from 'lucide-react'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -72,7 +73,7 @@ export default function BankDetailPage() {
   const router = useRouter()
   const bankId = params.id as string
   const { user, organization, isLoading: userLoading } = useUser()
-  const { canAccessBanks, isInterviewer } = useRole()
+  const { canAccessBanks, isInterviewer, isAdmin } = useRole()
 
   const [bank, setBank] = useState<AnyData | null>(null)
   const [candidates, setCandidates] = useState<AnyData[]>([])
@@ -200,7 +201,7 @@ export default function BankDetailPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           action: 'move_candidates',
-          fromBankId: bank?.is_default ? null : bankId,
+          fromBankId: bankId,
           toBankId: targetBankId,
           candidateIds: Array.from(selected),
         }),
@@ -219,7 +220,7 @@ export default function BankDetailPage() {
   }
 
   async function handleRemoveFromBank() {
-    if (selected.size === 0 || bank?.is_default) return
+    if (selected.size === 0) return
     setRemoving(true)
     setError(null)
     try {
@@ -549,21 +550,22 @@ export default function BankDetailPage() {
 
       {/* ── Bulk Actions Bar ── */}
       {selected.size > 0 && (
-        <div className="flex items-center gap-3 bg-gray-900 rounded-xl px-4 py-2.5">
-          <span className="text-[12px] font-medium text-white">
+        <div className="flex items-center gap-3 bg-white rounded-xl px-4 py-2.5 border border-gray-200 shadow-sm">
+          <span className="text-[12px] font-medium text-gray-900">
             {selected.size} selected
           </span>
           <div className="flex-1" />
-          <button onClick={openMoveDialog} className="flex items-center gap-1.5 h-7 px-3 rounded-lg bg-white/10 text-white text-[11px] font-medium hover:bg-white/20 transition-colors">
+          <button onClick={openMoveDialog} className="flex items-center gap-1.5 h-7 px-3 rounded-lg bg-gray-100 text-gray-700 text-[11px] font-medium hover:bg-gray-200 transition-colors">
             <ArrowRightLeft className="w-3.5 h-3.5" />
             Move to Bank
           </button>
-          {!bank.is_default && (
-            <button onClick={handleRemoveFromBank} disabled={removing} className="flex items-center gap-1.5 h-7 px-3 rounded-lg bg-rose-500/20 text-rose-300 text-[11px] font-medium hover:bg-rose-500/30 transition-colors disabled:opacity-50">
-              {removing ? 'Removing...' : 'Move to Default'}
+          {isAdmin && (
+            <button onClick={handleRemoveFromBank} disabled={removing} className="flex items-center gap-1.5 h-7 px-3 rounded-lg bg-rose-50 text-rose-600 text-[11px] font-medium hover:bg-rose-100 transition-colors disabled:opacity-50">
+              <Trash2 className="w-3.5 h-3.5" />
+              {removing ? 'Removing...' : 'Remove'}
             </button>
           )}
-          <button onClick={() => setSelected(new Set())} className="p-1.5 rounded-lg text-gray-400 hover:text-white hover:bg-white/10 transition-colors">
+          <button onClick={() => setSelected(new Set())} className="p-1.5 rounded-lg text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-colors">
             <X className="w-3.5 h-3.5" />
           </button>
         </div>
@@ -957,7 +959,7 @@ export default function BankDetailPage() {
                 <SelectValue placeholder="Choose a bank..." />
               </SelectTrigger>
               <SelectContent>
-                {allBanks.map((b) => (
+                {allBanks.filter((b) => b.id !== bankId).map((b) => (
                   <SelectItem key={b.id} value={b.id}>
                     {b.name} {b.is_default ? '(Default)' : ''}
                   </SelectItem>
