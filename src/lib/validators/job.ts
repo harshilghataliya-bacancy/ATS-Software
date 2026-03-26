@@ -32,8 +32,8 @@ export const createJobSchema = z.object({
   application_deadline: z.string().optional().nullable().or(z.literal('')),
   remote_policy: remotePolicyEnum.default('on_site'),
   skills: z.array(z.string(), { message: 'Please add at least one skill' }).min(1, 'Please add at least one skill'),
-  benefits: z.string({ message: 'Please add benefits & perks' }).min(1, 'Please add benefits & perks'),
-  nice_to_have: z.string({ message: 'Please add nice-to-have qualifications' }).min(1, 'Please add nice-to-have qualifications'),
+  benefits: z.string().optional().nullable().or(z.literal('')),
+  nice_to_have: z.string().optional().nullable().or(z.literal('')),
   education_level: jobEducationEnum,
   experience_min: z.preprocess(
     (val) => (val === '' || val === undefined || val === null ? undefined : Number(val)),

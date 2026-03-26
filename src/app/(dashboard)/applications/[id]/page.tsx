@@ -743,6 +743,21 @@ export default function ApplicationDetailPage() {
                     <span className={`w-1.5 h-1.5 rounded-full ${STATUS_DOT_COLORS[application.status] || 'bg-gray-400'}`} />
                     {application.status}
                   </span>
+                  {candidate?.source && (() => {
+                    const srcStyles: Record<string, string> = {
+                      direct: 'bg-blue-50 text-blue-700 border-blue-200',
+                      referral: 'bg-purple-50 text-purple-700 border-purple-200',
+                      linkedin: 'bg-sky-50 text-sky-700 border-sky-200',
+                      job_board: 'bg-amber-50 text-amber-700 border-amber-200',
+                      careers_page: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+                      other: 'bg-gray-50 text-gray-600 border-gray-200',
+                    }
+                    return (
+                      <span className={`inline-flex items-center text-[10px] font-medium px-2 py-0.5 rounded-full border ${srcStyles[candidate.source] || srcStyles.other}`}>
+                        {sourceLabel}
+                      </span>
+                    )
+                  })()}
                 </div>
                 <p className="text-[12px] text-gray-500 mt-0.5">
                   Applied for{' '}
@@ -787,14 +802,6 @@ export default function ApplicationDetailPage() {
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="w-44">
-                  {job?.id && (
-                    <DropdownMenuItem asChild>
-                      <Link href={`/jobs/${job.id}`} className="flex items-center gap-2 text-[12px]">
-                        <FileText className="w-3.5 h-3.5 text-gray-500" />
-                        View Job Description
-                      </Link>
-                    </DropdownMenuItem>
-                  )}
                   {canManageCandidates && (
                     <DropdownMenuItem asChild>
                       <Link href={`/candidates/${candidate?.id}`} className="flex items-center gap-2 text-[12px]">

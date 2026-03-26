@@ -36,7 +36,7 @@ import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import {
-  ArrowLeft, UserPlus, Upload, List, Columns3, Briefcase, Sparkles, User, Users,
+  ArrowLeft, UserPlus, Upload, List, Columns3, Briefcase, Sparkles, User, Users, FileText,
   Filter, MoreHorizontal, ChevronDown, ExternalLink, Mail, Search,
   CalendarDays, Gift, ClipboardCheck, UserCircle, RotateCcw,
 } from 'lucide-react'
@@ -54,6 +54,7 @@ interface Candidate {
   resume_url?: string | null
   resume_parsed_data?: Record<string, unknown> | null
   tags?: string[] | null
+  source?: string | null
 }
 
 interface PipelineStage {
@@ -883,6 +884,10 @@ export default function ApplicationsPage() {
               <div className="flex items-center gap-2.5">
                 <h1 className="text-lg font-semibold text-gray-900">{job.title}</h1>
                 <span className="text-[11px] font-medium px-2 py-0.5 rounded-full border border-gray-200 bg-gray-50 text-gray-600">{allApps.length} applicant{allApps.length !== 1 ? 's' : ''}</span>
+                <Link href={`/jobs/${job.id}`} className="text-[11px] font-medium text-blue-600 hover:text-blue-800 hover:underline flex items-center gap-1">
+                  <FileText className="w-3 h-3" />
+                  View JD
+                </Link>
                 {batchScoring && <span className="text-[10px] font-medium px-2 py-0.5 rounded-full border border-blue-200 bg-blue-50 text-blue-600 animate-pulse">AI Scoring...</span>}
                 {moving && <span className="text-[11px] text-gray-400 animate-pulse">Saving...</span>}
               </div>
@@ -1105,6 +1110,7 @@ export default function ApplicationsPage() {
                         <TableHead className="text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Assessment</TableHead>
                         <TableHead className="text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Assigned To</TableHead>
                         <TableHead className="text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Current Stage</TableHead>
+                        <TableHead className="text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Source</TableHead>
                         <TableHead className="text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Applied</TableHead>
                         <TableHead className="text-[11px] font-semibold text-gray-500 uppercase tracking-wider w-10"></TableHead>
                       </TableRow>
@@ -1221,6 +1227,27 @@ export default function ApplicationsPage() {
                               }`}>
                                 {app.current_stage?.name ?? '-'}
                               </span>
+                          </TableCell>
+                          <TableCell>
+                            {(() => {
+                              const src = app.candidate?.source
+                              const sourceConfig: Record<string, { label: string; color: string; icon: string }> = {
+                                direct: { label: 'Direct', color: 'bg-blue-50 text-blue-700 border-blue-200', icon: '🔗' },
+                                referral: { label: 'Referral', color: 'bg-purple-50 text-purple-700 border-purple-200', icon: '👥' },
+                                linkedin: { label: 'LinkedIn', color: 'bg-sky-50 text-sky-700 border-sky-200', icon: '💼' },
+                                job_board: { label: 'Job Board', color: 'bg-amber-50 text-amber-700 border-amber-200', icon: '📋' },
+                                careers_page: { label: 'Careers Page', color: 'bg-emerald-50 text-emerald-700 border-emerald-200', icon: '🌐' },
+                                other: { label: 'Other', color: 'bg-gray-50 text-gray-600 border-gray-200', icon: '📌' },
+                              }
+                              const cfg = src ? sourceConfig[src] : null
+                              if (!cfg) return <span className="text-[11px] text-gray-400">-</span>
+                              return (
+                                <span className={`inline-flex items-center gap-1 text-[10px] font-medium px-2 py-0.5 rounded-full border ${cfg.color}`}>
+                                  <span className="text-[9px]">{cfg.icon}</span>
+                                  {cfg.label}
+                                </span>
+                              )
+                            })()}
                           </TableCell>
                           <TableCell className="text-[12px] text-gray-500">
                             {new Date(app.applied_at).toLocaleDateString()}

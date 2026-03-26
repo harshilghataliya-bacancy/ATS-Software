@@ -385,9 +385,9 @@ export default function NewJobPage() {
                 </div>
 
                 <div className="space-y-2">
-                  <Label>Nice to Have *</Label>
+                  <Label>Nice to Have</Label>
                   <RichTextEditor
-                    value={watch('nice_to_have')}
+                    value={watch('nice_to_have') ?? ''}
                     onChange={(val) => setValue('nice_to_have', val, { shouldValidate: true })}
                     placeholder="Preferred but not required qualifications..."
                     rows={5}
@@ -396,9 +396,9 @@ export default function NewJobPage() {
                 </div>
 
                 <div className="space-y-2">
-                  <Label>Benefits & Perks *</Label>
+                  <Label>Benefits & Perks</Label>
                   <RichTextEditor
-                    value={watch('benefits')}
+                    value={watch('benefits') ?? ''}
                     onChange={(val) => setValue('benefits', val, { shouldValidate: true })}
                     placeholder="Health insurance, PTO, equity, remote work, etc."
                     rows={5}
