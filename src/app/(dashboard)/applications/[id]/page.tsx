@@ -37,7 +37,7 @@ import {
   ArrowLeft, Mail, MessageSquare, FileText, UserCircle, Calendar, Link as LinkIcon,
   Download, X, Eye, Plus, Trash2, CheckCircle2, XCircle, Clock, ChevronDown,
   ClipboardList, Loader2, PenLine, Info, ExternalLink,
-  User, MoreHorizontal, ChevronLeft, ChevronRight, Landmark, CheckCircle, RotateCcw,
+  User, MoreHorizontal, ChevronLeft, ChevronRight, Landmark, CheckCircle, RotateCcw, Link2, Check,
 } from 'lucide-react'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -192,6 +192,7 @@ export default function ApplicationDetailPage() {
 
   // Rollback
   const [rollbackOpen, setRollbackOpen] = useState(false)
+  const [linkCopied, setLinkCopied] = useState(false)
   const [rollingBack, setRollingBack] = useState(false)
 
   // Interviewers only have access to Dashboard + Interviews
@@ -801,7 +802,19 @@ export default function ApplicationDetailPage() {
                     <MoreHorizontal className="w-4 h-4" />
                   </Button>
                 </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-44">
+                <DropdownMenuContent align="end" className="w-48">
+                  <DropdownMenuItem
+                    onClick={() => {
+                      const url = `${window.location.origin}/careers/${organization?.slug}/${application?.job?.id}`
+                      navigator.clipboard.writeText(url)
+                      setLinkCopied(true)
+                      setTimeout(() => setLinkCopied(false), 2000)
+                    }}
+                    className="flex items-center gap-2 text-[12px]"
+                  >
+                    {linkCopied ? <Check className="w-3.5 h-3.5 text-green-600" /> : <Link2 className="w-3.5 h-3.5 text-gray-500" />}
+                    {linkCopied ? 'Link Copied!' : 'Copy Job Link'}
+                  </DropdownMenuItem>
                   {canManageCandidates && (
                     <DropdownMenuItem asChild>
                       <Link href={`/candidates/${candidate?.id}`} className="flex items-center gap-2 text-[12px]">
@@ -1667,6 +1680,7 @@ export default function ApplicationDetailPage() {
           candidateName={`${candidate?.first_name} ${candidate?.last_name}`}
           candidateEmail={candidate?.email}
           jobTitle={job?.title || ''}
+          jobDescription={job?.description || ''}
           onSuccess={handleInterviewScheduled}
         />
       )}

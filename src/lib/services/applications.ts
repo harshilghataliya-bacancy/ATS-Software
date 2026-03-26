@@ -81,7 +81,7 @@ export async function getApplicationById(
       `
       *,
       candidate:candidates(*),
-      job:jobs(id, title, department, status, employment_type, pipeline_stages(id, name, stage_type, display_order)),
+      job:jobs(id, title, department, status, employment_type, description, pipeline_stages(id, name, stage_type, display_order)),
       current_stage:pipeline_stages!current_stage_id(id, name, stage_type, display_order),
       interviews(
         *,

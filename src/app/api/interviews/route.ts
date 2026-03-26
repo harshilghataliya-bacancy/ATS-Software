@@ -8,6 +8,139 @@ import { createCalendarEvent } from '@/lib/services/google-calendar'
 import { logEmail } from '@/lib/services/email'
 import { logActivity } from '@/lib/services/activity'
 
+async function autoInviteInterviewer(
+  supabase: ReturnType<typeof createAdminClient>,
+  email: string,
+  orgId: string,
+  companyName: string,
+  accessToken: string | null,
+  fromEmail: string,
+  appUrl: string,
+): Promise<string | null> {
+  try {
+    const { data: { users: allUsers } } = await supabase.auth.admin.listUsers()
+    const existingAuthUser = allUsers?.find(
+      (u) => u.email?.toLowerCase() === email.toLowerCase()
+    )
+
+    let interviewerUserId: string | null = null
+    const redirectTo = `${appUrl}/callback`
+
+    const { data: linkData, error: linkError } = await supabase.auth.admin.generateLink({
+      type: 'invite',
+      email,
+      options: {
+        data: {
+          full_name: existingAuthUser?.user_metadata?.full_name || email.split('@')[0],
+          invited_to_org: orgId,
+          invited_role: 'interviewer',
+        },
+        redirectTo,
+      },
+    })
+
+    if (!linkError && linkData?.user) {
+      interviewerUserId = linkData.user.id
+
+      if (accessToken) {
+        const inviteLink = linkData.properties.action_link
+        sendGmailEmail(accessToken, {
+          from: fromEmail,
+          to: email,
+          subject: `You're invited to join ${companyName} on HireFlow`,
+          html: `
+            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+              <h2>You're invited to join ${companyName}!</h2>
+              <p>You have been invited to join <strong>${companyName}</strong> on HireFlow as an <strong>Interviewer</strong>.</p>
+              <p>Click the button below to accept your invitation and set up your account:</p>
+              <div style="margin: 24px 0;">
+                <a href="${inviteLink}"
+                   style="background-color: #2563eb; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block;">
+                  Accept Invitation
+                </a>
+              </div>
+              <p style="color: #6b7280; font-size: 14px;">If the button doesn&rsquo;t work, copy and paste this link into your browser:</p>
+              <p style="color: #6b7280; font-size: 14px; word-break: break-all;">${inviteLink}</p>
+            </div>
+          `,
+        }).catch((err) => console.error('[Invite email error]', err))
+      }
+    } else {
+      if (existingAuthUser) {
+        interviewerUserId = existingAuthUser.id
+      } else {
+        const tempPassword = `Temp${Date.now()}!${Math.random().toString(36).slice(2, 8)}`
+        const { data: newUser, error: createError } = await supabase.auth.admin.createUser({
+          email,
+          password: tempPassword,
+          email_confirm: true,
+          user_metadata: {
+            full_name: email.split('@')[0],
+            invited_to_org: orgId,
+            invited_role: 'interviewer',
+          },
+        })
+
+        if (!createError && newUser?.user) {
+          interviewerUserId = newUser.user.id
+
+          if (accessToken) {
+            sendGmailEmail(accessToken, {
+              from: fromEmail,
+              to: email,
+              subject: `You've been invited to ${companyName} on HireFlow`,
+              html: `
+                <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+                  <h2>Welcome to ${companyName}!</h2>
+                  <p>You have been invited to join <strong>${companyName}</strong> on HireFlow as an <strong>Interviewer</strong>.</p>
+                  <p>An account has been created for you:</p>
+                  <div style="background: #f3f4f6; padding: 16px; border-radius: 8px; margin: 16px 0;">
+                    <p style="margin: 0;"><strong>Email:</strong> ${email}</p>
+                    <p style="margin: 8px 0 0 0;"><strong>Temporary Password:</strong> ${tempPassword}</p>
+                  </div>
+                  <p style="color: #dc2626; font-size: 14px;">Please change your password after first login.</p>
+                  <div style="margin: 24px 0;">
+                    <a href="${appUrl}/login"
+                       style="background-color: #2563eb; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block;">
+                      Login to HireFlow
+                    </a>
+                  </div>
+                </div>
+              `,
+            }).catch((err) => console.error('[Credentials email error]', err))
+          }
+        } else {
+          console.error('[Auto-create interviewer error]', createError)
+        }
+      }
+    }
+
+    if (interviewerUserId) {
+      const { data: existingMember } = await supabase
+        .from('organization_members')
+        .select('id')
+        .eq('organization_id', orgId)
+        .eq('user_id', interviewerUserId)
+        .is('deleted_at', null)
+        .maybeSingle()
+
+      if (!existingMember) {
+        await supabase.from('organization_members').insert({
+          organization_id: orgId,
+          user_id: interviewerUserId,
+          role: 'interviewer',
+          joined_at: new Date().toISOString(),
+        })
+      }
+    }
+
+    return interviewerUserId
+  } catch (err) {
+    console.error('[Auto-invite interviewer error]', err)
+    return null
+  }
+}
+
 export async function POST(request: NextRequest) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
@@ -37,13 +170,20 @@ export async function POST(request: NextRequest) {
     scheduled_at,
     duration_minutes = 60,
     interviewer_email,
+    interviewer_emails,
     candidate_email,
     candidate_name,
     job_title,
+    job_description,
     location: interviewLocation,
     notes,
     scorecard_id,
   } = body
+
+  // Normalize to array — support both single email (legacy) and array
+  const interviewerEmails: string[] = interviewer_emails
+    ? (Array.isArray(interviewer_emails) ? interviewer_emails : [interviewer_emails])
+    : (interviewer_email ? [interviewer_email] : [])
 
   if (!application_id || !interview_type || !scheduled_at) {
     return NextResponse.json(
@@ -59,14 +199,15 @@ export async function POST(request: NextRequest) {
     )
   }
 
-  // Reject past scheduled times (must check before creating anything)
   if (new Date(scheduled_at) < new Date()) {
     return NextResponse.json({ error: 'Cannot schedule an interview in the past' }, { status: 400 })
   }
 
   const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
-  if (interviewer_email && !emailRegex.test(interviewer_email)) {
-    return NextResponse.json({ error: 'Invalid interviewer email format' }, { status: 400 })
+  for (const email of interviewerEmails) {
+    if (!emailRegex.test(email)) {
+      return NextResponse.json({ error: `Invalid interviewer email format: ${email}` }, { status: 400 })
+    }
   }
   if (candidate_email && !emailRegex.test(candidate_email)) {
     return NextResponse.json({ error: 'Invalid candidate email format' }, { status: 400 })
@@ -94,6 +235,10 @@ export async function POST(request: NextRequest) {
     ? `${appUrl}/careers/${orgSlug}/${appData.job_id}`
     : null
 
+  // Get scheduler's name for email signatures
+  const schedulerEmail = user.email || ''
+  const schedulerName = user.user_metadata?.full_name || schedulerEmail.split('@')[0]
+
   // Try to create Google Calendar event with Meet link
   let meetLink: string | null = null
   let calendarEventId: string | null = null
@@ -102,15 +247,23 @@ export async function POST(request: NextRequest) {
   if (tokenResult.accessToken) {
     try {
       const isOnsite = interview_type === 'onsite'
-      const attendees = [candidate_email, interviewer_email].filter(Boolean) as string[]
+      // Include recruiter/scheduler + all interviewers + candidate as attendees (deduplicated)
+      const attendees = Array.from(new Set([candidate_email, ...interviewerEmails, schedulerEmail].filter(Boolean)))
+      const jobDescSnippet = job_description
+        ? `\n\nJob Description:\n${job_description.replace(/<[^>]*>/g, '').slice(0, 500)}`
+        : ''
+      const jobUrlSnippet = publicJobUrl ? `\nJob Posting: ${publicJobUrl}` : ''
       const result = await createCalendarEvent(tokenResult.accessToken, {
         summary: interviewTitle ? `${interviewTitle}: ${candidate_name} - ${job_title}` : `Interview: ${candidate_name} - ${job_title}`,
         description: [
           `Interview for ${job_title} at ${companyName}`,
           `Candidate: ${candidate_name}`,
+          `Scheduled by: ${schedulerName} (${schedulerEmail})`,
           `Type: ${interview_type}`,
           isOnsite && interviewLocation ? `Location: ${interviewLocation}` : '',
           notes ? `\nNotes: ${notes}` : '',
+          jobUrlSnippet,
+          jobDescSnippet,
         ].filter(Boolean).join('\n'),
         startDateTime: scheduled_at,
         durationMinutes: duration_minutes,
@@ -122,168 +275,54 @@ export async function POST(request: NextRequest) {
       calendarEventId = result.eventId
     } catch (err) {
       console.error('[Calendar Event Error]', err)
-      // Continue without calendar — graceful fallback
     }
   }
 
-  // Build panelists: scheduler (lead) + interviewer (if found by email)
+  // Build panelists: scheduler (lead) + all interviewers
   const panelists: Array<{ user_id: string; role: string }> = [
     { user_id: user.id, role: 'lead' },
   ]
 
-  if (interviewer_email) {
-    // Look up interviewer by email in auth.users via organization_members
-    const { data: interviewerMember } = await supabase
-      .from('organization_members')
-      .select('user_id, user:user_id(email)')
-      .eq('organization_id', orgId)
-      .is('deleted_at', null)
+  // Look up all org members to match interviewer emails
+  const { data: orgMembers } = await supabase
+    .from('organization_members')
+    .select('user_id, user:user_id(email)')
+    .eq('organization_id', orgId)
+    .is('deleted_at', null)
 
-    const matchedMember = interviewerMember?.find(
+  const fromEmail = tokenResult.fromEmail || user.email!
+
+  for (const email of interviewerEmails) {
+    const matchedMember = orgMembers?.find(
       (m: Record<string, unknown>) => {
         const u = m.user as Record<string, unknown> | null
-        return u?.email?.toString().toLowerCase() === interviewer_email.toLowerCase()
+        return u?.email?.toString().toLowerCase() === email.toLowerCase()
       }
     )
 
     if (matchedMember && matchedMember.user_id !== user.id) {
       panelists.push({ user_id: matchedMember.user_id, role: 'interviewer' })
-    } else if (!matchedMember) {
-      // Auto-invite interviewer: add to org members + send invite email
-      try {
-        const adminSupabase = createAdminClient()
-        const appUrl = (process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000').replace(/\/+$/, '')
-
-        // Check if user already exists in auth
-        const { data: { users: allUsers } } = await adminSupabase.auth.admin.listUsers()
-        const existingAuthUser = allUsers?.find(
-          (u) => u.email?.toLowerCase() === interviewer_email.toLowerCase()
-        )
-
-        let interviewerUserId: string | null = null
-        const redirectTo = `${appUrl}/callback`
-
-        // Generate invite link — works for both new and existing users
-        const { data: linkData, error: linkError } = await adminSupabase.auth.admin.generateLink({
-          type: 'invite',
-          email: interviewer_email,
-          options: {
-            data: {
-              full_name: existingAuthUser?.user_metadata?.full_name || interviewer_email.split('@')[0],
-              invited_to_org: orgId,
-              invited_role: 'interviewer',
-            },
-            redirectTo,
-          },
-        })
-
-        if (!linkError && linkData?.user) {
-          interviewerUserId = linkData.user.id
-
-          // Send "Accept Invitation" email with set-password link
-          if (tokenResult.accessToken) {
-            const inviteLink = linkData.properties.action_link
-            sendGmailEmail(tokenResult.accessToken, {
-              from: tokenResult.fromEmail || user.email!,
-              to: interviewer_email,
-              subject: `You're invited to join ${companyName} on HireFlow`,
-              html: `
-                <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-                  <h2>You're invited to join ${companyName}!</h2>
-                  <p>You have been invited to join <strong>${companyName}</strong> on HireFlow as an <strong>Interviewer</strong>.</p>
-                  <p>Click the button below to accept your invitation and set up your account:</p>
-                  <div style="margin: 24px 0;">
-                    <a href="${inviteLink}"
-                       style="background-color: #2563eb; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block;">
-                      Accept Invitation
-                    </a>
-                  </div>
-                  <p style="color: #6b7280; font-size: 14px;">If the button doesn&rsquo;t work, copy and paste this link into your browser:</p>
-                  <p style="color: #6b7280; font-size: 14px; word-break: break-all;">${inviteLink}</p>
-                </div>
-              `,
-            }).catch((err) => console.error('[Invite email error]', err))
-          }
-        } else {
-          // Fallback: if generateLink fails, create user with temp password
-          if (existingAuthUser) {
-            interviewerUserId = existingAuthUser.id
-          } else {
-            const tempPassword = `Temp${Date.now()}!${Math.random().toString(36).slice(2, 8)}`
-            const { data: newUser, error: createError } = await adminSupabase.auth.admin.createUser({
-              email: interviewer_email,
-              password: tempPassword,
-              email_confirm: true,
-              user_metadata: {
-                full_name: interviewer_email.split('@')[0],
-                invited_to_org: orgId,
-                invited_role: 'interviewer',
-              },
-            })
-
-            if (!createError && newUser?.user) {
-              interviewerUserId = newUser.user.id
-
-              if (tokenResult.accessToken) {
-                sendGmailEmail(tokenResult.accessToken, {
-                  from: tokenResult.fromEmail || user.email!,
-                  to: interviewer_email,
-                  subject: `You've been invited to ${companyName} on HireFlow`,
-                  html: `
-                    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-                      <h2>Welcome to ${companyName}!</h2>
-                      <p>You have been invited to join <strong>${companyName}</strong> on HireFlow as an <strong>Interviewer</strong>.</p>
-                      <p>An account has been created for you:</p>
-                      <div style="background: #f3f4f6; padding: 16px; border-radius: 8px; margin: 16px 0;">
-                        <p style="margin: 0;"><strong>Email:</strong> ${interviewer_email}</p>
-                        <p style="margin: 8px 0 0 0;"><strong>Temporary Password:</strong> ${tempPassword}</p>
-                      </div>
-                      <p style="color: #dc2626; font-size: 14px;">Please change your password after first login.</p>
-                      <div style="margin: 24px 0;">
-                        <a href="${appUrl}/login"
-                           style="background-color: #2563eb; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block;">
-                          Login to HireFlow
-                        </a>
-                      </div>
-                    </div>
-                  `,
-                }).catch((err) => console.error('[Credentials email error]', err))
-              }
-            } else {
-              console.error('[Auto-create interviewer error]', createError)
-            }
-          }
-        }
-
-        if (interviewerUserId) {
-          // Add to org members if not already a member
-          const { data: existingMember } = await adminSupabase
-            .from('organization_members')
-            .select('id')
-            .eq('organization_id', orgId)
-            .eq('user_id', interviewerUserId)
-            .is('deleted_at', null)
-            .maybeSingle()
-
-          if (!existingMember) {
-            await adminSupabase.from('organization_members').insert({
-              organization_id: orgId,
-              user_id: interviewerUserId,
-              role: 'interviewer',
-              joined_at: new Date().toISOString(),
-            })
-          }
-
-          panelists.push({ user_id: interviewerUserId, role: 'interviewer' })
-        }
-      } catch (err) {
-        console.error('[Auto-invite interviewer error]', err)
-        // Continue without adding them as panelist - graceful fallback
+    } else if (matchedMember && matchedMember.user_id === user.id) {
+      // Scheduler is already added as lead, skip
+    } else {
+      // Auto-invite
+      const adminSupabase = createAdminClient()
+      const userId = await autoInviteInterviewer(
+        adminSupabase,
+        email,
+        orgId,
+        companyName,
+        tokenResult.accessToken,
+        fromEmail,
+        appUrl,
+      )
+      if (userId) {
+        panelists.push({ user_id: userId, role: 'interviewer' })
       }
     }
   }
 
-  // Create interview record
+  // Create interview record — store first interviewer email for legacy compat
   const { data: interview, error: interviewError } = await createInterview(
     supabase,
     orgId,
@@ -296,7 +335,7 @@ export async function POST(request: NextRequest) {
       location: interviewLocation || undefined,
       meeting_link: meetLink || undefined,
       notes: notes || undefined,
-      interviewer_email: interviewer_email || undefined,
+      interviewer_email: interviewerEmails[0] || undefined,
       scorecard_id: scorecard_id || undefined,
       panelists,
     },
@@ -318,38 +357,41 @@ export async function POST(request: NextRequest) {
       .eq('id', interview.id)
   }
 
-  // Send emails via Gmail (best effort)
-  const fromEmail = tokenResult.fromEmail || user.email!
+  // Send emails via Gmail — await each to surface errors
   const scheduledDate = new Date(scheduled_at)
   const dateStr = scheduledDate.toLocaleDateString('en-IN', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', timeZone: 'Asia/Kolkata' })
   const timeStr = scheduledDate.toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit', hour12: true, timeZone: 'Asia/Kolkata' }) + ' IST'
   const meetInfo = meetLink ? `<p><strong>Meeting Link:</strong> <a href="${meetLink}">${meetLink}</a></p>` : ''
   const locationInfo = interviewLocation ? `<p><strong>Location:</strong> ${interviewLocation}</p>` : ''
+  const jobUrlInfo = publicJobUrl
+    ? `<p><strong>Job Details:</strong> <a href="${publicJobUrl}">View Job Posting</a></p>`
+    : ''
 
+  // --- Email to candidate ---
   if (tokenResult.accessToken && candidate_email) {
-    const jobUrlInfo = publicJobUrl
-      ? `<p><strong>Job Details:</strong> <a href="${publicJobUrl}">View Job Posting</a></p>`
-      : ''
-
     const candidateHtml = `
-      <p>Dear ${candidate_name},</p>
-      <p>You have been scheduled for an interview for the <strong>${job_title}</strong> position at <strong>${companyName}</strong>.</p>
-      <p><strong>Date:</strong> ${dateStr}<br/><strong>Time:</strong> ${timeStr}<br/><strong>Duration:</strong> ${duration_minutes} minutes<br/><strong>Type:</strong> ${interview_type}</p>
-      ${locationInfo}
-      ${meetInfo}
-      ${jobUrlInfo}
-      ${notes ? `<p><strong>Notes:</strong> ${notes}</p>` : ''}
-      <p>Best regards,<br/>${companyName}</p>
+      <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;">
+        <p>Dear ${candidate_name},</p>
+        <p>You have been scheduled for an interview for the <strong>${job_title}</strong> position at <strong>${companyName}</strong>.</p>
+        <h3>Interview Details</h3>
+        <p><strong>Date:</strong> ${dateStr}<br/><strong>Time:</strong> ${timeStr}<br/><strong>Duration:</strong> ${duration_minutes} minutes<br/><strong>Type:</strong> ${interview_type}</p>
+        ${locationInfo}
+        ${meetInfo}
+        ${jobUrlInfo}
+        ${notes ? `<p><strong>Notes:</strong> ${notes}</p>` : ''}
+        <p><strong>Scheduled by:</strong> ${schedulerName} (${schedulerEmail})</p>
+        <p>Best regards,<br/>${companyName}</p>
+      </div>
     `
     const candidateSubject = `Interview Scheduled: ${job_title} at ${companyName}`
 
-    // Fire-and-forget: send email in background
-    sendGmailEmail(tokenResult.accessToken, {
-      from: fromEmail,
-      to: candidate_email,
-      subject: candidateSubject,
-      html: candidateHtml,
-    }).then(() =>
+    try {
+      await sendGmailEmail(tokenResult.accessToken, {
+        from: fromEmail,
+        to: candidate_email,
+        subject: candidateSubject,
+        html: candidateHtml,
+      })
       logEmail(supabase, orgId, {
         candidate_id: interview.application?.candidate?.id ?? '',
         application_id,
@@ -359,37 +401,67 @@ export async function POST(request: NextRequest) {
         from_email: fromEmail,
         status: 'sent',
         sent_at: new Date().toISOString(),
-      })
-    ).catch((err) => console.error('[Candidate Email Error]', err))
+      }).catch((err) => console.error('[Email log error]', err))
+    } catch (err) {
+      console.error('[Candidate Email Error]', err)
+    }
   }
 
-  if (tokenResult.accessToken && interviewer_email) {
-    try {
-      const appUrl = (process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000').replace(/\/+$/, '')
+  // --- Email to ALL interviewers + recruiter (scheduler) ---
+  if (tokenResult.accessToken) {
+    const jobDescSection = job_description
+      ? `<h3>Job Description</h3><div style="background:#f9fafb;padding:12px;border-radius:8px;margin:8px 0;font-size:14px;color:#374151;">${job_description}</div>`
+      : ''
 
-      const interviewerHtml = `
-        <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;">
-          <h2>Interview Assignment</h2>
-          <p>You have been scheduled to interview <strong>${candidate_name}</strong> for the <strong>${job_title}</strong> position at <strong>${companyName}</strong>.</p>
-          <h3>Interview Details</h3>
-          <p><strong>Date:</strong> ${dateStr}<br/><strong>Time:</strong> ${timeStr}<br/><strong>Duration:</strong> ${duration_minutes} minutes<br/><strong>Type:</strong> ${interview_type}</p>
-          ${locationInfo}
-          ${meetInfo}
-          ${notes ? `<p><strong>Notes:</strong> ${notes}</p>` : ''}
-          <h3>Candidate Details</h3>
-          <p><strong>Name:</strong> ${candidate_name}<br/><strong>Email:</strong> ${candidate_email || 'N/A'}<br/><strong>Position:</strong> ${job_title}</p>
-          <p><a href="${appUrl}/interviews" style="background-color:#2563eb;color:white;padding:10px 20px;text-decoration:none;border-radius:6px;display:inline-block;">View in HireFlow</a></p>
-        </div>
-      `
-      // Fire-and-forget: send interview details email
-      sendGmailEmail(tokenResult.accessToken, {
-        from: fromEmail,
-        to: interviewer_email,
-        subject: `Interview Assignment: ${candidate_name} - ${job_title}`,
-        html: interviewerHtml,
-      }).catch((err) => console.error('[Interviewer Email Error]', err))
-    } catch (err) {
-      console.error('[Interviewer Email Setup Error]', err)
+    const interviewerHtml = `
+      <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;">
+        <h2>Interview Assignment</h2>
+        <p>You have been scheduled to interview <strong>${candidate_name}</strong> for the <strong>${job_title}</strong> position at <strong>${companyName}</strong>.</p>
+        <h3>Interview Details</h3>
+        <p><strong>Date:</strong> ${dateStr}<br/><strong>Time:</strong> ${timeStr}<br/><strong>Duration:</strong> ${duration_minutes} minutes<br/><strong>Type:</strong> ${interview_type}</p>
+        ${locationInfo}
+        ${meetInfo}
+        ${interviewerEmails.length > 1 ? `<p><strong>Interview Panel:</strong> ${interviewerEmails.join(', ')}</p>` : ''}
+        ${notes ? `<p><strong>Notes:</strong> ${notes}</p>` : ''}
+        <h3>Candidate Details</h3>
+        <p><strong>Name:</strong> ${candidate_name}<br/><strong>Email:</strong> ${candidate_email || 'N/A'}<br/><strong>Position:</strong> ${job_title}</p>
+        ${jobUrlInfo}
+        <p><strong>Scheduled by:</strong> ${schedulerName} (${schedulerEmail})</p>
+        ${jobDescSection}
+        <p style="margin-top:20px;"><a href="${appUrl}/interviews" style="background-color:#2563eb;color:white;padding:10px 20px;text-decoration:none;border-radius:6px;display:inline-block;">View in HireFlow</a></p>
+      </div>
+    `
+    const interviewerSubject = `Interview Assignment: ${candidate_name} - ${job_title}`
+
+    // Send to all interviewers
+    for (const email of interviewerEmails) {
+      try {
+        await sendGmailEmail(tokenResult.accessToken, {
+          from: fromEmail,
+          to: email,
+          subject: interviewerSubject,
+          html: interviewerHtml,
+        })
+        console.log(`[Interview Email] Sent to interviewer: ${email}`)
+      } catch (err) {
+        console.error(`[Interviewer Email Error] Failed to send to ${email}:`, err)
+      }
+    }
+
+    // Also send to the recruiter/scheduler if they're not already in the interviewer list
+    const isSchedulerInList = interviewerEmails.some((e) => e.toLowerCase() === schedulerEmail.toLowerCase())
+    if (!isSchedulerInList && schedulerEmail) {
+      try {
+        await sendGmailEmail(tokenResult.accessToken, {
+          from: fromEmail,
+          to: schedulerEmail,
+          subject: `[Confirmation] ${interviewerSubject}`,
+          html: interviewerHtml,
+        })
+        console.log(`[Interview Email] Sent confirmation to scheduler: ${schedulerEmail}`)
+      } catch (err) {
+        console.error(`[Recruiter Email Error] Failed to send to ${schedulerEmail}:`, err)
+      }
     }
   }
 
@@ -408,6 +480,7 @@ export async function POST(request: NextRequest) {
       interview_type,
       scheduled_at,
       meeting_link: meetLink,
+      interviewer_count: interviewerEmails.length,
     }
   ).catch((err: unknown) => console.error('[Activity Log Error]', err))
 

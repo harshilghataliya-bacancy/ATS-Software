@@ -12,7 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import {
   Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle,
 } from '@/components/ui/dialog'
-import { ClipboardList } from 'lucide-react'
+import { ClipboardList, X } from 'lucide-react'
 
 interface ScheduleInterviewDialogProps {
   open: boolean
@@ -21,6 +21,7 @@ interface ScheduleInterviewDialogProps {
   candidateName: string
   candidateEmail: string
   jobTitle: string
+  jobDescription?: string
   onSuccess?: () => void
 }
 
@@ -60,6 +61,7 @@ export function ScheduleInterviewDialog({
   candidateName,
   candidateEmail,
   jobTitle,
+  jobDescription,
   onSuccess,
 }: ScheduleInterviewDialogProps) {
   const [title, setTitle] = useState('')
@@ -67,7 +69,8 @@ export function ScheduleInterviewDialog({
   const [date, setDate] = useState('')
   const [duration, setDuration] = useState(60)
   const [customDuration, setCustomDuration] = useState('')
-  const [interviewerEmail, setInterviewerEmail] = useState('')
+  const [selectedInterviewers, setSelectedInterviewers] = useState<Member[]>([])
+  const [inputValue, setInputValue] = useState('')
   const [location, setLocation] = useState('')
   const [notes, setNotes] = useState('')
   const [scorecardId, setScorecardId] = useState<string>('')
@@ -75,10 +78,6 @@ export function ScheduleInterviewDialog({
   const [interviewLocations, setInterviewLocations] = useState<{ id: string; name: string }[]>([])
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
-
-  // Interviewer availability
-  const [availabilitySlots, setAvailabilitySlots] = useState<{ date: string; start_time: string; end_time: string }[]>([])
-  const [loadingAvailability, setLoadingAvailability] = useState(false)
 
   // Member suggestions
   const [members, setMembers] = useState<Member[]>([])
@@ -120,47 +119,120 @@ export function ScheduleInterviewDialog({
 
   const activeDuration = customDuration ? Number(customDuration) : duration
 
-  // Filter members based on input
-  const query = interviewerEmail.includes('@')
-    ? interviewerEmail.split('@').slice(-1)[0]  // text after last @
-    : interviewerEmail
+  // Filter members: exclude already-selected ones
+  const selectedIds = new Set(selectedInterviewers.map((m) => m.user_id))
+  const query = inputValue.includes('@')
+    ? inputValue.split('@').slice(-1)[0]
+    : inputValue
   const filtered = members.filter((m) =>
-    m.email.toLowerCase().includes(query.toLowerCase()) ||
-    m.full_name.toLowerCase().includes(query.toLowerCase())
+    !selectedIds.has(m.user_id) && (
+      m.email.toLowerCase().includes(query.toLowerCase()) ||
+      m.full_name.toLowerCase().includes(query.toLowerCase())
+    )
   ).slice(0, 6)
 
-  function handleEmailChange(value: string) {
-    setInterviewerEmail(value)
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+
+  /** Add a raw email as a chip (for external emails not in member list) */
+  function addEmailAsChip(email: string) {
+    const trimmed = email.trim().toLowerCase()
+    if (!trimmed) return false
+    if (!emailRegex.test(trimmed)) return false
+    // Skip if already selected
+    const alreadySelected = selectedInterviewers.some((m) => m.email.toLowerCase() === trimmed)
+    if (alreadySelected) return true // consumed but skip duplicate
+    setSelectedInterviewers((prev) => [...prev, {
+      user_id: `ext-${trimmed}`, // external marker
+      email: trimmed,
+      full_name: trimmed.split('@')[0],
+      role: 'external',
+    }])
+    return true
+  }
+
+  function handleInputChange(value: string) {
+    // Support comma/semicolon separated emails (e.g. paste "a@x.com, b@x.com")
+    if (value.includes(',') || value.includes(';')) {
+      const parts = value.split(/[,;]/)
+      // Add all complete parts as chips, keep last part as input
+      for (let i = 0; i < parts.length - 1; i++) {
+        const part = parts[i].trim()
+        if (part) {
+          // Try matching a member first
+          const matchedMember = members.find((m) =>
+            !selectedIds.has(m.user_id) &&
+            m.email.toLowerCase() === part.toLowerCase()
+          )
+          if (matchedMember) {
+            selectMember(matchedMember)
+          } else {
+            addEmailAsChip(part)
+          }
+        }
+      }
+      const remaining = parts[parts.length - 1].trim()
+      setInputValue(remaining)
+      setShowSuggestions(remaining.length > 0 && filtered.length > 0)
+      setActiveIndex(0)
+      return
+    }
+    setInputValue(value)
     setShowSuggestions(value.length > 0 && filtered.length > 0)
     setActiveIndex(0)
-    setAvailabilitySlots([])
   }
 
   function selectMember(member: Member) {
-    setInterviewerEmail(member.email)
+    setSelectedInterviewers((prev) => [...prev, member])
+    setInputValue('')
     setShowSuggestions(false)
     inputRef.current?.focus()
-    // Fetch availability for this member
-    setLoadingAvailability(true)
-    setAvailabilitySlots([])
-    fetch(`/api/availability?user_id=${member.user_id}`)
-      .then((r) => r.json())
-      .then(({ data }) => { if (data) setAvailabilitySlots(data) })
-      .catch(() => {})
-      .finally(() => setLoadingAvailability(false))
+  }
+
+  function removeMember(userId: string) {
+    setSelectedInterviewers((prev) => prev.filter((m) => m.user_id !== userId))
   }
 
   function handleKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
-    if (!showSuggestions || filtered.length === 0) return
-    if (e.key === 'ArrowDown') {
-      e.preventDefault()
-      setActiveIndex((i) => Math.min(i + 1, filtered.length - 1))
-    } else if (e.key === 'ArrowUp') {
-      e.preventDefault()
-      setActiveIndex((i) => Math.max(i - 1, 0))
-    } else if (e.key === 'Enter' || e.key === 'Tab') {
+    // Backspace on empty input removes last chip
+    if (e.key === 'Backspace' && inputValue === '' && selectedInterviewers.length > 0) {
+      setSelectedInterviewers((prev) => prev.slice(0, -1))
+      return
+    }
+
+    // Enter/Tab with dropdown open → select from dropdown
+    if ((e.key === 'Enter' || e.key === 'Tab') && showSuggestions && filtered.length > 0) {
       e.preventDefault()
       selectMember(filtered[activeIndex])
+      return
+    }
+
+    // Enter/Tab with no dropdown → add typed email as chip
+    if ((e.key === 'Enter' || e.key === 'Tab') && inputValue.trim()) {
+      e.preventDefault()
+      const trimmed = inputValue.trim()
+      // Try matching a member first
+      const matchedMember = members.find((m) =>
+        !selectedIds.has(m.user_id) &&
+        m.email.toLowerCase() === trimmed.toLowerCase()
+      )
+      if (matchedMember) {
+        selectMember(matchedMember)
+      } else if (emailRegex.test(trimmed)) {
+        addEmailAsChip(trimmed)
+        setInputValue('')
+        setShowSuggestions(false)
+      } else {
+        setError('Please enter a valid email address')
+      }
+      return
+    }
+
+    if (e.key === 'ArrowDown' && showSuggestions) {
+      e.preventDefault()
+      setActiveIndex((i) => Math.min(i + 1, filtered.length - 1))
+    } else if (e.key === 'ArrowUp' && showSuggestions) {
+      e.preventDefault()
+      setActiveIndex((i) => Math.max(i - 1, 0))
     } else if (e.key === 'Escape') {
       setShowSuggestions(false)
     }
@@ -177,8 +249,28 @@ export function ScheduleInterviewDialog({
     if (!date) { setError('Date and time is required'); return }
     if (new Date(date) <= new Date()) { setError('Cannot schedule an interview in the past'); return }
     if (type === 'onsite' && !location.trim()) { setError('Location is required for face to face interviews'); return }
-    if (!interviewerEmail) { setError('Interviewer email is required'); return }
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(interviewerEmail)) { setError('Please enter a valid email address'); return }
+
+    // Validate interviewers: either chips or typed email
+    const interviewerEmails: string[] = selectedInterviewers.map((m) => m.email)
+    // If user typed an email but didn't select from dropdown, treat it as an email
+    const trimmedInput = inputValue.trim()
+    if (trimmedInput) {
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+      if (!emailRegex.test(trimmedInput)) {
+        setError('Please enter a valid email address or select from suggestions')
+        return
+      }
+      // Avoid duplicates
+      if (!interviewerEmails.includes(trimmedInput.toLowerCase())) {
+        interviewerEmails.push(trimmedInput)
+      }
+    }
+
+    if (interviewerEmails.length === 0) {
+      setError('At least one interviewer is required')
+      return
+    }
+
     setSaving(true)
     setError(null)
     try {
@@ -191,10 +283,11 @@ export function ScheduleInterviewDialog({
           interview_type: type,
           scheduled_at: new Date(date).toISOString(),
           duration_minutes: activeDuration,
-          interviewer_email: interviewerEmail,
+          interviewer_emails: interviewerEmails,
           candidate_email: candidateEmail,
           candidate_name: candidateName,
           job_title: jobTitle,
+          job_description: jobDescription || undefined,
           location: type === 'onsite' ? location.trim() : undefined,
           notes: notes || undefined,
           scorecard_id: scorecardId && scorecardId !== 'none' ? scorecardId : undefined,
@@ -221,7 +314,8 @@ export function ScheduleInterviewDialog({
     setDate('')
     setDuration(60)
     setCustomDuration('')
-    setInterviewerEmail('')
+    setSelectedInterviewers([])
+    setInputValue('')
     setLocation('')
     setNotes('')
     setScorecardId('')
@@ -235,7 +329,7 @@ export function ScheduleInterviewDialog({
         <DialogHeader>
           <DialogTitle>Schedule Interview</DialogTitle>
           <DialogDescription>
-            {candidateName} · {jobTitle} · A Google Meet link will be auto-generated and emailed to both parties.
+            {candidateName} · {jobTitle} · A Google Meet link will be auto-generated and emailed to all parties.
           </DialogDescription>
         </DialogHeader>
 
@@ -332,27 +426,45 @@ export function ScheduleInterviewDialog({
             </div>
           </div>
 
-          {/* Interviewer Email with member suggestions */}
+          {/* Interviewers — Multi-select with chips */}
           <div className="space-y-2">
-            <Label>Interviewer Email *</Label>
+            <Label>Interviewers <span className="text-red-500">*</span></Label>
             <div className="relative">
-              <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 pointer-events-none z-10" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M21.75 6.75v10.5a2.25 2.25 0 01-2.25 2.25h-15a2.25 2.25 0 01-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25m19.5 0v.243a2.25 2.25 0 01-1.07 1.916l-7.5 4.615a2.25 2.25 0 01-2.36 0L3.32 8.91a2.25 2.25 0 01-1.07-1.916V6.75" />
-              </svg>
-              <input
-                ref={inputRef}
-                type="text"
-                value={interviewerEmail}
-                onChange={(e) => handleEmailChange(e.target.value)}
-                onKeyDown={handleKeyDown}
-                onFocus={() => {
-                  if (interviewerEmail.length > 0 && filtered.length > 0) setShowSuggestions(true)
-                  if (interviewerEmail.length === 0 && members.length > 0) setShowSuggestions(true)
-                }}
-                onBlur={() => setTimeout(() => setShowSuggestions(false), 150)}
-                placeholder="Type @ to search team members…"
-                className="flex h-9 w-full rounded-md border border-input bg-transparent pl-9 pr-3 py-1 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-              />
+              {/* Selected interviewer chips + input */}
+              <div
+                className="flex flex-wrap gap-1.5 min-h-[36px] w-full rounded-md border border-input bg-transparent px-2 py-1.5 text-sm shadow-sm transition-colors focus-within:ring-1 focus-within:ring-ring cursor-text"
+                onClick={() => inputRef.current?.focus()}
+              >
+                {selectedInterviewers.map((member) => (
+                  <span
+                    key={member.user_id}
+                    className="inline-flex items-center gap-1 bg-blue-100 text-blue-800 text-xs font-medium pl-2 pr-1 py-0.5 rounded-full"
+                  >
+                    {member.full_name || member.email}
+                    <button
+                      type="button"
+                      onClick={(e) => { e.stopPropagation(); removeMember(member.user_id) }}
+                      className="hover:bg-blue-200 rounded-full p-0.5 transition-colors"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  </span>
+                ))}
+                <input
+                  ref={inputRef}
+                  type="text"
+                  value={inputValue}
+                  onChange={(e) => handleInputChange(e.target.value)}
+                  onKeyDown={handleKeyDown}
+                  onFocus={() => {
+                    if (inputValue.length > 0 && filtered.length > 0) setShowSuggestions(true)
+                    if (inputValue.length === 0 && filtered.length > 0) setShowSuggestions(true)
+                  }}
+                  onBlur={() => setTimeout(() => setShowSuggestions(false), 150)}
+                  placeholder={selectedInterviewers.length === 0 ? 'Type email or name, separate with comma…' : 'Add another…'}
+                  className="flex-1 min-w-[120px] bg-transparent outline-none text-sm placeholder:text-muted-foreground"
+                />
+              </div>
 
               {/* Suggestions dropdown */}
               {showSuggestions && filtered.length > 0 && (
@@ -382,50 +494,10 @@ export function ScheduleInterviewDialog({
                 </div>
               )}
             </div>
+            {selectedInterviewers.length > 0 && (
+              <p className="text-[11px] text-gray-400">{selectedInterviewers.length} interviewer{selectedInterviewers.length > 1 ? 's' : ''} selected</p>
+            )}
           </div>
-
-          {/* Interviewer Availability */}
-          {interviewerEmail && members.some((m) => m.email === interviewerEmail) && (
-            <div className="bg-gray-50 rounded-lg p-3 -mt-2">
-              <p className="text-[11px] font-medium text-gray-500 uppercase tracking-wide mb-2">
-                Available Slots (This Week)
-              </p>
-              {loadingAvailability ? (
-                <p className="text-[12px] text-gray-400">Loading...</p>
-              ) : availabilitySlots.length === 0 ? (
-                <p className="text-[12px] text-gray-400">No availability set for this week</p>
-              ) : (
-                <div className="flex flex-wrap gap-1.5">
-                  {availabilitySlots.map((slot, idx) => {
-                    const d = new Date(slot.date + 'T00:00:00')
-                    const dayLabel = d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
-                    const startH = parseInt(slot.start_time)
-                    const endH = parseInt(slot.end_time)
-                    const fmtTime = (t: string) => {
-                      const [h, m] = t.split(':').map(Number)
-                      const p = h >= 12 ? 'PM' : 'AM'
-                      return `${h === 0 ? 12 : h > 12 ? h - 12 : h}:${m.toString().padStart(2, '0')} ${p}`
-                    }
-                    void startH; void endH;
-                    return (
-                      <button
-                        key={idx}
-                        type="button"
-                        onClick={() => {
-                          // Set date to this slot's date + start time
-                          const dateTime = `${slot.date}T${slot.start_time.slice(0, 5)}`
-                          setDate(dateTime)
-                        }}
-                        className="text-[11px] bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-md px-2 py-1 hover:bg-emerald-100 transition-colors"
-                      >
-                        {dayLabel} · {fmtTime(slot.start_time)} - {fmtTime(slot.end_time)}
-                      </button>
-                    )
-                  })}
-                </div>
-              )}
-            </div>
-          )}
 
           {/* Location — only for face to face */}
           {type === 'onsite' && (

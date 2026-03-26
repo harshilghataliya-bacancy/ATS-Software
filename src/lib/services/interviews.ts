@@ -108,7 +108,7 @@ export async function getInterviewById(
       application:applications!interviews_application_id_fkey(
         *,
         candidate:candidates(*),
-        job:jobs(id, title, department, status),
+        job:jobs(id, title, department, status, description),
         current_stage:pipeline_stages!current_stage_id(id, name, stage_type)
       ),
       interview_panelists(*),

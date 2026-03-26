@@ -5,7 +5,7 @@ import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { useUser, useRole } from '@/lib/hooks/use-user'
 import { createClient } from '@/lib/supabase/client'
-import { getInterviewById, updateInterview, cancelInterview } from '@/lib/services/interviews'
+import { getInterviewById, updateInterview } from '@/lib/services/interviews'
 import { logActivity } from '@/lib/services/activity'
 import { resolveUserNames, resolveUserDetails } from '../actions'
 import { submitFeedback, updateFeedback } from '@/lib/services/feedback'
@@ -18,7 +18,8 @@ import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Skeleton } from '@/components/ui/skeleton'
-import { ArrowLeft, ExternalLink, PenLine, X, Ban, CheckCircle2, MessageSquare, Eye, Download, ClipboardList } from 'lucide-react'
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog'
+import { ArrowLeft, ExternalLink, PenLine, X, Ban, CheckCircle2, MessageSquare, Eye, Download, ClipboardList, AlertTriangle } from 'lucide-react'
 
 interface InterviewDetail {
   id: string
@@ -45,7 +46,7 @@ interface InterviewDetail {
       location?: string | null
       resume_url?: string | null
     }
-    job: { id: string; title: string; department: string; status: string }
+    job: { id: string; title: string; department: string; status: string; description?: string | null }
     current_stage: { id: string; name: string; stage_type: string } | null
   }
   interview_panelists: Array<{ user_id: string; role: string }>
@@ -87,6 +88,9 @@ export default function InterviewDetailPage() {
   const [editLocation, setEditLocation] = useState('')
   const [editMeetingLink, setEditMeetingLink] = useState('')
   const [editNotes, setEditNotes] = useState('')
+  const [interviewLocations, setInterviewLocations] = useState<{ id: string; name: string }[]>([])
+  const [cancelling, setCancelling] = useState(false)
+  const [showCancelDialog, setShowCancelDialog] = useState(false)
 
   const [showFeedback, setShowFeedback] = useState(false)
   const [fbRating, setFbRating] = useState(3)
@@ -179,21 +183,39 @@ export default function InterviewDetailPage() {
     setEditMeetingLink(interview.meeting_link ?? '')
     setEditNotes(interview.notes ?? '')
     setEditing(true)
+    // Fetch interview locations for dropdown
+    fetch('/api/interview-locations')
+      .then((r) => r.json())
+      .then(({ data }) => { if (data) setInterviewLocations(data) })
+      .catch(() => {})
   }
 
   async function handleSave() {
     if (!organization || !interview) return
     setSaving(true); setError(null)
-    const supabase = createClient()
-    const { error: updateError } = await updateInterview(supabase, interview.id, organization.id, {
-      interview_type: editType,
-      scheduled_at: new Date(editDate).toISOString(),
-      duration_minutes: editDuration,
-      location: editLocation || null,
-      meeting_link: editMeetingLink || null,
-      notes: editNotes || null,
-    })
-    if (updateError) { setError(updateError.message) } else { setEditing(false); loadInterview() }
+    try {
+      const res = await fetch(`/api/interviews/${interview.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          interview_type: editType,
+          scheduled_at: new Date(editDate).toISOString(),
+          duration_minutes: editDuration,
+          location: editType === 'onsite' ? (editLocation || null) : null,
+          meeting_link: editType !== 'onsite' ? (editMeetingLink || null) : null,
+          notes: editNotes || null,
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        setError(data.error || 'Failed to update interview')
+      } else {
+        setEditing(false)
+        loadInterview()
+      }
+    } catch {
+      setError('Failed to update interview')
+    }
     setSaving(false)
   }
 
@@ -223,15 +245,22 @@ export default function InterviewDetailPage() {
     }
   }
 
-  async function handleCancel() {
+  async function handleCancelConfirmed() {
     if (!organization || !interview || !user) return
-    const supabase = createClient()
-    await cancelInterview(supabase, interview.id, organization.id)
-    logActivity(supabase, organization.id, user.id, 'application', interview.application_id, 'interview_cancelled', {
-      interview_id: interview.id,
-      candidate_name: `${interview.application.candidate.first_name} ${interview.application.candidate.last_name}`,
-    }).catch(() => {})
-    loadInterview()
+    setShowCancelDialog(false)
+    setCancelling(true)
+    try {
+      const res = await fetch(`/api/interviews/${interview.id}`, { method: 'DELETE' })
+      const data = await res.json()
+      if (!res.ok) {
+        setError(data.error || 'Failed to cancel interview')
+      } else {
+        loadInterview()
+      }
+    } catch {
+      setError('Failed to cancel interview')
+    }
+    setCancelling(false)
   }
 
   function startEditFeedback(fb: InterviewDetail['feedback'][0]) {
@@ -476,9 +505,9 @@ export default function InterviewDetailPage() {
                   <PenLine className="w-3.5 h-3.5" />
                   Edit
                 </button>
-                <button onClick={handleCancel} className="inline-flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg bg-blue-50 border border-blue-200 text-blue-600 hover:bg-blue-100 transition-colors">
+                <button onClick={() => setShowCancelDialog(true)} disabled={cancelling} className="inline-flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg bg-red-50 border border-red-200 text-red-600 hover:bg-red-100 transition-colors disabled:opacity-50">
                   <X className="w-3.5 h-3.5" />
-                  Cancel
+                  {cancelling ? 'Cancelling…' : 'Cancel Interview'}
                 </button>
               </>
             )}
@@ -557,16 +586,30 @@ export default function InterviewDetailPage() {
                   <Label className="text-xs text-gray-500">Date & Time</Label>
                   <Input type="datetime-local" value={editDate} onChange={(e) => setEditDate(e.target.value)} className="h-9 text-sm" />
                 </div>
-                <div className="grid grid-cols-2 gap-3">
+                {/* Conditional: Location for face-to-face, Meeting Link for video */}
+                {editType === 'onsite' ? (
                   <div className="space-y-1.5">
-                    <Label className="text-xs text-gray-500">Location</Label>
-                    <Input value={editLocation} onChange={(e) => setEditLocation(e.target.value)} placeholder="Room 3B, Office" className="h-9 text-sm" />
+                    <Label className="text-xs text-gray-500">Location *</Label>
+                    {interviewLocations.length > 0 ? (
+                      <Select value={editLocation} onValueChange={setEditLocation}>
+                        <SelectTrigger className="h-9 text-sm"><SelectValue placeholder="Select location" /></SelectTrigger>
+                        <SelectContent>
+                          {interviewLocations.map((loc) => (
+                            <SelectItem key={loc.id} value={loc.name}>{loc.name}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    ) : (
+                      <Input value={editLocation} onChange={(e) => setEditLocation(e.target.value)} placeholder="Room 3B, Office" className="h-9 text-sm" />
+                    )}
                   </div>
+                ) : (
                   <div className="space-y-1.5">
                     <Label className="text-xs text-gray-500">Meeting Link</Label>
                     <Input value={editMeetingLink} onChange={(e) => setEditMeetingLink(e.target.value)} placeholder="https://meet.google.com/…" className="h-9 text-sm" />
+                    <p className="text-[10px] text-gray-400">Leave empty to keep existing link</p>
                   </div>
-                </div>
+                )}
                 <div className="space-y-1.5">
                   <Label className="text-xs text-gray-500">Notes</Label>
                   <Textarea rows={3} value={editNotes} onChange={(e) => setEditNotes(e.target.value)} className="text-sm resize-none" />
@@ -1004,6 +1047,19 @@ export default function InterviewDetailPage() {
             </div>
           </div>
 
+          {/* Job Description (collapsible) */}
+          {interview.application?.job?.description && (
+            <details className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+              <summary className="px-5 py-3.5 cursor-pointer select-none hover:bg-gray-50 transition-colors">
+                <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Job Description</span>
+              </summary>
+              <div
+                className="px-5 py-4 text-sm text-gray-700 prose prose-sm max-w-none border-t border-gray-50"
+                dangerouslySetInnerHTML={{ __html: interview.application.job.description }}
+              />
+            </details>
+          )}
+
         </div>
       </div>
     </div>
@@ -1055,6 +1111,33 @@ export default function InterviewDetailPage() {
         </div>
       </div>
     )}
+
+    {/* Cancel Interview Confirmation Dialog */}
+    <AlertDialog open={showCancelDialog} onOpenChange={setShowCancelDialog}>
+      <AlertDialogContent className="max-w-md">
+        <AlertDialogHeader>
+          <div className="mx-auto mb-2 flex h-12 w-12 items-center justify-center rounded-full bg-red-100">
+            <AlertTriangle className="h-6 w-6 text-red-600" />
+          </div>
+          <AlertDialogTitle className="text-center text-lg">Cancel this interview?</AlertDialogTitle>
+          <AlertDialogDescription className="text-center text-sm text-gray-500">
+            This will cancel the interview
+            {interview?.application?.candidate && (
+              <> with <span className="font-medium text-gray-700">{interview.application.candidate.first_name} {interview.application.candidate.last_name}</span></>
+            )}. All participants will be notified by email. This action cannot be undone.
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter className="flex gap-2 sm:justify-center pt-2">
+          <AlertDialogCancel className="flex-1 sm:flex-none">Keep Interview</AlertDialogCancel>
+          <AlertDialogAction
+            onClick={handleCancelConfirmed}
+            className="flex-1 sm:flex-none bg-red-600 hover:bg-red-700 text-white"
+          >
+            Yes, Cancel Interview
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
 
     </div>
   )

@@ -25,7 +25,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { useToast } from '@/hooks/use-toast'
 import { BulkResumeUploadDialog } from '@/components/bulk-upload/bulk-resume-upload-dialog'
 import {
-  Upload, UserPlus, ArrowLeft, X, Briefcase, FileText,
+  Upload, UserPlus, ArrowLeft, X, Briefcase, FileText, Link2, Check,
 } from 'lucide-react'
 
 interface Recruiter {
@@ -53,6 +53,7 @@ export default function JobDetailPage() {
   const [jobOwnerId, setJobOwnerId] = useState<string | null>(null)
   const [hasChanges, setHasChanges] = useState(false)
   const [bulkUploadOpen, setBulkUploadOpen] = useState(false)
+  const [linkCopied, setLinkCopied] = useState(false)
 
   const initialCriteriaRef = useRef<string>('')
   const initialSkillsRef = useRef<string>('')
@@ -273,6 +274,20 @@ export default function JobDetailPage() {
               </Button>
             </>
           )}
+          <Button
+            variant="outline"
+            size="sm"
+            className="gap-1.5"
+            onClick={() => {
+              const url = `${window.location.origin}/careers/${organization?.slug}/${params.id}`
+              navigator.clipboard.writeText(url)
+              setLinkCopied(true)
+              setTimeout(() => setLinkCopied(false), 2000)
+            }}
+          >
+            {linkCopied ? <Check className="w-3.5 h-3.5 text-green-600" /> : <Link2 className="w-3.5 h-3.5" />}
+            {linkCopied ? 'Copied!' : 'Copy Link'}
+          </Button>
           <Link href={`/jobs/${params.id}/applications`}>
             <Button variant="outline" size="sm" className="gap-1.5">
               <FileText className="w-3.5 h-3.5" />
