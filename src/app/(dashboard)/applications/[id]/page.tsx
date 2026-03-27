@@ -10,7 +10,7 @@ import { getJobRecruiters } from '@/lib/services/jobs'
 import { getMatchScore } from '@/lib/services/ai-matching'
 import { updateCandidate } from '@/lib/services/candidates'
 import { CANDIDATE_SOURCES, MAX_FILE_SIZE } from '@/lib/constants'
-import { getComments, addComment, deleteComment } from '@/lib/services/comments'
+import { getComments, addComment, updateComment, deleteComment } from '@/lib/services/comments'
 import { EDUCATION_LABELS, GENDER_OPTIONS, NOTICE_PERIOD_OPTIONS } from '@/lib/validators/candidate'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
@@ -36,7 +36,7 @@ import { resolveUserNames } from '@/app/(dashboard)/interviews/actions'
 import {
   ArrowLeft, Mail, MessageSquare, FileText, UserCircle, Calendar, Link as LinkIcon,
   Download, X, Eye, Plus, Trash2, CheckCircle2, XCircle, Clock, ChevronDown,
-  ClipboardList, Loader2, PenLine, Info, ExternalLink,
+  ClipboardList, Loader2, PenLine, Info, ExternalLink, Pencil,
   User, MoreHorizontal, ChevronLeft, ChevronRight, Landmark, CheckCircle, RotateCcw, Link2, Check,
 } from 'lucide-react'
 
@@ -136,7 +136,7 @@ export default function ApplicationDetailPage() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const [activeTab, setActiveTab] = useState(searchParams.get('tab') || 'personal')
-  const { user, organization, isLoading: userLoading } = useUser()
+  const { user, organization, membership, isLoading: userLoading } = useUser()
   const { canManageCandidates, isInterviewer, canSendWhatsApp, isAdmin } = useRole()
   const [application, setApplication] = useState<AnyData | null>(null)
   const [loading, setLoading] = useState(true)
@@ -173,10 +173,14 @@ export default function ApplicationDetailPage() {
   const [noteInput, setNoteInput] = useState('')
   const [addingNote, setAddingNote] = useState(false)
   const [noteError, setNoteError] = useState<string | null>(null)
+  const [editingNoteId, setEditingNoteId] = useState<string | null>(null)
+  const [editingNoteContent, setEditingNoteContent] = useState('')
+  const [savingEdit, setSavingEdit] = useState(false)
 
   // Activity log state
   const [activityLogs, setActivityLogs] = useState<AnyData[]>([])
   const [activityLoading, setActivityLoading] = useState(false)
+  const [creatorName, setCreatorName] = useState<string | null>(null)
 
   // Recruiter assignment
   const [jobRecruiterIds, setJobRecruiterIds] = useState<string[]>([])
@@ -214,6 +218,13 @@ export default function ApplicationDetailPage() {
     } else if (data) {
       setApplication(data)
 
+      // Resolve candidate creator name
+      if (data.candidate?.created_by) {
+        resolveUserNames([data.candidate.created_by]).then((names) => {
+          setCreatorName(names[data.candidate.created_by] || null)
+        })
+      }
+
       // Resolve panelist + feedback user names
       const interviews = data.interviews ?? []
       const allUserIds = interviews.flatMap((iv: AnyData) => [
@@ -238,7 +249,18 @@ export default function ApplicationDetailPage() {
       // Load application notes
       const supabase2 = createClient()
       const commentsResult = await getComments(supabase2, organization.id, 'application', data.id)
-      setNotes(commentsResult.data || [])
+      const notesData = commentsResult.data || []
+      // Resolve user names from auth for notes
+      if (notesData.length > 0) {
+        const noteUserIds = Array.from(new Set(notesData.map((n: any) => n.user_id)))
+        const namesMap = await resolveUserNames(noteUserIds)
+        notesData.forEach((n: any) => {
+          if (!n.user_email || n.user_email === null) {
+            n.user_email = namesMap[n.user_id] || 'User'
+          }
+        })
+      }
+      setNotes(notesData)
 
       // Load AI match score (silently)
       try {
@@ -615,19 +637,65 @@ export default function ApplicationDetailPage() {
     if (error) {
       setNoteError(error.message)
     } else if (newNote) {
-      setNotes((prev) => [...prev, newNote])
+      setNotes((prev) => [...prev, { ...newNote, user_email: user.full_name || user.email, user_role: membership?.role || null }])
       setNoteInput('')
+      await logActivity(supabase, organization.id, user.id, 'application', application.id, 'note_added', {
+        candidate_name: `${application.candidate?.first_name} ${application.candidate?.last_name}`,
+        note_preview: noteInput.trim().slice(0, 100),
+      })
+      const { data: activities } = await fetchApplicationActivities(organization.id, application.id, application.candidate_id)
+      setActivityLogs(activities || [])
     }
     setAddingNote(false)
   }
 
   async function handleDeleteNote(commentId: string) {
-    if (!organization || !user) return
+    if (!organization || !user || !application) return
     const supabase = createClient()
+    const deletedNote = notes.find((n) => n.id === commentId)
     const { error } = await deleteComment(supabase, commentId, organization.id, user.id)
     if (!error) {
       setNotes((prev) => prev.filter((n) => n.id !== commentId))
+      await logActivity(supabase, organization.id, user.id, 'application', application.id, 'note_deleted', {
+        candidate_name: `${application.candidate?.first_name} ${application.candidate?.last_name}`,
+        note_preview: deletedNote?.content?.slice(0, 100) || '',
+      })
+      const { data: activities } = await fetchApplicationActivities(organization.id, application.id, application.candidate_id)
+      setActivityLogs(activities || [])
     }
+  }
+
+  function startEditNote(note: AnyData) {
+    setEditingNoteId(note.id)
+    setEditingNoteContent(note.content)
+  }
+
+  function cancelEditNote() {
+    setEditingNoteId(null)
+    setEditingNoteContent('')
+  }
+
+  async function handleSaveEditNote(commentId: string) {
+    if (!editingNoteContent.trim() || !organization || !user || !application) return
+    setSavingEdit(true)
+    const supabase = createClient()
+    const { data: updated, error } = await updateComment(
+      supabase, commentId, organization.id, user.id, editingNoteContent.trim()
+    )
+    if (!error && updated) {
+      setNotes((prev) =>
+        prev.map((n) => n.id === commentId ? { ...n, content: updated.content, updated_at: updated.updated_at } : n)
+      )
+      setEditingNoteId(null)
+      setEditingNoteContent('')
+      await logActivity(supabase, organization.id, user.id, 'application', application.id, 'note_edited', {
+        candidate_name: `${application.candidate?.first_name} ${application.candidate?.last_name}`,
+        note_preview: editingNoteContent.trim().slice(0, 100),
+      })
+      const { data: activities } = await fetchApplicationActivities(organization.id, application.id, application.candidate_id)
+      setActivityLogs(activities || [])
+    }
+    setSavingEdit(false)
   }
 
   // Block render while redirecting interviewer
@@ -755,7 +823,7 @@ export default function ApplicationDetailPage() {
                     }
                     return (
                       <span className={`inline-flex items-center text-[10px] font-medium px-2 py-0.5 rounded-full border ${srcStyles[candidate.source] || srcStyles.other}`}>
-                        {sourceLabel}
+                        {sourceLabel}{creatorName ? ` (${creatorName})` : ''}
                       </span>
                     )
                   })()}
@@ -936,7 +1004,7 @@ export default function ApplicationDetailPage() {
                     <InfoField label="Location" value={candidate?.location} />
                     <InfoField label="Gender" value={genderLabel} />
                     <InfoField label="Date of Birth" value={candidate?.date_of_birth ? new Date(candidate.date_of_birth).toLocaleDateString() : null} />
-                    <InfoField label="Source" value={sourceLabel} />
+                    <InfoField label="Source" value={creatorName ? `${sourceLabel} (by ${creatorName})` : sourceLabel} />
                   </div>
                 </div>
                 {/* Section: Professional */}
@@ -1119,7 +1187,7 @@ export default function ApplicationDetailPage() {
                   <div className="p-5 space-y-4">
                     <div className="text-[13px] space-y-2.5">
                       <InfoRow label="Applied" value={new Date(application.applied_at || application.created_at).toLocaleDateString()} />
-                      <InfoRow label="Source" value={sourceLabel || '-'} />
+                      <InfoRow label="Source" value={creatorName ? `${sourceLabel} (by ${creatorName})` : (sourceLabel || '-')} />
                       {application.current_stage && (
                         <InfoRow label="Current Stage" value={application.current_stage.name} />
                       )}
@@ -1566,37 +1634,95 @@ export default function ApplicationDetailPage() {
                 </div>
               ) : (
                 <div className="space-y-0">
-                  {notes.map((note, idx) => {
+                  {notes.map((note) => {
                     const noteUserName = (note.user_email || 'User')
                     const noteGradient = getAvatarGradient(noteUserName)
+                    const isEditing = editingNoteId === note.id
+                    const isEdited = note.updated_at && note.updated_at !== note.created_at
                     return (
-                      <div key={note.id} className="flex gap-3 group">
-                        {/* Timeline line */}
+                      <div key={note.id} className="flex gap-3 group mb-3">
+                        {/* Avatar */}
                         <div className="flex flex-col items-center">
                           <div className={`w-8 h-8 rounded-lg bg-gradient-to-br ${noteGradient} text-white flex items-center justify-center text-[11px] font-semibold shrink-0`}>
                             {noteUserName[0].toUpperCase()}
                           </div>
-                          {idx < notes.length - 1 && (
-                            <div className="w-px flex-1 bg-gray-100 my-1" />
-                          )}
                         </div>
                         {/* Content */}
-                        <div className={`flex-1 pb-4 ${idx < notes.length - 1 ? '' : ''}`}>
+                        <div className="flex-1 rounded-xl border border-gray-200 bg-white shadow-sm p-4">
                           <div className="flex items-center justify-between mb-1">
-                            <span className="text-[11px] text-gray-400">
-                              {new Date(note.created_at).toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' })}
-                            </span>
-                            {user?.id === note.user_id && (
-                              <button
-                                onClick={() => handleDeleteNote(note.id)}
-                                className="opacity-0 group-hover:opacity-100 text-gray-400 hover:text-rose-500 transition-all"
-                                title="Delete note"
-                              >
-                                <Trash2 className="w-3.5 h-3.5" />
-                              </button>
+                            <div className="flex items-center gap-2">
+                              <span className="text-[12px] font-medium text-gray-700">{noteUserName}</span>
+                              {note.user_role && (
+                                <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${
+                                  note.user_role === 'admin' ? 'bg-purple-50 text-purple-600' :
+                                  note.user_role === 'recruiter' ? 'bg-blue-50 text-blue-600' :
+                                  'bg-gray-50 text-gray-500'
+                                }`}>
+                                  {note.user_role}
+                                </span>
+                              )}
+                              <span className="text-[11px] text-gray-400">
+                                {new Date(note.created_at).toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' })}
+                              </span>
+                              {isEdited && (
+                                <span className="text-[10px] text-gray-400 italic">(edited)</span>
+                              )}
+                            </div>
+                            {user?.id === note.user_id && !isEditing && (
+                              <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all">
+                                <button
+                                  onClick={() => startEditNote(note)}
+                                  className="text-gray-400 hover:text-blue-500 transition-colors"
+                                  title="Edit note"
+                                >
+                                  <Pencil className="w-3.5 h-3.5" />
+                                </button>
+                                <button
+                                  onClick={() => handleDeleteNote(note.id)}
+                                  className="text-gray-400 hover:text-rose-500 transition-colors"
+                                  title="Delete note"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
                             )}
                           </div>
-                          <p className="text-[13px] text-gray-800 whitespace-pre-wrap leading-relaxed">{note.content}</p>
+                          {isEditing ? (
+                            <div className="space-y-2">
+                              <Textarea
+                                rows={3}
+                                value={editingNoteContent}
+                                onChange={(e) => setEditingNoteContent(e.target.value)}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) handleSaveEditNote(note.id)
+                                  if (e.key === 'Escape') cancelEditNote()
+                                }}
+                                className="resize-none text-[13px] rounded-lg"
+                                autoFocus
+                              />
+                              <div className="flex items-center gap-2">
+                                <Button
+                                  size="sm"
+                                  onClick={() => handleSaveEditNote(note.id)}
+                                  disabled={savingEdit || !editingNoteContent.trim()}
+                                  className="gap-1 bg-gray-900 hover:bg-gray-800 text-white text-[11px] h-7 px-3"
+                                >
+                                  {savingEdit ? <Loader2 className="w-3 h-3 animate-spin" /> : <Check className="w-3 h-3" />}
+                                  Save
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  onClick={cancelEditNote}
+                                  className="text-[11px] h-7 px-3 text-gray-500"
+                                >
+                                  Cancel
+                                </Button>
+                              </div>
+                            </div>
+                          ) : (
+                            <p className="text-[13px] text-gray-800 whitespace-pre-wrap leading-relaxed">{note.content}</p>
+                          )}
                         </div>
                       </div>
                     )

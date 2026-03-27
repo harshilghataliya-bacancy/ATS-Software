@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation'
 import { useUser, useRole } from '@/lib/hooks/use-user'
 import { createClient } from '@/lib/supabase/client'
 import { getCandidates, deleteCandidate } from '@/lib/services/candidates'
+import { resolveUserNames } from '@/app/(dashboard)/interviews/actions'
 import { CANDIDATE_SOURCES, ITEMS_PER_PAGE } from '@/lib/constants'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -45,6 +46,8 @@ interface Candidate {
   current_title?: string | null
   location?: string | null
   source: string
+  source_details?: string | null
+  created_by?: string | null
   tags?: string[] | null
   created_at: string
   applications?: CandidateApplication[]
@@ -76,6 +79,7 @@ export default function CandidatesPage() {
   const [titles, setTitles] = useState<string[]>([])
   const [availableTags, setAvailableTags] = useState<string[]>([])
   const [availableJobs, setAvailableJobs] = useState<{ id: string; title: string }[]>([])
+  const [creatorNames, setCreatorNames] = useState<Record<string, string>>({})
   const [total, setTotal] = useState(0)
   const [page, setPage] = useState(1)
   const [viewMode, setViewMode] = useState<ViewMode>(() => {
@@ -153,6 +157,11 @@ export default function CandidatesPage() {
     if (data) {
       const list = data as Candidate[]
       setCandidates(list)
+      // Resolve creator names for "added by" display
+      const creatorIds = Array.from(new Set(list.map((c) => c.created_by).filter(Boolean) as string[]))
+      if (creatorIds.length > 0) {
+        resolveUserNames(creatorIds).then((names) => setCreatorNames((prev) => ({ ...prev, ...names })))
+      }
       if (sourceFilter === 'all' && locationFilter === 'all' && titleFilter === 'all' && tagFilter === 'all' && !search) {
         // Normalize to city-only (first segment before comma) to avoid duplicates like "Ahmedabad" / "Ahmedabad, GJ" / "Ahmedabad, India"
         const citySet = new Set<string>()
@@ -515,6 +524,8 @@ export default function CandidatesPage() {
                           </span>
                           <span className="text-[11px] font-medium px-2 py-0.5 rounded-full bg-gray-100 text-gray-700">
                             {sourceLabel(candidate.source)}
+                            {candidate.created_by && creatorNames[candidate.created_by] ? ` (${creatorNames[candidate.created_by]})` : ''}
+                            {candidate.source === 'referral' && candidate.source_details ? ` (${candidate.source_details})` : ''}
                           </span>
                         </div>
                         <div className="flex items-center gap-4 mt-0.5 text-sm text-gray-500">
@@ -577,7 +588,13 @@ export default function CandidatesPage() {
                           <p className="text-[14px] font-bold text-gray-900 group-hover:text-blue-700 transition-colors">
                             {candidate.first_name} {candidate.last_name}
                           </p>
-                          <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-gray-100 text-gray-700 mt-0.5 inline-block">{sourceLabel(candidate.source)}</span>
+                          <div className="flex items-center gap-1.5 mt-0.5">
+                            <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-gray-100 text-gray-700 inline-block">
+                              {sourceLabel(candidate.source)}
+                              {candidate.created_by && creatorNames[candidate.created_by] ? ` (${creatorNames[candidate.created_by]})` : ''}
+                              {candidate.source === 'referral' && candidate.source_details ? ` (${candidate.source_details})` : ''}
+                            </span>
+                          </div>
                         </div>
                       </div>
                       {canManageCandidates && (

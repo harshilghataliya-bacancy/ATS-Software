@@ -55,6 +55,7 @@ interface Candidate {
   resume_parsed_data?: Record<string, unknown> | null
   tags?: string[] | null
   source?: string | null
+  created_by?: string | null
 }
 
 interface PipelineStage {
@@ -483,9 +484,12 @@ export default function ApplicationsPage() {
       const recruiterIds = await getJobRecruiters(supabase2, params.id as string)
       setJobRecruiterIds(recruiterIds)
 
-      // Collect all recruiter IDs (from job + from applications)
+      // Collect all recruiter IDs (from job + from applications) + candidate creators
       const allRecruiterIds = new Set(recruiterIds)
-      flatApps.forEach((a) => { if (a.assigned_recruiter_id) allRecruiterIds.add(a.assigned_recruiter_id) })
+      flatApps.forEach((a) => {
+        if (a.assigned_recruiter_id) allRecruiterIds.add(a.assigned_recruiter_id)
+        if (a.candidate?.created_by) allRecruiterIds.add(a.candidate.created_by)
+      })
       if (allRecruiterIds.size > 0) {
         const { data: names } = await resolveUserNames(Array.from(allRecruiterIds))
         if (names) setRecruiterNames(names)
@@ -1254,10 +1258,11 @@ export default function ApplicationsPage() {
                               }
                               const cfg = src ? sourceConfig[src] : null
                               if (!cfg) return <span className="text-[11px] text-gray-400">-</span>
+                              const addedBy = app.candidate?.created_by ? recruiterNames[app.candidate.created_by] : null
                               return (
                                 <span className={`inline-flex items-center gap-1 text-[10px] font-medium px-2 py-0.5 rounded-full border ${cfg.color}`}>
                                   <span className="text-[9px]">{cfg.icon}</span>
-                                  {cfg.label}
+                                  {cfg.label}{addedBy ? ` (${addedBy})` : ''}
                                 </span>
                               )
                             })()}

@@ -6,6 +6,7 @@ import Link from 'next/link'
 import { useUser, useRole } from '@/lib/hooks/use-user'
 import { createClient } from '@/lib/supabase/client'
 import { getCandidateById, updateCandidate } from '@/lib/services/candidates'
+import { resolveUserNames } from '@/app/(dashboard)/interviews/actions'
 import { createApplication } from '@/lib/services/applications'
 import { logActivity } from '@/lib/services/activity'
 import { fetchCandidateActivities } from '../actions'
@@ -74,6 +75,7 @@ export default function CandidateDetailPage() {
 
   // AI scores (keyed by application_id)
   const [aiScores, setAiScores] = useState<Record<string, AnyData>>({})
+  const [creatorName, setCreatorName] = useState<string | null>(null)
 
   // Email dialog
   const [emailOpen, setEmailOpen] = useState(false)
@@ -106,6 +108,13 @@ export default function CandidateDetailPage() {
     } else if (data) {
       setCandidate(data)
       setFormData(data)
+
+      // Resolve creator name
+      if (data.created_by) {
+        resolveUserNames([data.created_by]).then((names) => {
+          setCreatorName(names[data.created_by] || null)
+        })
+      }
 
       // Fetch activity logs with user names resolved (server action)
       setActivityLoading(true)
@@ -351,7 +360,11 @@ export default function CandidateDetailPage() {
                   {candidate.location}
                 </span>
               )}
-              <span className="text-[11px] font-medium px-2 py-0.5 rounded-full bg-gray-100 text-gray-700">{sourceLabel}</span>
+              <span className="text-[11px] font-medium px-2 py-0.5 rounded-full bg-gray-100 text-gray-700">
+                {sourceLabel}
+                {creatorName ? ` (${creatorName})` : ''}
+                {candidate.source === 'referral' && candidate.source_details ? ` (${candidate.source_details})` : ''}
+              </span>
             </div>
           </div>
         </div>
@@ -478,7 +491,7 @@ export default function CandidateDetailPage() {
                   <InfoField label="Location" value={candidate.location} />
                   <InfoField label="Gender" value={genderLabel} />
                   <InfoField label="Date of Birth" value={candidate.date_of_birth ? new Date(candidate.date_of_birth).toLocaleDateString() : null} />
-                  <InfoField label="Source" value={sourceLabel} />
+                  <InfoField label="Source" value={creatorName ? `${sourceLabel} (by ${creatorName})` : sourceLabel} />
                 </div>
               )}
             </div>
@@ -732,7 +745,7 @@ export default function CandidateDetailPage() {
               <div className="p-5 space-y-4">
                 <div className="text-sm space-y-2">
                   <InfoRow label="Added" value={new Date(candidate.created_at).toLocaleDateString()} />
-                  <InfoRow label="Source" value={sourceLabel} />
+                  <InfoRow label="Source" value={creatorName ? `${sourceLabel} (by ${creatorName})` : sourceLabel} />
                   <InfoRow label="Applications" value={String(candidate.applications?.length || 0)} />
                   {candidate.experience_years != null && <InfoRow label="Experience" value={`${candidate.experience_years} yrs`} />}
                   {noticeLabel && <InfoRow label="Notice" value={noticeLabel} />}

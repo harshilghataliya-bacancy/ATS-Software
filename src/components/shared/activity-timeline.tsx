@@ -27,6 +27,9 @@ const ACTION_CONFIG: Record<string, { icon: string; color: string; label: string
   'resume_uploaded': { icon: 'doc', color: 'bg-teal-100 text-teal-600', label: 'Resume Uploaded' },
   'resume_parsed': { icon: 'doc', color: 'bg-teal-100 text-teal-600', label: 'Resume Parsed' },
   'whatsapp_sent': { icon: 'send', color: 'bg-green-100 text-green-600', label: 'WhatsApp Sent' },
+  'note_added': { icon: 'edit', color: 'bg-yellow-100 text-yellow-600', label: 'Note Added' },
+  'note_edited': { icon: 'edit', color: 'bg-yellow-100 text-yellow-600', label: 'Note Edited' },
+  'note_deleted': { icon: 'x', color: 'bg-gray-100 text-gray-600', label: 'Note Deleted' },
 }
 
 function getActionConfig(action: string) {
@@ -135,7 +138,7 @@ function getActionSentence(action: string, metadata: AnyData | null): string {
     case 'application_hired':
       return metadata?.candidate_name ? `hired ${metadata.candidate_name}` : 'hired the candidate'
     case 'candidate_created':
-      return 'added the candidate'
+      return metadata?.candidate_name ? `added candidate ${metadata.candidate_name} (${metadata.source || 'direct'})` : 'added the candidate'
     case 'candidate_updated':
       return 'updated candidate profile'
     case 'resume_uploaded':
@@ -148,6 +151,12 @@ function getActionSentence(action: string, metadata: AnyData | null): string {
       return metadata?.score != null ? `scored assessment at ${metadata.score}%` : 'completed an assessment'
     case 'whatsapp_sent':
       return 'sent a WhatsApp message'
+    case 'note_added':
+      return metadata?.note_preview ? `added a note: "${metadata.note_preview}"` : 'added a note'
+    case 'note_edited':
+      return metadata?.note_preview ? `edited a note: "${metadata.note_preview}"` : 'edited a note'
+    case 'note_deleted':
+      return 'deleted a note'
     default:
       return action.replace(/_/g, ' ')
   }

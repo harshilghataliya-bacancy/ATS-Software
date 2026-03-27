@@ -9,6 +9,7 @@ import { useUser } from '@/lib/hooks/use-user'
 import { createClient } from '@/lib/supabase/client'
 import { createCandidate } from '@/lib/services/candidates'
 import { createApplication } from '@/lib/services/applications'
+import { logActivity } from '@/lib/services/activity'
 import { getJobById } from '@/lib/services/jobs'
 import { CANDIDATE_SOURCES, ALLOWED_RESUME_TYPES, MAX_FILE_SIZE, CURRENCIES } from '@/lib/constants'
 import { Button } from '@/components/ui/button'
@@ -128,6 +129,13 @@ export default function NewCandidatePage() {
       toast({ variant: 'destructive', title: 'Error', description: createError.message })
       setSaving(false)
       return
+    }
+
+    if (candidate?.id) {
+      await logActivity(supabase, organization.id, user.id, 'candidate', candidate.id, 'candidate_created', {
+        candidate_name: `${data.first_name} ${data.last_name}`,
+        source: data.source || 'direct',
+      })
     }
 
     if (candidate?.id && resumeFile) {
