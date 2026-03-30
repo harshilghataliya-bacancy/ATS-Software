@@ -97,7 +97,7 @@ function getMetadataDescription(action: string, metadata: AnyData | null): strin
   if (action === 'assessment_completed' && metadata.assessment_name) {
     parts.push(`${metadata.assessment_name}: ${metadata.score}%`)
   }
-  if (metadata.job_title) {
+  if (metadata.job_title && action !== 'interview_cancelled') {
     parts.push(`Job: ${metadata.job_title}`)
   }
 
@@ -236,7 +236,13 @@ export function ActivityTimeline({ activities, loading, emptyMessage = 'No activ
                   <p className="text-[12px] text-rose-600 mt-0.5">{activity.metadata.reason}</p>
                 </div>
               )}
-              {description && activity.action !== 'application_rejected' && (
+              {activity.action === 'interview_cancelled' && activity.metadata?.reason && (
+                <div className="bg-rose-50 border border-rose-200 rounded-lg px-3 py-2 mt-1.5">
+                  <p className="text-[11px] font-medium text-rose-700">Reason:</p>
+                  <p className="text-[12px] text-rose-600 mt-0.5">{activity.metadata.reason}</p>
+                </div>
+              )}
+              {description && activity.action !== 'application_rejected' && activity.action !== 'interview_cancelled' && (
                 <p className="text-xs text-gray-500 mt-0.5">{description}</p>
               )}
               {activity.entity_type && activity.action !== 'stage_changed' && !activity.metadata?.user_name && (

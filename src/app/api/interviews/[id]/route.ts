@@ -104,30 +104,55 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     notes,
   } = body
 
-  // Auto-generate meeting link if switching to video and no link provided
-  let finalMeetingLink = meeting_link || null
-  const switchingToVideo = interview_type !== 'onsite' && oldInterview.interview_type === 'onsite' && !meeting_link
   const tokenResult = await getValidAccessToken(supabase, user.id, orgId)
+  const candidate = oldInterview.application?.candidate
+  const job = oldInterview.application?.job
+  const candName = candidate ? `${candidate.first_name} ${candidate.last_name}` : 'Candidate'
+  const isVideo = interview_type !== 'onsite'
 
-  if (switchingToVideo && tokenResult.accessToken) {
-    const candidate = oldInterview.application?.candidate
-    const job = oldInterview.application?.job
-    const candName = candidate ? `${candidate.first_name} ${candidate.last_name}` : 'Candidate'
+  // Delete old calendar event if it exists
+  if (oldInterview.google_calendar_event_id && tokenResult.accessToken) {
     try {
+      await deleteCalendarEvent(tokenResult.accessToken, oldInterview.google_calendar_event_id)
+      console.log('[Interview Update] Deleted old calendar event:', oldInterview.google_calendar_event_id)
+    } catch (err) {
+      console.error('[Interview Update] Failed to delete old calendar event:', err)
+    }
+  }
+
+  // Create new calendar event for the updated interview
+  let finalMeetingLink: string | null = meeting_link || null
+  let newCalendarEventId: string | null = null
+
+  if (tokenResult.accessToken) {
+    try {
+      // Resolve panelist user_ids to emails via admin auth
+      const panelistEmails: string[] = []
+      if (oldInterview.interview_panelists?.length) {
+        const adminSupabase = createAdminClient()
+        const { data: { users: allUsers } } = await adminSupabase.auth.admin.listUsers()
+        for (const p of oldInterview.interview_panelists as { user_id: string }[]) {
+          const authUser = allUsers?.find((u) => u.id === p.user_id)
+          if (authUser?.email) panelistEmails.push(authUser.email)
+        }
+      }
+      const attendees = [candidate?.email, user.email, ...panelistEmails].filter(Boolean) as string[]
       const calResult = await createCalendarEvent(tokenResult.accessToken, {
         summary: `Interview: ${candName} - ${job?.title || 'Position'}`,
-        description: `Updated interview — switched to video call`,
+        description: isVideo ? 'Video call interview' : `Face-to-face interview${location ? ` at ${location}` : ''}`,
         startDateTime: scheduled_at || oldInterview.scheduled_at,
         durationMinutes: duration_minutes || oldInterview.duration_minutes,
-        attendees: [candidate?.email, user.email].filter(Boolean) as string[],
-        includeMeetLink: true,
+        attendees,
+        location: !isVideo ? (location || undefined) : undefined,
+        includeMeetLink: isVideo,
       })
-      if (calResult.meetLink) {
+      newCalendarEventId = calResult.eventId
+      if (isVideo && calResult.meetLink) {
         finalMeetingLink = calResult.meetLink
-        console.log('[Interview Update] Auto-generated Meet link:', calResult.meetLink)
       }
+      console.log('[Interview Update] Created new calendar event:', calResult.eventId)
     } catch (err) {
-      console.error('[Interview Update] Failed to create calendar event for Meet link:', err)
+      console.error('[Interview Update] Failed to create calendar event:', err)
     }
   }
 
@@ -136,10 +161,18 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     interview_type,
     scheduled_at,
     duration_minutes,
-    location: interview_type === 'onsite' ? (location || null) : null,
-    meeting_link: interview_type !== 'onsite' ? finalMeetingLink : null,
+    location: !isVideo ? (location || null) : null,
+    meeting_link: isVideo ? finalMeetingLink : null,
     notes: notes || null,
   })
+
+  // Store new calendar event ID
+  if (newCalendarEventId) {
+    await supabase.from('interviews').update({ google_calendar_event_id: newCalendarEventId }).eq('id', interviewId)
+  } else if (oldInterview.google_calendar_event_id) {
+    // Clear old event ID if we deleted it but couldn't create a new one
+    await supabase.from('interviews').update({ google_calendar_event_id: null }).eq('id', interviewId)
+  }
 
   if (updateError) {
     return NextResponse.json({ error: updateError.message ?? 'Failed to update' }, { status: 500 })
@@ -157,10 +190,10 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
   const orgSlug = org?.slug || ''
   const appUrl = (process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000').replace(/\/+$/, '')
 
-  const candidate = updatedInterview.application?.candidate
-  const job = updatedInterview.application?.job
-  const candidateName = candidate ? `${candidate.first_name} ${candidate.last_name}` : 'Candidate'
-  const jobTitle = job?.title || 'Position'
+  const updCandidate = updatedInterview.application?.candidate
+  const updJob = updatedInterview.application?.job
+  const candidateName = updCandidate ? `${updCandidate.first_name} ${updCandidate.last_name}` : 'Candidate'
+  const jobTitle = updJob?.title || 'Position'
   const schedulerName = user.user_metadata?.full_name || user.email?.split('@')[0] || ''
 
   const { dateStr, timeStr } = formatDateTime(updatedInterview.scheduled_at)
@@ -183,10 +216,6 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
   if (oldInterview.location !== updatedInterview.location) changes.push('Location has been updated')
   if (oldInterview.meeting_link !== updatedInterview.meeting_link) changes.push('Meeting link has been updated')
 
-  const jobDescSection = job?.description
-    ? `<h3 style="font-size:14px;margin:16px 0 6px;">Job Description</h3><div style="background:#f9fafb;padding:12px;border-radius:8px;font-size:13px;color:#374151;">${job.description}</div>`
-    : ''
-
   // Send update emails (tokenResult already fetched above)
   if (tokenResult.accessToken) {
     const fromEmail = tokenResult.fromEmail || user.email!
@@ -206,7 +235,6 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
           ${jobUrlInfo}
           ${updatedInterview.notes ? `<p><strong>Notes:</strong> ${updatedInterview.notes}</p>` : ''}
           <p style="font-size:13px;color:#6b7280;"><strong>Updated by:</strong> ${schedulerName} (${user.email})</p>
-          ${jobDescSection}
         </div>
       </div>
     `
@@ -256,6 +284,15 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
 
   if (!membership) return NextResponse.json({ error: 'No organization' }, { status: 403 })
   const orgId = membership.organization_id
+
+  // Read optional cancellation reason from body
+  let cancelReason: string | null = null
+  try {
+    const body = await request.json()
+    cancelReason = body?.reason || null
+  } catch {
+    // No body — that's fine
+  }
 
   // Fetch interview before cancelling
   const { data: interview } = await getInterviewById(supabase, interviewId, orgId)
@@ -337,6 +374,7 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
     interview_id: interviewId,
     candidate_name: candidateName,
     job_title: jobTitle,
+    reason: cancelReason,
   }).catch(() => {})
 
   return NextResponse.json({ success: true })

@@ -18,7 +18,7 @@ import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Skeleton } from '@/components/ui/skeleton'
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog'
+import { AlertDialog, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog'
 import { ArrowLeft, ExternalLink, PenLine, X, Ban, CheckCircle2, MessageSquare, Eye, Download, ClipboardList, AlertTriangle } from 'lucide-react'
 
 interface InterviewDetail {
@@ -91,6 +91,7 @@ export default function InterviewDetailPage() {
   const [interviewLocations, setInterviewLocations] = useState<{ id: string; name: string }[]>([])
   const [cancelling, setCancelling] = useState(false)
   const [showCancelDialog, setShowCancelDialog] = useState(false)
+  const [cancelReason, setCancelReason] = useState('')
 
   const [showFeedback, setShowFeedback] = useState(false)
   const [fbRating, setFbRating] = useState(3)
@@ -250,11 +251,16 @@ export default function InterviewDetailPage() {
     setShowCancelDialog(false)
     setCancelling(true)
     try {
-      const res = await fetch(`/api/interviews/${interview.id}`, { method: 'DELETE' })
+      const res = await fetch(`/api/interviews/${interview.id}`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reason: cancelReason.trim() || null }),
+      })
       const data = await res.json()
       if (!res.ok) {
         setError(data.error || 'Failed to cancel interview')
       } else {
+        setCancelReason('')
         loadInterview()
       }
     } catch {
@@ -1107,7 +1113,7 @@ export default function InterviewDetailPage() {
     )}
 
     {/* Cancel Interview Confirmation Dialog */}
-    <AlertDialog open={showCancelDialog} onOpenChange={setShowCancelDialog}>
+    <AlertDialog open={showCancelDialog} onOpenChange={(open) => { setShowCancelDialog(open); if (!open) setCancelReason('') }}>
       <AlertDialogContent className="max-w-md">
         <AlertDialogHeader>
           <div className="mx-auto mb-2 flex h-12 w-12 items-center justify-center rounded-full bg-red-100">
@@ -1118,17 +1124,28 @@ export default function InterviewDetailPage() {
             This will cancel the interview
             {interview?.application?.candidate && (
               <> with <span className="font-medium text-gray-700">{interview.application.candidate.first_name} {interview.application.candidate.last_name}</span></>
-            )}. All participants will be notified by email. This action cannot be undone.
+            )}. All participants will be notified by email.
           </AlertDialogDescription>
         </AlertDialogHeader>
+        <div className="px-1 space-y-1.5">
+          <Label className="text-xs text-gray-500">Reason for cancellation <span className="text-red-500">*</span></Label>
+          <Textarea
+            rows={3}
+            value={cancelReason}
+            onChange={(e) => setCancelReason(e.target.value)}
+            placeholder="e.g. Candidate requested reschedule, position filled, etc."
+            className="resize-none text-sm"
+          />
+        </div>
         <AlertDialogFooter className="flex gap-2 sm:justify-center pt-2">
           <AlertDialogCancel className="flex-1 sm:flex-none">Keep Interview</AlertDialogCancel>
-          <AlertDialogAction
+          <button
             onClick={handleCancelConfirmed}
-            className="flex-1 sm:flex-none bg-red-600 hover:bg-red-700 text-white"
+            disabled={!cancelReason.trim()}
+            className="flex-1 sm:flex-none inline-flex items-center justify-center rounded-md text-sm font-medium px-4 py-2 bg-red-600 hover:bg-red-700 text-white disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
           >
             Yes, Cancel Interview
-          </AlertDialogAction>
+          </button>
         </AlertDialogFooter>
       </AlertDialogContent>
     </AlertDialog>
