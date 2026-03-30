@@ -74,3 +74,23 @@ export async function createCalendarEvent(
     htmlLink: event.data.htmlLink ?? null,
   }
 }
+
+// ---------------------------------------------------------------------------
+// Delete Calendar Event
+// ---------------------------------------------------------------------------
+
+export async function deleteCalendarEvent(
+  accessToken: string,
+  eventId: string
+): Promise<void> {
+  const client = createOAuth2Client()
+  client.setCredentials({ access_token: accessToken })
+
+  const calendar = google.calendar({ version: 'v3', auth: client })
+
+  await calendar.events.delete({
+    calendarId: 'primary',
+    eventId,
+    sendUpdates: 'all',
+  })
+}

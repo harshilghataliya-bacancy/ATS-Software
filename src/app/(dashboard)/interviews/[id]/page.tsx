@@ -603,13 +603,7 @@ export default function InterviewDetailPage() {
                       <Input value={editLocation} onChange={(e) => setEditLocation(e.target.value)} placeholder="Room 3B, Office" className="h-9 text-sm" />
                     )}
                   </div>
-                ) : (
-                  <div className="space-y-1.5">
-                    <Label className="text-xs text-gray-500">Meeting Link</Label>
-                    <Input value={editMeetingLink} onChange={(e) => setEditMeetingLink(e.target.value)} placeholder="https://meet.google.com/…" className="h-9 text-sm" />
-                    <p className="text-[10px] text-gray-400">Leave empty to keep existing link</p>
-                  </div>
-                )}
+                ) : null}
                 <div className="space-y-1.5">
                   <Label className="text-xs text-gray-500">Notes</Label>
                   <Textarea rows={3} value={editNotes} onChange={(e) => setEditNotes(e.target.value)} className="text-sm resize-none" />

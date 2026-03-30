@@ -3,7 +3,7 @@ import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { updateInterview, cancelInterview, getInterviewById } from '@/lib/services/interviews'
 import { getValidAccessToken, sendGmailEmail } from '@/lib/services/gmail'
-import { createCalendarEvent } from '@/lib/services/google-calendar'
+import { createCalendarEvent, deleteCalendarEvent } from '@/lib/services/google-calendar'
 import { logActivity } from '@/lib/services/activity'
 
 // ---------------------------------------------------------------------------
@@ -270,6 +270,19 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
   const { error: cancelError } = await cancelInterview(supabase, interviewId, orgId)
   if (cancelError) {
     return NextResponse.json({ error: cancelError.message ?? 'Failed to cancel' }, { status: 500 })
+  }
+
+  // Delete Google Calendar event if it exists
+  if (interview.google_calendar_event_id) {
+    try {
+      const calTokenResult = await getValidAccessToken(supabase, user.id, orgId)
+      if (calTokenResult.accessToken) {
+        await deleteCalendarEvent(calTokenResult.accessToken, interview.google_calendar_event_id)
+        console.log('[Calendar Event] Deleted:', interview.google_calendar_event_id)
+      }
+    } catch (err) {
+      console.error('[Calendar Event Delete Error]', err)
+    }
   }
 
   // Get org info

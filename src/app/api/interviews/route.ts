@@ -428,7 +428,6 @@ export async function POST(request: NextRequest) {
         ${jobUrlInfo}
         <p><strong>Scheduled by:</strong> ${schedulerName} (${schedulerEmail})</p>
         ${jobDescSection}
-        <p style="margin-top:20px;"><a href="${appUrl}/interviews" style="background-color:#2563eb;color:white;padding:10px 20px;text-decoration:none;border-radius:6px;display:inline-block;">View in HireFlow</a></p>
       </div>
     `
     const interviewerSubject = `Interview Assignment: ${candidate_name} - ${job_title}`
