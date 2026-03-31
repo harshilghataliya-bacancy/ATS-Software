@@ -35,6 +35,7 @@ export function useRole() {
     isHiringManager: role === 'hiring_manager',
     isInterviewer: role === 'interviewer',
     canManageJobs: role === 'admin' || role === 'recruiter',
+    canEditJobs: role === 'admin',
     canCreateJobs: role === 'admin',
     canManageCandidates: role === 'admin' || role === 'recruiter',
     canManageOffers: role === 'admin' || role === 'recruiter',

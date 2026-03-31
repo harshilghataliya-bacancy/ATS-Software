@@ -206,6 +206,11 @@ export async function createJob(
     jobData.assigned_to = recruiterIds[0]
   }
 
+  // Auto-assign creator as Job Owner if not explicitly set
+  if (!jobData.assigned_to) {
+    jobData.assigned_to = userId
+  }
+
   const { data: job, error: jobError } = await supabase
     .from('jobs')
     .insert({
@@ -216,9 +221,11 @@ export async function createJob(
     .select()
     .single()
 
-  // Sync job_recruiters junction table
-  if (job && recruiterIds.length > 0) {
-    await syncJobRecruiters(supabase, job.id, recruiterIds)
+  // Sync job_recruiters junction table — always include the creator
+  if (job) {
+    const allRecruiterIds = new Set(recruiterIds)
+    allRecruiterIds.add(userId) // Creator is always a job recruiter
+    await syncJobRecruiters(supabase, job.id, Array.from(allRecruiterIds))
   }
 
   // Pipeline stages are auto-created by DB trigger (create_default_pipeline_stages)

@@ -40,6 +40,13 @@ export default function NewJobPage() {
   const [recruiters, setRecruiters] = useState<Recruiter[]>([])
   const [selectedRecruiterIds, setSelectedRecruiterIds] = useState<string[]>([])
   const [jobOwnerId, setJobOwnerId] = useState<string | null>(null)
+
+  // Default job owner to the current user (creator)
+  useEffect(() => {
+    if (user && !jobOwnerId) {
+      setJobOwnerId(user.id)
+    }
+  }, [user, jobOwnerId])
   const [saving, setSaving] = useState(false)
   const [skillInput, setSkillInput] = useState('')
   const [skills, setSkills] = useState<string[]>([])
@@ -448,11 +455,11 @@ export default function NewJobPage() {
                         const isOwner = r.id === jobOwnerId
                         return (
                           <div key={r.id} className={`flex items-center gap-2 rounded-lg px-2 py-1.5 transition-all ${
-                            checked
-                              ? isOwner
-                                ? 'bg-emerald-50/80 ring-1 ring-emerald-200'
-                                : 'bg-blue-50/50 ring-1 ring-blue-100'
-                              : 'hover:bg-gray-50'
+                            isOwner
+                              ? 'bg-emerald-50/80 ring-1 ring-emerald-200'
+                              : checked
+                                ? 'bg-blue-50/50 ring-1 ring-blue-100'
+                                : 'hover:bg-gray-50'
                           }`}>
                             <input
                               type="checkbox"
@@ -462,17 +469,14 @@ export default function NewJobPage() {
                                 let updated: string[]
                                 if (checked) {
                                   updated = selectedRecruiterIds.filter((id) => id !== r.id)
+                                  // If unchecking the current owner, reset to creator
                                   if (r.id === jobOwnerId) {
-                                    const newOwner = updated.length > 0 ? updated[0] : null
-                                    setJobOwnerId(newOwner)
-                                    setValue('assigned_to', newOwner)
+                                    const fallback = user?.id ?? (updated.length > 0 ? updated[0] : null)
+                                    setJobOwnerId(fallback)
+                                    setValue('assigned_to', fallback)
                                   }
                                 } else {
                                   updated = [...selectedRecruiterIds, r.id]
-                                  if (!jobOwnerId) {
-                                    setJobOwnerId(r.id)
-                                    setValue('assigned_to', r.id)
-                                  }
                                 }
                                 setSelectedRecruiterIds(updated)
                                 setValue('recruiter_ids', updated)
@@ -482,7 +486,7 @@ export default function NewJobPage() {
                               {r.full_name}
                             </span>
                             <span className="text-[11px] text-gray-400">{r.role}</span>
-                            {checked && (
+                            {(checked || isOwner) && (
                               <button
                                 type="button"
                                 title={isOwner ? 'Job Owner' : 'Set as Owner'}

@@ -187,6 +187,7 @@ export function AddCandidateDialog({
       const { error: appError } = await createApplication(supabase, organization.id, {
         candidate_id: candidate.id,
         job_id: jobId,
+        created_by_user_id: user.id,
       })
 
       if (appError) {

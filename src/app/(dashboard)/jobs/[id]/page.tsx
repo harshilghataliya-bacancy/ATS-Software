@@ -40,7 +40,7 @@ export default function JobDetailPage() {
   const router = useRouter()
   const { toast } = useToast()
   const { organization, isLoading: userLoading } = useUser()
-  const { canManageJobs, isAdmin } = useRole()
+  const { canManageJobs, canEditJobs, isAdmin } = useRole()
   const [job, setJob] = useState<Record<string, unknown> | null>(null)
   const [recruiters, setRecruiters] = useState<Recruiter[]>([])
   const [loading, setLoading] = useState(true)
@@ -255,7 +255,7 @@ export default function JobDetailPage() {
                   {statusConfig?.label ?? (job.status as string)}
                 </Badge>
               </div>
-              <p className="text-xs text-gray-400 mt-0.5">{canManageJobs ? 'Edit job details' : 'View job details'}</p>
+              <p className="text-xs text-gray-400 mt-0.5">{canEditJobs ? 'Edit job details' : 'View job details'}</p>
             </div>
           </div>
         </div>
@@ -309,18 +309,18 @@ export default function JobDetailPage() {
               <CardContent className="space-y-4">
                 <div className="space-y-2">
                   <Label htmlFor="title">Job Title</Label>
-                  <Input id="title" {...register('title')} disabled={!canManageJobs} />
+                  <Input id="title" {...register('title')} disabled={!canEditJobs} />
                   {errors.title && <p className="text-sm text-red-600">{errors.title.message}</p>}
                 </div>
 
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label htmlFor="department">Department</Label>
-                    <Input id="department" {...register('department')} disabled={!canManageJobs} />
+                    <Input id="department" {...register('department')} disabled={!canEditJobs} />
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="location">Location</Label>
-                    <Input id="location" {...register('location')} disabled={!canManageJobs} />
+                    <Input id="location" {...register('location')} disabled={!canEditJobs} />
                   </div>
                 </div>
 
@@ -380,15 +380,15 @@ export default function JobDetailPage() {
                       onKeyDown={(e) => {
                         if (e.key === 'Enter') { e.preventDefault(); addSkill() }
                       }}
-                      disabled={!canManageJobs}
+                      disabled={!canEditJobs}
                     />
-                    <Button type="button" variant="outline" size="sm" onClick={addSkill} disabled={!canManageJobs}>Add</Button>
+                    <Button type="button" variant="outline" size="sm" onClick={addSkill} disabled={!canEditJobs}>Add</Button>
                   </div>
                   {skills.length > 0 && (
                     <div className="flex flex-wrap gap-1.5 mt-2">
                       {skills.map((s) => (
-                        <Badge key={s} variant="secondary" className="gap-1 cursor-pointer" onClick={() => canManageJobs && removeSkill(s)}>
-                          {s} {canManageJobs && <span className="text-xs ml-0.5">&times;</span>}
+                        <Badge key={s} variant="secondary" className="gap-1 cursor-pointer" onClick={() => canEditJobs && removeSkill(s)}>
+                          {s} {canEditJobs && <span className="text-xs ml-0.5">&times;</span>}
                         </Badge>
                       ))}
                     </div>
@@ -405,7 +405,7 @@ export default function JobDetailPage() {
               <CardContent className="space-y-4">
                 <div className="space-y-2">
                   <Label>Job Description</Label>
-                  {canManageJobs ? (
+                  {canEditJobs ? (
                     <RichTextEditor
                       value={watch('description')}
                       onChange={(val) => setValue('description', val, { shouldDirty: true })}
@@ -419,7 +419,7 @@ export default function JobDetailPage() {
                 </div>
                 <div className="space-y-2">
                   <Label>Requirements</Label>
-                  {canManageJobs ? (
+                  {canEditJobs ? (
                     <RichTextEditor
                       value={watch('requirements')}
                       onChange={(val) => setValue('requirements', val, { shouldDirty: true })}
@@ -432,7 +432,7 @@ export default function JobDetailPage() {
                 </div>
                 <div className="space-y-2">
                   <Label>Nice to Have</Label>
-                  {canManageJobs ? (
+                  {canEditJobs ? (
                     <RichTextEditor
                       value={watch('nice_to_have') ?? undefined}
                       onChange={(val) => setValue('nice_to_have', val, { shouldDirty: true })}
@@ -445,7 +445,7 @@ export default function JobDetailPage() {
                 </div>
                 <div className="space-y-2">
                   <Label>Benefits & Perks</Label>
-                  {canManageJobs ? (
+                  {canEditJobs ? (
                     <RichTextEditor
                       value={watch('benefits') ?? undefined}
                       onChange={(val) => setValue('benefits', val, { shouldDirty: true })}
@@ -499,11 +499,11 @@ export default function JobDetailPage() {
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="num_openings">No. of Openings</Label>
-                  <Input id="num_openings" type="number" min={1} {...register('num_openings')} disabled={!canManageJobs} />
+                  <Input id="num_openings" type="number" min={1} {...register('num_openings')} disabled={!canEditJobs} />
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="application_deadline">Application Deadline</Label>
-                  <Input id="application_deadline" type="date" {...register('application_deadline')} disabled={!canManageJobs} />
+                  <Input id="application_deadline" type="date" {...register('application_deadline')} disabled={!canEditJobs} />
                 </div>
                 {isAdmin && recruiters.length > 0 && (
                   <div className="space-y-3">
@@ -622,11 +622,11 @@ export default function JobDetailPage() {
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-2">
                     <Label htmlFor="experience_min">Min Exp (Yrs)</Label>
-                    <Input id="experience_min" type="number" min={0} {...register('experience_min')} disabled={!canManageJobs} />
+                    <Input id="experience_min" type="number" min={0} {...register('experience_min')} disabled={!canEditJobs} />
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="experience_max">Max Exp (Yrs)</Label>
-                    <Input id="experience_max" type="number" min={0} {...register('experience_max')} disabled={!canManageJobs} />
+                    <Input id="experience_max" type="number" min={0} {...register('experience_max')} disabled={!canEditJobs} />
                   </div>
                 </div>
               </CardContent>
@@ -641,11 +641,11 @@ export default function JobDetailPage() {
               <CardContent className="space-y-4">
                 <div className="space-y-2">
                   <Label htmlFor="salary_min">Min Annual CTC</Label>
-                  <Input id="salary_min" type="number" placeholder="e.g. 800000" {...register('salary_min')} disabled={!canManageJobs} />
+                  <Input id="salary_min" type="number" placeholder="e.g. 800000" {...register('salary_min')} disabled={!canEditJobs} />
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="salary_max">Max Annual CTC</Label>
-                  <Input id="salary_max" type="number" placeholder="e.g. 1200000" {...register('salary_max')} disabled={!canManageJobs} />
+                  <Input id="salary_max" type="number" placeholder="e.g. 1200000" {...register('salary_max')} disabled={!canEditJobs} />
                 </div>
                 <div className="space-y-2">
                   <Label>Currency</Label>
@@ -737,7 +737,7 @@ export default function JobDetailPage() {
 
         {/* Action Buttons */}
         <div className="flex items-center gap-3 pt-6 border-t border-gray-200">
-          {canManageJobs && (
+          {canEditJobs && (
             <Button type="submit" disabled={saving || !hasChanges} className="bg-blue-600 hover:bg-blue-700 text-white">
               {saving ? 'Saving...' : 'Save Changes'}
             </Button>

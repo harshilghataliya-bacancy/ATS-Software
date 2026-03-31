@@ -8,6 +8,7 @@ interface ApplicationData {
   candidate_id: string
   job_id: string
   source?: string
+  created_by_user_id?: string
   [key: string]: unknown
 }
 
@@ -149,20 +150,30 @@ export async function createApplication(
     return { data: null, error: new Error(reapplyCheck.message) }
   }
 
-  // Auto-assign recruiter if job has exactly 1 recruiter
+  // Auto-assign recruiter: if the current user is a job recruiter, assign them;
+  // otherwise fall back to sole recruiter if only 1
   let autoRecruiterId: string | null = null
   const { data: jobRecruiters } = await supabase
     .from('job_recruiters')
     .select('user_id')
     .eq('job_id', data.job_id)
-  if (jobRecruiters && jobRecruiters.length === 1) {
-    autoRecruiterId = jobRecruiters[0].user_id
+  const recruiterUserIds = (jobRecruiters || []).map((r: { user_id: string }) => r.user_id)
+
+  if (data.created_by_user_id && recruiterUserIds.includes(data.created_by_user_id)) {
+    // The recruiter adding the candidate becomes the candidate owner
+    autoRecruiterId = data.created_by_user_id
+  } else if (recruiterUserIds.length === 1) {
+    autoRecruiterId = recruiterUserIds[0]
   }
+
+  // Remove non-column field before insert
+  const insertData = { ...data }
+  delete insertData.created_by_user_id
 
   const { data: application, error } = await supabase
     .from('applications')
     .insert({
-      ...data,
+      ...insertData,
       organization_id: orgId,
       current_stage_id: firstStage.id,
       status: 'active',

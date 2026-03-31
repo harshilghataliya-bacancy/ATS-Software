@@ -167,7 +167,9 @@ export default function RecruiterPerformance() {
     setLoading(true)
     const supabase = createClient()
 
-    const recruiterId = isAdmin ? undefined : user.id
+    const recruiterId = isAdmin
+      ? (selectedRecruiterId !== 'all' ? selectedRecruiterId : undefined)
+      : user.id
     const dateRange = DATE_PRESETS.find((p) => p.value === datePreset)?.getRange()
     const jobFilter = selectedJobId !== 'all' ? selectedJobId : undefined
 
@@ -222,7 +224,7 @@ export default function RecruiterPerformance() {
 
     if (timelineRes.data) setCandidateTimeline(timelineRes.data)
     setLoading(false)
-  }, [organization, user, isAdmin, datePreset, selectedJobId])
+  }, [organization, user, isAdmin, datePreset, selectedJobId, selectedRecruiterId])
 
   useEffect(() => {
     loadData()
@@ -231,14 +233,12 @@ export default function RecruiterPerformance() {
   const filteredRows = useMemo(() => {
     setTablePage(1)
     setTimelinePage(1)
-    if (!isAdmin || selectedRecruiterId === 'all') return rows
-    return rows.filter((r) => r.user_id === selectedRecruiterId)
-  }, [rows, selectedRecruiterId, isAdmin])
+    return rows
+  }, [rows])
 
   const filteredTimeline = useMemo(() => {
-    if (!isAdmin || selectedRecruiterId === 'all') return candidateTimeline
     return candidateTimeline
-  }, [candidateTimeline, selectedRecruiterId, isAdmin])
+  }, [candidateTimeline])
 
   const isSingleView = !isAdmin || (selectedRecruiterId !== 'all' && filteredRows.length === 1)
 

@@ -374,6 +374,7 @@ export default function ApplicationsPage() {
   // Recruiter assignment
   const [jobRecruiterIds, setJobRecruiterIds] = useState<string[]>([])
   const [recruiterNames, setRecruiterNames] = useState<Record<string, string>>({})
+  const [recruiterRoles, setRecruiterRoles] = useState<Record<string, string>>({})
 
   // Manage recruiters dialog
   const [manageRecruitersOpen, setManageRecruitersOpen] = useState(false)
@@ -478,7 +479,7 @@ export default function ApplicationsPage() {
       setAllApps(flatApps)
     }
 
-    // Load job recruiters and resolve names
+    // Load job recruiters and resolve names + roles
     if (organization) {
       const supabase2 = createClient()
       const recruiterIds = await getJobRecruiters(supabase2, params.id as string)
@@ -493,6 +494,13 @@ export default function ApplicationsPage() {
       if (allRecruiterIds.size > 0) {
         const { data: names } = await resolveUserNames(Array.from(allRecruiterIds))
         if (names) setRecruiterNames(names)
+      }
+      // Fetch roles for job recruiters
+      const { data: recruiterList } = await getAssignableRecruiters(organization.id)
+      if (recruiterList) {
+        const roleMap: Record<string, string> = {}
+        recruiterList.forEach((r) => { roleMap[r.id] = r.role })
+        setRecruiterRoles(roleMap)
       }
     }
 
@@ -1208,7 +1216,7 @@ export default function ApplicationsPage() {
                             })()}
                           </TableCell>
                           <TableCell onClick={(e) => e.stopPropagation()}>
-                            {isAdmin && jobRecruiterIds.length > 0 ? (
+                            {(isAdmin || (user && jobRecruiterIds.includes(user.id))) && jobRecruiterIds.length > 0 ? (
                               <Select
                                 value={app.assigned_recruiter_id ?? '__unassigned'}
                                 onValueChange={async (val) => {
@@ -1227,7 +1235,12 @@ export default function ApplicationsPage() {
                                   <SelectItem value="__unassigned">Unassigned</SelectItem>
                                   {jobRecruiterIds.map((rid) => (
                                     <SelectItem key={rid} value={rid}>
-                                      {recruiterNames[rid] ?? rid.slice(0, 8)}
+                                      <span className="flex items-center gap-2">
+                                        {recruiterNames[rid] ?? rid.slice(0, 8)}
+                                        {recruiterRoles[rid] && (
+                                          <span className="text-[10px] text-gray-400">{recruiterRoles[rid]}</span>
+                                        )}
+                                      </span>
                                     </SelectItem>
                                   ))}
                                 </SelectContent>

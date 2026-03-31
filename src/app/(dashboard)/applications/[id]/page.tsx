@@ -33,6 +33,7 @@ import { logActivity } from '@/lib/services/activity'
 import { fetchApplicationActivities } from '../actions'
 import { ActivityTimeline } from '@/components/shared/activity-timeline'
 import { resolveUserNames } from '@/app/(dashboard)/interviews/actions'
+import { getAssignableRecruiters } from '@/app/(dashboard)/jobs/actions'
 import {
   ArrowLeft, Mail, MessageSquare, FileText, UserCircle, Calendar, Link as LinkIcon,
   Download, X, Eye, Plus, Trash2, CheckCircle2, XCircle, Clock, ChevronDown,
@@ -185,6 +186,7 @@ export default function ApplicationDetailPage() {
   // Recruiter assignment
   const [jobRecruiterIds, setJobRecruiterIds] = useState<string[]>([])
   const [recruiterNames, setRecruiterNames] = useState<Record<string, string>>({})
+  const [recruiterRoles, setRecruiterRoles] = useState<Record<string, string>>({})
 
   // Prev/Next navigation
   const [siblingIds, setSiblingIds] = useState<string[]>([])
@@ -285,6 +287,13 @@ export default function ApplicationDetailPage() {
         if (rIds.length > 0) {
           const rNames = await resolveUserNames(rIds)
           setRecruiterNames(rNames)
+        }
+        // Fetch roles
+        const { data: recruiterList } = await getAssignableRecruiters(organization.id)
+        if (recruiterList) {
+          const roleMap: Record<string, string> = {}
+          recruiterList.forEach((r) => { roleMap[r.id] = r.role })
+          setRecruiterRoles(roleMap)
         }
       }
 
@@ -918,18 +927,23 @@ export default function ApplicationDetailPage() {
                   </SelectContent>
                 </Select>
               </div>
-              {isAdmin && jobRecruiterIds.length > 0 && (
+              {(isAdmin || (user && jobRecruiterIds.includes(user.id))) && jobRecruiterIds.length > 0 && (
                 <div className="flex items-center gap-2">
                   <span className="text-[11px] font-medium text-gray-400 uppercase tracking-wide">Assigned</span>
                   <Select value={application.assigned_recruiter_id || 'unassigned'} onValueChange={handleRecruiterChange}>
-                    <SelectTrigger className="h-7 w-[180px] text-[12px] rounded-lg border-gray-200">
+                    <SelectTrigger className="h-7 w-[200px] text-[12px] rounded-lg border-gray-200">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="unassigned" className="text-[12px]">Unassigned</SelectItem>
                       {jobRecruiterIds.map((rid) => (
                         <SelectItem key={rid} value={rid} className="text-[12px]">
-                          {recruiterNames?.[rid] ?? rid.slice(0, 8)}
+                          <span className="flex items-center gap-2">
+                            {recruiterNames?.[rid] ?? rid.slice(0, 8)}
+                            {recruiterRoles[rid] && (
+                              <span className="text-[10px] text-gray-400">{recruiterRoles[rid]}</span>
+                            )}
+                          </span>
                         </SelectItem>
                       ))}
                     </SelectContent>

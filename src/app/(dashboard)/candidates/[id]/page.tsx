@@ -221,6 +221,7 @@ export default function CandidateDetailPage() {
     const { error: applyError } = await createApplication(supabase, organization.id, {
       candidate_id: candidate.id,
       job_id: selectedJob,
+      created_by_user_id: user.id,
     })
 
     if (applyError) {
