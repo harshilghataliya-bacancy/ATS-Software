@@ -74,7 +74,7 @@ export async function DELETE() {
 
   const { data: membership } = await supabase
     .from('organization_members')
-    .select('organization_id')
+    .select('organization_id, role')
     .eq('user_id', user.id)
     .is('deleted_at', null)
     .single()
@@ -83,15 +83,29 @@ export async function DELETE() {
     return NextResponse.json({ error: 'No organization' }, { status: 403 })
   }
 
-  const { error } = await supabase
-    .from('google_oauth_tokens')
-    .delete()
-    .eq('user_id', user.id)
-    .eq('organization_id', membership.organization_id)
-    .eq('provider', 'gmail')
+  // Admin can disconnect all org Gmail tokens; non-admin only their own
+  const adminSupabase = createAdminClient()
+  if (membership.role === 'admin') {
+    const { error } = await adminSupabase
+      .from('google_oauth_tokens')
+      .delete()
+      .eq('organization_id', membership.organization_id)
+      .eq('provider', 'gmail')
 
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 })
+    if (error) {
+      return NextResponse.json({ error: error.message }, { status: 500 })
+    }
+  } else {
+    const { error } = await supabase
+      .from('google_oauth_tokens')
+      .delete()
+      .eq('user_id', user.id)
+      .eq('organization_id', membership.organization_id)
+      .eq('provider', 'gmail')
+
+    if (error) {
+      return NextResponse.json({ error: error.message }, { status: 500 })
+    }
   }
 
   return NextResponse.json({ success: true })
