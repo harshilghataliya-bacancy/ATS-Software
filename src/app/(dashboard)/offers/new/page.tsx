@@ -69,6 +69,8 @@ export default function NewOfferWizardPage() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const applicationId = searchParams.get('applicationId')
+  const reviseOfferId = searchParams.get('reviseOfferId')
+  const isRevisionMode = !!reviseOfferId
   const { organization, isLoading: userLoading } = useUser()
   const { connected: gmailConnected } = useGmailStatus()
 
@@ -118,12 +120,35 @@ export default function NewOfferWizardPage() {
 
   // Load application + templates
   const loadData = useCallback(async () => {
-    if (!organization || !applicationId) return
+    if (!organization) return
+    if (!applicationId && !reviseOfferId) return
     setLoading(true)
     const supabase = createClient()
 
+    // If revision mode, fetch the existing offer first to get applicationId
+    let resolvedAppId = applicationId
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let existingOffer: any = null
+    if (reviseOfferId) {
+      const offerRes = await fetch(`/api/offers/${reviseOfferId}`)
+      const offerData = await offerRes.json()
+      if (!offerRes.ok || !offerData.data) {
+        setError('Offer not found')
+        setLoading(false)
+        return
+      }
+      existingOffer = offerData.data
+      resolvedAppId = existingOffer.application_id
+    }
+
+    if (!resolvedAppId) {
+      setError('No application ID provided')
+      setLoading(false)
+      return
+    }
+
     const [appResult, templatesResult, offerTplResult, structuresRes] = await Promise.all([
-      getApplicationById(supabase, applicationId, organization.id),
+      getApplicationById(supabase, resolvedAppId, organization.id),
       getEmailTemplates(supabase, organization.id, 'offer'),
       getOfferTemplates(supabase, organization.id),
       fetch('/api/salary-structures').then(r => r.json()),
@@ -143,32 +168,62 @@ export default function NewOfferWizardPage() {
     // Set salary structures
     const structs: SalaryStructure[] = structuresRes.data || []
     setSalaryStructures(structs)
-    const defaultStruct = structs.find(s => s.is_default) || structs[0]
-    if (defaultStruct) {
-      setSelectedStructureId(defaultStruct.id)
+
+    if (existingOffer) {
+      // Revision mode: pre-fill from existing offer
+      if (existingOffer.salary_structure_id) {
+        setSelectedStructureId(existingOffer.salary_structure_id)
+      } else {
+        const defaultStruct = structs.find(s => s.is_default) || structs[0]
+        if (defaultStruct) setSelectedStructureId(defaultStruct.id)
+      }
+      if (existingOffer.offer_template_id) {
+        const tpl = (offerTplResult.data || []).find((t: AnyData) => t.id === existingOffer.offer_template_id)
+        if (tpl) setSelectedOfferTemplate(tpl)
+      }
+      setForm({
+        jobTitle: app.job?.title || '',
+        department: app.job?.department || '',
+        businessUnit: existingOffer.business_unit || '',
+        employmentType: existingOffer.employment_type || 'full_time',
+        workType: existingOffer.work_type || 'on_site',
+        location: existingOffer.location || '',
+        reportingManager: existingOffer.reporting_manager || '',
+        startDate: existingOffer.start_date || '',
+        expiryDate: existingOffer.expiry_date || '',
+        currency: existingOffer.salary_currency || 'INR',
+        remunerationType: existingOffer.remuneration_type || 'annual',
+        totalSalary: existingOffer.salary || 0,
+        pfApplicable: existingOffer.pf_applicable ?? true,
+        salaryComponents: existingOffer.salary_components || [],
+        bonusComponents: existingOffer.bonus_components || [{ name: '', amount: 0, frequency: 'annual' }],
+        templateHtml: existingOffer.template_html || DEFAULT_OFFER_TEMPLATE,
+      })
+    } else {
+      // New offer: pre-fill from application
+      const defaultStruct = structs.find(s => s.is_default) || structs[0]
+      if (defaultStruct) setSelectedStructureId(defaultStruct.id)
+      setForm((prev) => ({
+        ...prev,
+        jobTitle: app.job?.title || '',
+        department: app.job?.department || '',
+        employmentType: app.job?.employment_type || 'full_time',
+        location: app.candidate?.location || app.job?.location || '',
+      }))
     }
 
-    // Pre-fill form from application data
-    setForm((prev) => ({
-      ...prev,
-      jobTitle: app.job?.title || '',
-      department: app.job?.department || '',
-      employmentType: app.job?.employment_type || 'full_time',
-      location: app.candidate?.location || app.job?.location || '',
-    }))
-
     setLoading(false)
-  }, [organization, applicationId])
+  }, [organization, applicationId, reviseOfferId])
 
   useEffect(() => {
     if (!organization) return
-    if (!applicationId) {
+    if (!applicationId && !reviseOfferId) {
       setError('No application ID provided')
       setLoading(false)
       return
     }
     loadData()
-  }, [organization, applicationId, loadData])
+  }, [organization, applicationId, reviseOfferId, loadData])
 
   // Rebuild salary structure when CTC or structure changes
   function handleTotalSalaryChange(value: number) {
@@ -303,44 +358,58 @@ export default function NewOfferWizardPage() {
   }
 
   async function handleSubmit() {
-    if (!applicationId) return
     setSubmitting(true)
     setError(null)
 
+    const offerPayload = {
+      salary: totalCtc,
+      salary_currency: form.currency,
+      start_date: form.startDate,
+      expiry_date: form.expiryDate,
+      template_html: form.templateHtml,
+      salary_components: form.salaryComponents,
+      bonus_components: form.bonusComponents.filter((b) => b.name && b.amount > 0),
+      reporting_manager: form.reportingManager || undefined,
+      employment_type: form.employmentType,
+      location: form.location || undefined,
+      remuneration_type: form.remunerationType,
+      pf_applicable: form.pfApplicable,
+      work_type: form.workType,
+      business_unit: form.businessUnit || undefined,
+      offer_template_id: selectedOfferTemplate?.id ?? null,
+      salary_structure_id: selectedStructureId || null,
+    }
+
     try {
-      const res = await fetch('/api/offers', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          application_id: applicationId,
-          salary: totalCtc,
-          salary_currency: form.currency,
-          start_date: form.startDate,
-          expiry_date: form.expiryDate,
-          template_html: form.templateHtml,
-          salary_components: form.salaryComponents,
-          bonus_components: form.bonusComponents.filter((b) => b.name && b.amount > 0),
-          reporting_manager: form.reportingManager || undefined,
-          employment_type: form.employmentType,
-          location: form.location || undefined,
-          remuneration_type: form.remunerationType,
-          pf_applicable: form.pfApplicable,
-          work_type: form.workType,
-          business_unit: form.businessUnit || undefined,
-          offer_template_id: selectedOfferTemplate?.id ?? null,
-          salary_structure_id: selectedStructureId || null,
-        }),
-      })
+      let res: Response
+      if (isRevisionMode && reviseOfferId) {
+        // Revision: create new version via revise API
+        res = await fetch(`/api/offers/${reviseOfferId}/revise`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(offerPayload),
+        })
+      } else {
+        // New offer
+        if (!applicationId) return
+        res = await fetch('/api/offers', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ...offerPayload, application_id: applicationId }),
+        })
+      }
+
       const data = await res.json()
       if (!res.ok) {
-        setError(data.error || 'Failed to create offer')
+        setError(data.error || `Failed to ${isRevisionMode ? 'revise' : 'create'} offer`)
         setSubmitting(false)
         return
       }
 
       const offerId = data.data?.id
-      const redirectTo = applicationId
-        ? `/applications/${applicationId}?tab=offer`
+      const appId = applicationId || data.data?.application_id
+      const redirectTo = appId
+        ? `/applications/${appId}?tab=offer`
         : '/offers'
 
       if (!offerId) {
@@ -352,14 +421,14 @@ export default function NewOfferWizardPage() {
       if (gmailConnected) {
         const sendRes = await fetch(`/api/offers/${offerId}/send`, { method: 'POST' })
         if (!sendRes.ok) {
-          router.push(redirectTo)
+          router.push(`/offers/${offerId}`)
           return
         }
       }
 
-      router.push(redirectTo)
+      router.push(`/offers/${offerId}`)
     } catch {
-      setError('Failed to create offer')
+      setError(`Failed to ${isRevisionMode ? 'revise' : 'create'} offer`)
     } finally {
       setSubmitting(false)
     }
@@ -500,7 +569,7 @@ export default function NewOfferWizardPage() {
         <ArrowLeft className="w-4 h-4" />Back
       </Button>
 
-      <h1 className="text-xl font-semibold text-gray-900">Create Offer</h1>
+      <h1 className="text-xl font-semibold text-gray-900">{isRevisionMode ? 'Revise Offer' : 'Create Offer'}</h1>
 
       {/* Step Indicator */}
       <div className="flex items-center justify-between">
@@ -1208,8 +1277,8 @@ export default function NewOfferWizardPage() {
                       {submitting
                         ? 'Sending...'
                         : gmailConnected
-                          ? 'Send Offer'
-                          : 'Save as Draft'}
+                          ? (isRevisionMode ? 'Revise & Send' : 'Send Offer')
+                          : 'Gmail not connected — please connect Gmail in Settings to send offers'}
                     </Button>
                   </div>
                 </CardContent>

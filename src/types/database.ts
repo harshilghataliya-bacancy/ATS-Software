@@ -15,7 +15,7 @@ export type PanelistStatus = 'pending' | 'accepted' | 'declined'
 export type Recommendation = 'select' | 'reject' | 'hold'
 export type EmailTemplateType = 'rejection' | 'offer' | 'interview_invite' | 'follow_up' | 'custom'
 export type EmailStatus = 'sent' | 'failed' | 'bounced'
-export type OfferStatus = 'draft' | 'sent' | 'accepted' | 'declined' | 'expired'
+export type OfferStatus = 'draft' | 'sent' | 'accepted' | 'declined' | 'expired' | 'revoked' | 'revised'
 export type CandidateSource = 'direct' | 'referral' | 'linkedin' | 'job_board' | 'careers_page' | 'other'
 export type OAuthProvider = 'google_calendar' | 'gmail'
 export type CommentEntityType = 'application' | 'candidate' | 'interview'
@@ -317,6 +317,9 @@ export interface OfferLetter {
   offer_template_id: string | null
   salary_structure_id: string | null
   response_token: string | null
+  version: number
+  parent_offer_id: string | null
+  revised_by: string | null
   created_by: string
   created_at: string
   updated_at: string

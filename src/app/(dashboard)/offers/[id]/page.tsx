@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { useUser, useRole } from '@/lib/hooks/use-user'
-import { useGmailStatus } from '@/lib/hooks/use-gmail-status'
+// import { useGmailStatus } from '@/lib/hooks/use-gmail-status'
 import { createClient } from '@/lib/supabase/client'
 import { getOfferById } from '@/lib/services/offers'
 import { OFFER_STATUS_CONFIG, EMPLOYMENT_TYPE_OPTIONS, WORK_TYPE_OPTIONS } from '@/lib/constants'
@@ -19,9 +19,9 @@ import {
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
 import {
-  ArrowLeft, Download, Loader2, Send, MoreHorizontal,
+  ArrowLeft, Download, Loader2, MoreHorizontal,
   CheckCircle2, XCircle, Ban, User, Briefcase,
-  MapPin, Calendar, DollarSign, Building2, Clock,
+  MapPin, Calendar, DollarSign, Building2, Clock, Edit2, History,
 } from 'lucide-react'
 
 interface SalaryComponent {
@@ -68,6 +68,7 @@ const STATUS_DOT: Record<string, string> = {
   sent:     'bg-blue-500',
   expired:  'bg-gray-300',
   revoked:  'bg-orange-400',
+  revised:  'bg-purple-400',
 }
 
 const STATUS_PILL: Record<string, string> = {
@@ -76,6 +77,7 @@ const STATUS_PILL: Record<string, string> = {
   sent:     'bg-blue-50 text-blue-700 border-blue-200',
   expired:  'bg-gray-50 text-gray-500 border-gray-200',
   revoked:  'bg-orange-50 text-orange-600 border-orange-200',
+  revised:  'bg-purple-50 text-purple-600 border-purple-200',
 }
 
 /* ── Gradient avatars ── */
@@ -101,7 +103,13 @@ const TIMELINE_DOT: Record<string, string> = {
   accepted: 'bg-emerald-500',
   declined: 'bg-rose-500',
   revoked:  'bg-orange-500',
+  revised:  'bg-purple-500',
   expired:  'bg-gray-300',
+}
+
+const STATUS_LABEL_MAP: Record<string, string> = {
+  draft: 'Draft', sent: 'Sent', accepted: 'Accepted', declined: 'Declined',
+  expired: 'Expired', revoked: 'Revoked', revised: 'Revised',
 }
 
 function fmtNum(n: number) {
@@ -113,13 +121,12 @@ export default function OfferDetailPage() {
   const router = useRouter()
   const { organization, isLoading: userLoading } = useUser()
   const { canManageOffers } = useRole()
-  const { connected: gmailConnected, loading: gmailLoading } = useGmailStatus()
+  // Gmail status not needed — send is handled by the wizard
 
   const [offer, setOffer] = useState<OfferDetail | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
-  const [sending, setSending] = useState(false)
   const [responding, setResponding] = useState(false)
   const [downloadingPdf, setDownloadingPdf] = useState(false)
   const [pdfPreviewUrl, setPdfPreviewUrl] = useState<string | null>(null)
@@ -128,10 +135,12 @@ export default function OfferDetailPage() {
   // Dialog states
   const [declineDialogOpen, setDeclineDialogOpen] = useState(false)
   const [declineNotes, setDeclineNotes] = useState('')
-  const [sendDialogOpen, setSendDialogOpen] = useState(false)
   const [acceptDialogOpen, setAcceptDialogOpen] = useState(false)
   const [revokeDialogOpen, setRevokeDialogOpen] = useState(false)
   const [revokeNotes, setRevokeNotes] = useState('')
+  const [revising, setRevising] = useState(false)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const [versionHistory, setVersionHistory] = useState<any[]>([])
 
   const loadOffer = useCallback(async () => {
     if (!organization) return
@@ -152,6 +161,15 @@ export default function OfferDetailPage() {
     loadOffer()
   }, [organization, loadOffer])
 
+  // Load version history
+  useEffect(() => {
+    if (!offer?.id) return
+    fetch(`/api/offers/${offer.id}/versions`)
+      .then((r) => r.json())
+      .then((r) => { if (r.data) setVersionHistory(r.data) })
+      .catch(() => {})
+  }, [offer?.id])
+
   // Auto-load PDF preview
   useEffect(() => {
     if (!offer) return
@@ -171,7 +189,9 @@ export default function OfferDetailPage() {
   const isSent = offer?.status === 'sent'
   const isDeclined = offer?.status === 'declined'
   const isExpired = offer?.status === 'expired'
+  const isRevised = offer?.status === 'revised'
   const canResend = isDeclined || isExpired
+  const canRevise = canManageOffers && (isSent || isDeclined || isExpired)
 
   async function loadPdfPreview() {
     if (!offer) return
@@ -187,25 +207,6 @@ export default function OfferDetailPage() {
       // silently fail
     } finally {
       setPdfLoading(false)
-    }
-  }
-
-  async function handleSend() {
-    if (!offer) return
-    setSending(true)
-    setError(null)
-    setSuccess(null)
-    try {
-      const res = await fetch(`/api/offers/${offer.id}/send`, { method: 'POST' })
-      const data = await res.json()
-      if (!res.ok) { setError(data.error || 'Failed to send offer'); return }
-      setSuccess('Offer sent successfully!')
-      setSendDialogOpen(false)
-      await loadOffer()
-    } catch {
-      setError('Failed to send offer')
-    } finally {
-      setSending(false)
     }
   }
 
@@ -259,6 +260,19 @@ export default function OfferDetailPage() {
       setError('Failed to download PDF')
     } finally {
       setDownloadingPdf(false)
+    }
+  }
+
+  async function handleRevise() {
+    if (!offer) return
+    setRevising(true)
+    setError(null)
+    try {
+      // Navigate to wizard in revision mode - pass current offer data via the revise API
+      router.push(`/offers/new?reviseOfferId=${offer.id}`)
+    } catch {
+      setError('Failed to start revision')
+      setRevising(false)
     }
   }
 
@@ -320,19 +334,14 @@ export default function OfferDetailPage() {
             {downloadingPdf ? 'Generating...' : 'Download PDF'}
           </button>
 
-          {canManageOffers && canResend && (
+          {canRevise && (
             <button
-              onClick={() => {
-                if (!gmailConnected && !gmailLoading) {
-                  setError('Please connect Gmail in Settings before sending offers.')
-                  return
-                }
-                setSendDialogOpen(true)
-              }}
-              className="flex items-center gap-1.5 h-8 px-3 rounded-lg bg-gray-900 text-white text-[12px] font-medium hover:bg-gray-800 transition-colors"
+              onClick={handleRevise}
+              disabled={revising}
+              className="flex items-center gap-1.5 h-8 px-3 rounded-lg border border-purple-200 bg-purple-50 text-purple-700 text-[12px] font-medium hover:bg-purple-100 transition-colors disabled:opacity-40"
             >
-              <Send className="w-3.5 h-3.5" />
-              {canResend ? 'Resend' : 'Send Offer'}
+              <Edit2 className="w-3.5 h-3.5" />
+              {revising ? 'Loading...' : 'Revise Offer'}
             </button>
           )}
 
@@ -376,6 +385,9 @@ export default function OfferDetailPage() {
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2.5">
                 <h1 className="text-[18px] font-semibold text-gray-900 tracking-tight">{candidateName}</h1>
+                {(offer.version ?? 1) > 1 && (
+                  <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-purple-100 text-purple-600">v{offer.version}</span>
+                )}
                 <span className={`flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full border ${STATUS_PILL[offer.status] ?? 'bg-gray-50 text-gray-600 border-gray-200'}`}>
                   <span className={`w-1.5 h-1.5 rounded-full ${STATUS_DOT[offer.status] ?? 'bg-gray-300'}`} />
                   {statusConfig?.label ?? offer.status}
@@ -402,6 +414,17 @@ export default function OfferDetailPage() {
       {success && (
         <div className="bg-emerald-50 text-emerald-700 text-[12px] p-3 rounded-lg border border-emerald-200">{success}</div>
       )}
+      {isRevised && versionHistory.length > 1 && (() => {
+        const latest = versionHistory[versionHistory.length - 1]
+        return latest && latest.id !== offer.id ? (
+          <div className="bg-purple-50 text-purple-700 text-[12px] p-3 rounded-lg border border-purple-200 flex items-center justify-between">
+            <span>This is a previous version (v{offer.version ?? 1}). A newer revision exists.</span>
+            <button onClick={() => router.push(`/offers/${latest.id}`)} className="text-[11px] font-semibold text-purple-700 hover:text-purple-900 underline">
+              View Latest (v{latest.version})
+            </button>
+          </div>
+        ) : null
+      })()}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
         {/* ===== LEFT COLUMN (2/3) ===== */}
@@ -647,31 +670,58 @@ export default function OfferDetailPage() {
               </div>
             </div>
           </div>
+
+          {/* Version History */}
+          {versionHistory.length > 1 && (
+            <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
+              <div className="px-5 py-3.5 border-b border-gray-50 flex items-center gap-2">
+                <History className="w-4 h-4 text-gray-400" />
+                <h3 className="text-[13px] font-semibold text-gray-900">Version History</h3>
+                <span className="text-[10px] text-gray-400 ml-auto">{versionHistory.length} versions</span>
+              </div>
+              <div className="p-4 space-y-2">
+                {versionHistory.map((v) => {
+                  const isCurrent = v.id === offer.id
+                  const statusDot = STATUS_DOT[v.status] ?? 'bg-gray-300'
+                  const statusLabel = STATUS_LABEL_MAP[v.status] ?? v.status
+                  return (
+                    <button
+                      key={v.id}
+                      onClick={() => { if (!isCurrent) router.push(`/offers/${v.id}`) }}
+                      disabled={isCurrent}
+                      className={`w-full text-left px-3 py-2.5 rounded-lg border transition-colors ${
+                        isCurrent
+                          ? 'bg-gray-50 border-gray-200 cursor-default'
+                          : 'border-transparent hover:bg-gray-50 hover:border-gray-100'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <span className="text-[11px] font-bold text-gray-900">v{v.version}</span>
+                          <span className={`w-1.5 h-1.5 rounded-full ${statusDot}`} />
+                          <span className="text-[10px] text-gray-500">{statusLabel}</span>
+                          {isCurrent && <span className="text-[9px] font-semibold text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded">Current</span>}
+                        </div>
+                        <span className="text-[10px] text-gray-400 tabular-nums">
+                          {formatSalary(v.salary, v.salary_currency || 'INR')}
+                        </span>
+                      </div>
+                      <p className="text-[10px] text-gray-400 mt-0.5">
+                        {v.sent_at
+                          ? `Sent ${new Date(v.sent_at).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}`
+                          : `Created ${new Date(v.created_at).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}`
+                        }
+                      </p>
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
       {/* ── Dialogs ── */}
-      {/* Send / Resend */}
-      <AlertDialog open={sendDialogOpen} onOpenChange={setSendDialogOpen}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle className="text-[15px]">{canResend ? 'Resend Offer?' : 'Send Offer?'}</AlertDialogTitle>
-            <AlertDialogDescription className="text-[12px]">
-              {canResend
-                ? `The offer was previously ${offer?.status}. This will resend to ${candidate?.email} via Gmail with a fresh PDF attachment.`
-                : `This will send the offer letter to ${candidate?.email} via Gmail with PDF attachment.`
-              }
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel className="text-[12px]">Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={handleSend} disabled={sending} className="text-[12px] bg-gray-900 hover:bg-gray-800">
-              {sending ? 'Sending...' : canResend ? 'Resend Offer' : 'Send Offer'}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-
       {/* Accept */}
       <AlertDialog open={acceptDialogOpen} onOpenChange={setAcceptDialogOpen}>
         <AlertDialogContent>

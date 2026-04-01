@@ -33,6 +33,8 @@ interface OfferItem {
   expiry_date: string | null
   sent_at: string | null
   created_at: string
+  version: number
+  parent_offer_id: string | null
   application: {
     id: string
     candidate: { id: string; first_name: string; last_name: string; email: string } | null
@@ -47,6 +49,7 @@ const STATUS_DOT: Record<string, string> = {
   sent:     'bg-blue-500',
   expired:  'bg-gray-300',
   revoked:  'bg-orange-400',
+  revised:  'bg-purple-400',
 }
 
 const STATUS_PILL: Record<string, string> = {
@@ -55,6 +58,7 @@ const STATUS_PILL: Record<string, string> = {
   sent:     'bg-blue-50 text-blue-700 border-blue-200',
   expired:  'bg-gray-50 text-gray-500 border-gray-200',
   revoked:  'bg-orange-50 text-orange-600 border-orange-200',
+  revised:  'bg-purple-50 text-purple-600 border-purple-200',
 }
 
 const STATUS_LABEL: Record<string, string> = {
@@ -63,6 +67,7 @@ const STATUS_LABEL: Record<string, string> = {
   sent:     'Sent',
   expired:  'Expired',
   revoked:  'Revoked',
+  revised:  'Revised',
 }
 
 /* ── Gradient avatars ── */
@@ -398,6 +403,9 @@ export default function OffersPage() {
                         </div>
                       </div>
                       <div className="flex items-center gap-1.5 shrink-0" onClick={(e) => e.stopPropagation()}>
+                        {offer.version > 1 && (
+                          <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-purple-100 text-purple-600">v{offer.version}</span>
+                        )}
                         <span className={`flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full border ${STATUS_PILL[offer.status] ?? 'bg-gray-50 text-gray-600 border-gray-200'}`}>
                           <span className={`w-1.5 h-1.5 rounded-full ${STATUS_DOT[offer.status] ?? 'bg-gray-300'}`} />
                           {statusLabel}
@@ -525,6 +533,9 @@ export default function OffersPage() {
                       {/* Status */}
                       <TableCell className="py-3">
                         <div className="flex items-center gap-1.5">
+                          {offer.version > 1 && (
+                            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-purple-100 text-purple-600">v{offer.version}</span>
+                          )}
                           <span className={`inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full border ${STATUS_PILL[offer.status] ?? 'bg-gray-50 text-gray-600 border-gray-200'}`}>
                             <span className={`w-1.5 h-1.5 rounded-full ${STATUS_DOT[offer.status] ?? 'bg-gray-300'}`} />
                             {statusLabel}

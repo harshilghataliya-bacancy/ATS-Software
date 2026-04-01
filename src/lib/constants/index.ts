@@ -104,6 +104,7 @@ export const OFFER_STATUS_CONFIG = {
   accepted: { label: 'Accepted', variant: 'default' as const },
   declined: { label: 'Declined', variant: 'destructive' as const },
   revoked: { label: 'Revoked', variant: 'destructive' as const },
+  revised: { label: 'Revised', variant: 'secondary' as const },
   expired: { label: 'Expired', variant: 'outline' as const },
 }
 

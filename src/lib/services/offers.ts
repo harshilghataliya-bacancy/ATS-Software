@@ -79,6 +79,9 @@ export async function getOffers(
 
   if (status) {
     query = query.eq('status', status)
+  } else {
+    // By default, hide superseded (revised) offers
+    query = query.neq('status', 'revised')
   }
 
   const { data, error, count } = await query
@@ -349,4 +352,112 @@ export async function revokeOffer(
     .single()
 
   return { data, error }
+}
+
+// ---------------------------------------------------------------------------
+// Revisions
+// ---------------------------------------------------------------------------
+
+export async function reviseOffer(
+  supabase: SupabaseClient,
+  offerId: string,
+  orgId: string,
+  revisedData: Record<string, unknown>,
+  userId: string
+) {
+  // Fetch original offer
+  const { data: original, error: fetchError } = await supabase
+    .from('offer_letters')
+    .select('*')
+    .eq('id', offerId)
+    .eq('organization_id', orgId)
+    .is('deleted_at', null)
+    .single()
+
+  if (fetchError || !original) {
+    return { data: null, error: fetchError ?? new Error('Offer not found') }
+  }
+
+  // Determine root offer (parent_offer_id always points to v1)
+  const rootId = original.parent_offer_id || original.id
+  const newVersion = (original.version || 1) + 1
+
+  // Mark current offer as 'revised' (terminal)
+  await supabase
+    .from('offer_letters')
+    .update({ status: 'revised', response_token: null, updated_at: new Date().toISOString() })
+    .eq('id', offerId)
+
+  // Build new offer row — merge original fields with revised data
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const omitKeys = new Set(['id', 'created_at', 'updated_at', 'deleted_at', 'status', 'sent_at', 'responded_at', 'response_notes', 'response_token', 'version', 'parent_offer_id', 'revised_by'])
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const baseFields: Record<string, any> = {}
+  for (const [k, v] of Object.entries(original)) {
+    if (!omitKeys.has(k)) baseFields[k] = v
+  }
+
+  const insertData = {
+    ...baseFields,
+    ...revisedData,
+    organization_id: orgId,
+    status: 'draft',
+    version: newVersion,
+    parent_offer_id: rootId,
+    revised_by: userId,
+    created_by: userId,
+    sent_at: null,
+    responded_at: null,
+    response_notes: null,
+    response_token: null,
+  }
+
+  const { data: newOffer, error: insertError } = await supabase
+    .from('offer_letters')
+    .insert(insertData)
+    .select(
+      `
+      *,
+      application:applications(
+        id,
+        candidate:candidates(id, first_name, last_name, email),
+        job:jobs(id, title, department)
+      )
+    `
+    )
+    .single()
+
+  return { data: newOffer, error: insertError }
+}
+
+export async function getOfferVersionHistory(
+  supabase: SupabaseClient,
+  offerId: string,
+  orgId: string
+) {
+  // First resolve the root offer ID
+  const { data: current } = await supabase
+    .from('offer_letters')
+    .select('id, parent_offer_id')
+    .eq('id', offerId)
+    .eq('organization_id', orgId)
+    .is('deleted_at', null)
+    .single()
+
+  if (!current) {
+    return { data: [], error: null }
+  }
+
+  const rootId = current.parent_offer_id || current.id
+
+  // Fetch all versions: root + all children
+  const { data, error } = await supabase
+    .from('offer_letters')
+    .select('id, version, status, salary, salary_currency, start_date, created_at, sent_at, responded_at, revised_by')
+    .eq('organization_id', orgId)
+    .is('deleted_at', null)
+    .or(`id.eq.${rootId},parent_offer_id.eq.${rootId}`)
+    .order('version', { ascending: true })
+
+  return { data: data ?? [], error }
 }
