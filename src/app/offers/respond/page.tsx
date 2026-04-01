@@ -40,88 +40,110 @@ function RespondContent() {
     }
   }
 
+  /* ---- Invalid link ---- */
+  if (!valid) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
+        <div className="max-w-sm w-full bg-white rounded-2xl shadow-sm border border-gray-100 p-8 text-center">
+          <div className="w-14 h-14 mx-auto mb-5 rounded-full bg-red-50 flex items-center justify-center">
+            <svg className="w-7 h-7 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" />
+            </svg>
+          </div>
+          <h1 className="text-lg font-semibold text-gray-900 mb-2">Invalid Link</h1>
+          <p className="text-sm text-gray-500 leading-relaxed">
+            This offer response link is invalid or has expired. Please check your email for the correct link.
+          </p>
+        </div>
+      </div>
+    )
+  }
+
+  /* ---- Success state ---- */
+  if (done) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
+        <div className="max-w-sm w-full bg-white rounded-2xl shadow-sm border border-gray-100 p-8 text-center">
+          <div className={`w-14 h-14 mx-auto mb-5 rounded-full flex items-center justify-center ${isAccept ? 'bg-emerald-50' : 'bg-amber-50'}`}>
+            {isAccept ? (
+              <svg className="w-7 h-7 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
+              </svg>
+            ) : (
+              <svg className="w-7 h-7 text-amber-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            )}
+          </div>
+          <h1 className="text-lg font-semibold text-gray-900 mb-2">
+            {isAccept ? 'Offer Accepted!' : 'Offer Declined'}
+          </h1>
+          <p className="text-sm text-gray-500 leading-relaxed">
+            {isAccept
+              ? 'Congratulations! Your response has been recorded. The hiring team will reach out with the next steps shortly.'
+              : 'Your response has been recorded. We appreciate your time and consideration throughout this process.'}
+          </p>
+        </div>
+      </div>
+    )
+  }
+
+  /* ---- Confirmation state ---- */
   return (
     <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-xl shadow-lg max-w-md w-full p-8 text-center">
-        {!valid ? (
-          <>
-            <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-red-100 flex items-center justify-center">
-              <svg className="w-8 h-8 text-red-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" />
-              </svg>
-            </div>
-            <h1 className="text-xl font-bold text-gray-900 mb-2">Invalid Link</h1>
-            <p className="text-gray-500 text-sm">This offer response link is invalid or incomplete.</p>
-          </>
-        ) : done ? (
-          <>
-            <div className={`w-16 h-16 mx-auto mb-4 rounded-full flex items-center justify-center ${isAccept ? 'bg-green-100' : 'bg-orange-100'}`}>
-              {isAccept ? (
-                <svg className="w-8 h-8 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
-                </svg>
-              ) : (
-                <svg className="w-8 h-8 text-orange-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              )}
-            </div>
-            <h1 className="text-xl font-bold text-gray-900 mb-2">
-              {isAccept ? 'Offer Accepted!' : 'Offer Declined'}
-            </h1>
-            <p className="text-gray-500 text-sm">
-              {isAccept
-                ? 'Congratulations! Your response has been recorded. The hiring team will be in touch with next steps.'
-                : 'Your response has been recorded. Thank you for your time and consideration.'}
-            </p>
-          </>
-        ) : (
-          <>
-            <div className={`w-16 h-16 mx-auto mb-4 rounded-full flex items-center justify-center ${isAccept ? 'bg-green-100' : 'bg-red-100'}`}>
-              {isAccept ? (
-                <svg className="w-8 h-8 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
-                </svg>
-              ) : (
-                <svg className="w-8 h-8 text-red-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              )}
-            </div>
-            <h1 className="text-xl font-bold text-gray-900 mb-2">
-              {isAccept ? 'Accept This Offer?' : 'Decline This Offer?'}
-            </h1>
-            <p className="text-gray-500 text-sm mb-6">
-              {isAccept
-                ? 'By clicking confirm, you are accepting this offer of employment. This action cannot be undone.'
-                : 'By clicking confirm, you are declining this offer. This action cannot be undone.'}
-            </p>
+      <div className="max-w-sm w-full bg-white rounded-2xl shadow-sm border border-gray-100 p-8 text-center">
+        {/* Icon */}
+        <div className={`w-14 h-14 mx-auto mb-5 rounded-full flex items-center justify-center ${isAccept ? 'bg-emerald-50' : 'bg-red-50'}`}>
+          {isAccept ? (
+            <svg className="w-7 h-7 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
+            </svg>
+          ) : (
+            <svg className="w-7 h-7 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          )}
+        </div>
 
-            {error && (
-              <div className="bg-red-50 text-red-700 text-sm p-3 rounded-md mb-4">{error}</div>
-            )}
+        <h1 className="text-lg font-semibold text-gray-900 mb-2">
+          {isAccept ? 'Accept This Offer?' : 'Decline This Offer?'}
+        </h1>
+        <p className="text-sm text-gray-500 leading-relaxed mb-6">
+          {isAccept
+            ? 'By confirming, you accept this offer of employment. This action cannot be undone.'
+            : 'By confirming, you decline this offer. This action cannot be undone.'}
+        </p>
 
-            <div className="flex gap-3 justify-center">
-              <button
-                onClick={() => window.history.back()}
-                className="px-6 py-2.5 text-sm font-medium text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors"
-              >
-                Go Back
-              </button>
-              <button
-                onClick={handleSubmit}
-                disabled={loading}
-                className={`px-6 py-2.5 text-sm font-medium text-white rounded-lg transition-colors disabled:opacity-50 ${
-                  isAccept
-                    ? 'bg-green-600 hover:bg-green-700'
-                    : 'bg-red-600 hover:bg-red-700'
-                }`}
-              >
-                {loading ? 'Submitting...' : 'Confirm'}
-              </button>
-            </div>
-          </>
+        {error && (
+          <div className="bg-red-50 border border-red-100 text-red-600 text-sm p-3 rounded-lg mb-5 text-left">
+            {error}
+          </div>
         )}
+
+        {/* Buttons */}
+        <div className="flex gap-3">
+          <button
+            onClick={() => window.close()}
+            className="flex-1 py-2.5 text-sm font-medium text-gray-600 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={handleSubmit}
+            disabled={loading}
+            className={`flex-1 py-2.5 text-sm font-medium text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
+              isAccept
+                ? 'bg-emerald-600 hover:bg-emerald-700'
+                : 'bg-red-600 hover:bg-red-700'
+            }`}
+          >
+            {loading ? 'Processing...' : 'Confirm'}
+          </button>
+        </div>
+
+        <p className="mt-6 text-xs text-gray-400 leading-relaxed">
+          By responding, you confirm this is your intended action.
+        </p>
       </div>
     </div>
   )
@@ -131,7 +153,7 @@ export default function OfferRespondPage() {
   return (
     <Suspense fallback={
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" />
+        <div className="w-6 h-6 border-2 border-gray-200 border-t-gray-600 rounded-full animate-spin" />
       </div>
     }>
       <RespondContent />

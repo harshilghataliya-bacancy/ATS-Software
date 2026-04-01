@@ -64,7 +64,7 @@ export async function createCalendarEvent(
   const event = await calendar.events.insert({
     calendarId: 'primary',
     conferenceDataVersion: withMeet ? 1 : 0,
-    sendUpdates: 'all',
+    sendUpdates: 'none',
     requestBody,
   })
 
@@ -91,6 +91,6 @@ export async function deleteCalendarEvent(
   await calendar.events.delete({
     calendarId: 'primary',
     eventId,
-    sendUpdates: 'all',
+    sendUpdates: 'none',
   })
 }

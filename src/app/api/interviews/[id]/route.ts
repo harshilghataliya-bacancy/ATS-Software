@@ -5,6 +5,7 @@ import { updateInterview, cancelInterview, getInterviewById } from '@/lib/servic
 import { getValidAccessToken, sendGmailEmail } from '@/lib/services/gmail'
 import { createCalendarEvent, deleteCalendarEvent } from '@/lib/services/google-calendar'
 import { logActivity } from '@/lib/services/activity'
+import { logEmail } from '@/lib/services/email'
 import { getOrCreateTemplate, renderEmail, buildDetailTable } from '@/lib/email-templates'
 
 // ---------------------------------------------------------------------------
@@ -16,58 +17,6 @@ function formatDateTime(isoString: string) {
   const dateStr = d.toLocaleDateString('en-IN', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', timeZone: 'Asia/Kolkata' })
   const timeStr = d.toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit', hour12: true, timeZone: 'Asia/Kolkata' }) + ' IST'
   return { dateStr, timeStr }
-}
-
-interface EmailRecipient { email: string; name?: string }
-
-async function collectRecipients(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  interview: any,
-  orgId: string,
-  schedulerEmail?: string,
-  schedulerName?: string,
-): Promise<EmailRecipient[]> {
-  const recipients: EmailRecipient[] = []
-  const seen = new Set<string>()
-
-  // Candidate
-  const cand = interview.application?.candidate
-  if (cand?.email) {
-    seen.add(cand.email.toLowerCase())
-    recipients.push({ email: cand.email, name: `${cand.first_name} ${cand.last_name}` })
-  }
-
-  // Panelists — use admin client to bypass RLS and look up emails
-  if (interview.interview_panelists?.length) {
-    const adminSupabase = createAdminClient()
-    const userIds = interview.interview_panelists.map((p: { user_id: string }) => p.user_id)
-    const { data: { users } } = await adminSupabase.auth.admin.listUsers()
-
-    for (const uid of userIds) {
-      const authUser = users?.find((u) => u.id === uid)
-      const email = authUser?.email
-      if (email && !seen.has(email.toLowerCase())) {
-        seen.add(email.toLowerCase())
-        const name = authUser?.user_metadata?.full_name || email.split('@')[0]
-        recipients.push({ email, name })
-      }
-    }
-  }
-
-  // Legacy interviewer_email
-  if (interview.interviewer_email && !seen.has(interview.interviewer_email.toLowerCase())) {
-    seen.add(interview.interviewer_email.toLowerCase())
-    recipients.push({ email: interview.interviewer_email })
-  }
-
-  // Scheduler/recruiter who triggered the action
-  if (schedulerEmail && !seen.has(schedulerEmail.toLowerCase())) {
-    seen.add(schedulerEmail.toLowerCase())
-    recipients.push({ email: schedulerEmail, name: schedulerName || schedulerEmail.split('@')[0] })
-  }
-
-  console.log(`[collectRecipients] Found ${recipients.length} recipients:`, recipients.map(r => r.email))
-  return recipients
 }
 
 // ---------------------------------------------------------------------------
@@ -223,13 +172,13 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
   if (oldInterview.location !== updatedInterview.location) changes.push('Location has been updated')
   if (oldInterview.meeting_link !== updatedInterview.meeting_link) changes.push('Meeting link has been updated')
 
-  // Send update emails
+  // Send update emails: 1 to candidate (CC recruiter), 1 to all interviewers
   if (tokenResult.accessToken) {
     const fromEmail = tokenResult.fromEmail || user.email!
-    const recipients = await collectRecipients(updatedInterview, orgId, user.email || '', schedulerName)
+    const schedulerEmail = user.email || ''
 
     const updateTemplate = await getOrCreateTemplate(supabase, orgId, 'interview_updated')
-    const { subject: updateSubject, html: updateHtml } = renderEmail(updateTemplate, {
+    const updateVars = {
       candidate_name: candidateName,
       job_title: jobTitle,
       company_name: companyName,
@@ -239,23 +188,70 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       interview_type: updatedInterview.interview_type === 'onsite' ? 'Face-to-Face' : 'Video Call',
       location: interviewLocation || '',
       meeting_link: updMeetLink || '',
-      scheduler_name: `${schedulerName} (${user.email})`,
+      scheduler_name: `${schedulerName} (${schedulerEmail})`,
       notes: updatedInterview.notes || '',
       detail_table: detailTable,
       notes_section: notesSection,
-    }, companyName)
+    }
+    const { subject: updateSubject, html: updateHtml } = renderEmail(updateTemplate, updateVars, companyName)
 
-    for (const r of recipients) {
+    // Email 1: To candidate, CC recruiter
+    const candidateEmail = updCandidate?.email
+    if (candidateEmail) {
       try {
         await sendGmailEmail(tokenResult.accessToken, {
           from: fromEmail,
-          to: r.email,
+          fromName: companyName,
+          to: candidateEmail,
+          cc: schedulerEmail !== candidateEmail ? schedulerEmail : undefined,
           subject: updateSubject,
           html: updateHtml,
         })
-        console.log(`[Interview Update Email] Sent to: ${r.email}`)
+        console.log(`[Interview Update Email] Sent to candidate: ${candidateEmail}`)
+        logEmail(supabase, orgId, {
+          candidate_id: updatedInterview.application?.candidate_id || updCandidate?.id || '',
+          application_id: updatedInterview.application_id,
+          subject: updateSubject,
+          body_html: updateHtml,
+          to_email: candidateEmail,
+          from_email: fromEmail,
+          status: 'sent',
+          sent_at: new Date().toISOString(),
+        }).catch(() => {})
       } catch (err) {
-        console.error(`[Interview Update Email Error] ${r.email}:`, err)
+        console.error('[Interview Update Email - Candidate]', err)
+      }
+    }
+
+    // Email 2: To interviewers only (exclude lead/recruiter)
+    const interviewerEmails: string[] = []
+    if (updatedInterview.interview_panelists?.length) {
+      const adminSupabase = createAdminClient()
+      const { data: { users } } = await adminSupabase.auth.admin.listUsers()
+      for (const p of updatedInterview.interview_panelists as { user_id: string; role: string }[]) {
+        if (p.role === 'lead') continue
+        const authUser = users?.find((u) => u.id === p.user_id)
+        if (authUser?.email && authUser.email.toLowerCase() !== candidateEmail?.toLowerCase() && authUser.email.toLowerCase() !== schedulerEmail.toLowerCase()) {
+          interviewerEmails.push(authUser.email)
+        }
+      }
+    }
+    if (updatedInterview.interviewer_email && !interviewerEmails.includes(updatedInterview.interviewer_email) && updatedInterview.interviewer_email.toLowerCase() !== schedulerEmail.toLowerCase()) {
+      interviewerEmails.push(updatedInterview.interviewer_email)
+    }
+
+    if (interviewerEmails.length > 0) {
+      try {
+        await sendGmailEmail(tokenResult.accessToken, {
+          from: fromEmail,
+          fromName: companyName,
+          to: interviewerEmails.join(', '),
+          subject: updateSubject,
+          html: updateHtml,
+        })
+        console.log(`[Interview Update Email] Sent to interviewers: ${interviewerEmails.join(', ')}`)
+      } catch (err) {
+        console.error('[Interview Update Email - Interviewers]', err)
       }
     }
   }
@@ -344,11 +340,11 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
 
   const reasonSection = cancelReason ? `<p><strong>Reason:</strong> ${cancelReason}</p>` : ''
 
-  // Send cancellation emails
+  // Send cancellation emails: 1 to candidate (CC recruiter), 1 to all interviewers
   const tokenResult = await getValidAccessToken(supabase, user.id, orgId)
   if (tokenResult.accessToken) {
     const fromEmail = tokenResult.fromEmail || user.email!
-    const recipients = await collectRecipients(interview, orgId, user.email || '', schedulerName)
+    const schedulerEmail = user.email || ''
 
     const cancelTemplate = await getOrCreateTemplate(supabase, orgId, 'interview_cancelled')
     const { subject: cancelSubject, html: cancelHtml } = renderEmail(cancelTemplate, {
@@ -358,23 +354,69 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
       interview_date: dateStr,
       interview_time: timeStr,
       duration_minutes: String(interview.duration_minutes),
-      scheduler_name: `${schedulerName} (${user.email})`,
+      scheduler_name: `${schedulerName} (${schedulerEmail})`,
       cancel_reason: cancelReason || '',
       detail_table: detailTable,
       reason_section: reasonSection,
     }, companyName)
 
-    for (const r of recipients) {
+    // Email 1: To candidate, CC recruiter
+    const candidateEmail = candidate?.email
+    if (candidateEmail) {
       try {
         await sendGmailEmail(tokenResult.accessToken, {
           from: fromEmail,
-          to: r.email,
+          fromName: companyName,
+          to: candidateEmail,
+          cc: schedulerEmail !== candidateEmail ? schedulerEmail : undefined,
           subject: cancelSubject,
           html: cancelHtml,
         })
-        console.log(`[Interview Cancel Email] Sent to: ${r.email}`)
+        console.log(`[Interview Cancel Email] Sent to candidate: ${candidateEmail}`)
+        logEmail(supabase, orgId, {
+          candidate_id: interview.application?.candidate_id || candidate?.id || '',
+          application_id: interview.application_id,
+          subject: cancelSubject,
+          body_html: cancelHtml,
+          to_email: candidateEmail,
+          from_email: fromEmail,
+          status: 'sent',
+          sent_at: new Date().toISOString(),
+        }).catch(() => {})
       } catch (err) {
-        console.error(`[Interview Cancel Email Error] ${r.email}:`, err)
+        console.error('[Interview Cancel Email - Candidate]', err)
+      }
+    }
+
+    // Email 2: To interviewers only (exclude lead/recruiter)
+    const interviewerEmails: string[] = []
+    if (interview.interview_panelists?.length) {
+      const adminSupabase = createAdminClient()
+      const { data: { users } } = await adminSupabase.auth.admin.listUsers()
+      for (const p of interview.interview_panelists as { user_id: string; role: string }[]) {
+        if (p.role === 'lead') continue
+        const authUser = users?.find((u) => u.id === p.user_id)
+        if (authUser?.email && authUser.email.toLowerCase() !== candidateEmail?.toLowerCase() && authUser.email.toLowerCase() !== schedulerEmail.toLowerCase()) {
+          interviewerEmails.push(authUser.email)
+        }
+      }
+    }
+    if (interview.interviewer_email && !interviewerEmails.includes(interview.interviewer_email) && interview.interviewer_email.toLowerCase() !== schedulerEmail.toLowerCase()) {
+      interviewerEmails.push(interview.interviewer_email)
+    }
+
+    if (interviewerEmails.length > 0) {
+      try {
+        await sendGmailEmail(tokenResult.accessToken, {
+          from: fromEmail,
+          fromName: companyName,
+          to: interviewerEmails.join(', '),
+          subject: cancelSubject,
+          html: cancelHtml,
+        })
+        console.log(`[Interview Cancel Email] Sent to interviewers: ${interviewerEmails.join(', ')}`)
+      } catch (err) {
+        console.error('[Interview Cancel Email - Interviewers]', err)
       }
     }
   }

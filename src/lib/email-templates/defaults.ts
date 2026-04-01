@@ -15,6 +15,7 @@ export interface DefaultEmailTemplate {
 }
 
 export const SYSTEM_EMAIL_TYPES = [
+  'application_received',
   'interview_scheduled',
   'interview_scheduled_interviewer',
   'interview_updated',
@@ -23,11 +24,13 @@ export const SYSTEM_EMAIL_TYPES = [
   'rejection',
   'assessment_invitation',
   'interviewer_invite',
+  'offer_revoked',
 ] as const
 
 export type SystemEmailType = (typeof SYSTEM_EMAIL_TYPES)[number]
 
 export const SYSTEM_EMAIL_TYPE_LABELS: Record<SystemEmailType, string> = {
+  application_received: 'Application Received',
   interview_scheduled: 'Interview Scheduled (Candidate)',
   interview_scheduled_interviewer: 'Interview Scheduled (Interviewer)',
   interview_updated: 'Interview Updated',
@@ -36,6 +39,7 @@ export const SYSTEM_EMAIL_TYPE_LABELS: Record<SystemEmailType, string> = {
   rejection: 'Application Rejection',
   assessment_invitation: 'Assessment Invitation',
   interviewer_invite: 'Interviewer Platform Invite',
+  offer_revoked: 'Offer Revoked',
 }
 
 // ---------------------------------------------------------------------------
@@ -43,6 +47,19 @@ export const SYSTEM_EMAIL_TYPE_LABELS: Record<SystemEmailType, string> = {
 // ---------------------------------------------------------------------------
 
 export const DEFAULT_EMAIL_TEMPLATES: Record<SystemEmailType, DefaultEmailTemplate> = {
+
+  // ── Application Received (to Candidate) ───────────────────────────────
+  application_received: {
+    name: 'Application Received',
+    subject: 'Application Received — {{job_title}} at {{company_name}}',
+    body_html: `<p>Dear {{candidate_name}},</p>
+<p>Thank you for applying for the <strong>{{job_title}}</strong> position at <strong>{{company_name}}</strong>. We have successfully received your application.</p>
+<p>Our hiring team will carefully review your profile and qualifications. If your background aligns with our requirements, we will reach out to you with the next steps in the process.</p>
+<p>In the meantime, please feel free to reach out if you have any questions.</p>
+<p>We appreciate your interest in joining <strong>{{company_name}}</strong> and wish you the best!</p>
+<p>Warm regards,<br/>{{company_name}} Hiring Team</p>`,
+    variables: ['candidate_name', 'job_title', 'company_name', 'department'],
+  },
 
   // ── Interview Scheduled (to Candidate) ──────────────────────────────────
   interview_scheduled: {
@@ -68,15 +85,17 @@ export const DEFAULT_EMAIL_TEMPLATES: Record<SystemEmailType, DefaultEmailTempla
     body_html: `<p>Hi,</p>
 <p>You have been scheduled to interview <strong>{{candidate_name}}</strong> for the <strong>{{job_title}}</strong> position at <strong>{{company_name}}</strong>.</p>
 {{detail_table}}
-<h3 style="font-size:15px;margin:20px 0 8px;">Candidate Details</h3>
-<p><strong>Name:</strong> {{candidate_name}}<br/><strong>Email:</strong> {{candidate_email}}</p>
 {{notes_section}}
+<div style="text-align:center;margin:28px 0;">
+  <a href="{{view_interview_link}}" style="display:inline-block;padding:12px 32px;background-color:#4f46e5;color:#ffffff;text-decoration:none;border-radius:6px;font-weight:600;font-size:15px;">View Interview & Candidate Details</a>
+</div>
 <p>Scheduled by: {{scheduler_name}}</p>
 <p>Best regards,<br/>{{company_name}} Hiring Team</p>`,
     variables: [
       'candidate_name', 'candidate_email', 'job_title', 'company_name', 'interview_date',
       'interview_time', 'duration_minutes', 'interview_type', 'location', 'meeting_link',
       'panel_members', 'scheduler_name', 'notes', 'detail_table', 'notes_section',
+      'view_interview_link',
     ],
   },
 
@@ -179,5 +198,18 @@ export const DEFAULT_EMAIL_TEMPLATES: Record<SystemEmailType, DefaultEmailTempla
 {{invite_content}}
 <p>Best regards,<br/>{{company_name}} Hiring Team</p>`,
     variables: ['company_name', 'invite_link', 'email', 'temp_password', 'app_url', 'invite_content'],
+  },
+
+  // ── Offer Revoked (to Candidate) ────────────────────────────────────────
+  offer_revoked: {
+    name: 'Offer Revoked',
+    subject: 'Update Regarding Your Offer — {{job_title}} at {{company_name}}',
+    body_html: `<p>Dear {{candidate_name}},</p>
+<p>We regret to inform you that the offer for the <strong>{{job_title}}</strong> position at <strong>{{company_name}}</strong> has been withdrawn.</p>
+<p>We sincerely apologize for any inconvenience this may cause. We truly appreciate your interest and the time you invested throughout the hiring process.</p>
+<p>We encourage you to stay connected and apply for future opportunities that align with your skills and experience.</p>
+<p>If you have any questions, please do not hesitate to reach out to our recruiting team.</p>
+<p>Warm regards,<br/>{{company_name}} Hiring Team</p>`,
+    variables: ['candidate_name', 'job_title', 'company_name'],
   },
 }

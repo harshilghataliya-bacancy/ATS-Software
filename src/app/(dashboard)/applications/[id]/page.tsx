@@ -22,14 +22,13 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import {
   Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle,
 } from '@/components/ui/dialog'
-import {
-  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu'
+// dropdown-menu no longer used on this page
 import { ScheduleInterviewDialog } from '@/app/(dashboard)/jobs/[id]/applications/schedule-interview-dialog'
 import { SendEmailDialog } from '@/components/email/send-email-dialog'
 import { SendWhatsAppDialog } from '@/components/whatsapp/send-whatsapp-dialog'
 import { InterviewFeedbackDialog } from '@/app/(dashboard)/jobs/[id]/applications/interview-feedback-dialog'
 import { logActivity } from '@/lib/services/activity'
+import { getEmailLogs } from '@/lib/services/email'
 import { fetchApplicationActivities } from '../actions'
 import { ActivityTimeline } from '@/components/shared/activity-timeline'
 import { resolveUserNames } from '@/app/(dashboard)/interviews/actions'
@@ -38,7 +37,7 @@ import {
   ArrowLeft, Mail, MessageSquare, FileText, UserCircle, Calendar, Link as LinkIcon,
   Download, X, Eye, Plus, Trash2, CheckCircle2, XCircle, Clock, ChevronDown,
   ClipboardList, Loader2, PenLine, Info, ExternalLink, Pencil,
-  User, MoreHorizontal, ChevronLeft, ChevronRight, Landmark, CheckCircle, RotateCcw, Link2, Check,
+  User, ChevronLeft, ChevronRight, Landmark, CheckCircle, RotateCcw, Link2, Check, Ban, Send,
 } from 'lucide-react'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -162,6 +161,12 @@ export default function ApplicationDetailPage() {
   const [showEmailPreview, setShowEmailPreview] = useState(false)
   const [userNames, setUserNames] = useState<Record<string, string>>({})
 
+  // Revoke offer state
+  const [revokeDialogOpen, setRevokeDialogOpen] = useState(false)
+  const [revokeOfferId, setRevokeOfferId] = useState<string | null>(null)
+  const [revokeReason, setRevokeReason] = useState('')
+  const [revoking, setRevoking] = useState(false)
+
   // Assessment state
   const [assessmentInvitations, setAssessmentInvitations] = useState<AnyData[]>([])
   const [sendingAssessment, setSendingAssessment] = useState(false)
@@ -181,6 +186,10 @@ export default function ApplicationDetailPage() {
   // Activity log state
   const [activityLogs, setActivityLogs] = useState<AnyData[]>([])
   const [activityLoading, setActivityLoading] = useState(false)
+
+  // Email logs state
+  const [emailLogs, setEmailLogs] = useState<AnyData[]>([])
+  const [emailLogsLoading, setEmailLogsLoading] = useState(false)
   const [creatorName, setCreatorName] = useState<string | null>(null)
 
   // Recruiter assignment
@@ -278,6 +287,13 @@ export default function ApplicationDetailPage() {
       const { data: activities } = await fetchApplicationActivities(organization.id, data.id, data.candidate_id)
       setActivityLogs(activities || [])
       setActivityLoading(false)
+
+      // Load email logs for this candidate
+      setEmailLogsLoading(true)
+      const supabaseEmail = createClient()
+      const { data: emails } = await getEmailLogs(supabaseEmail, organization.id, data.candidate_id)
+      setEmailLogs(emails || [])
+      setEmailLogsLoading(false)
 
       // Load job recruiters for assignment dropdown
       if (data.job?.id) {
@@ -499,13 +515,20 @@ export default function ApplicationDetailPage() {
     }
   }
 
-  async function handleOfferRespond(offerId: string, status: 'accepted' | 'declined' | 'revoked') {
+  async function handleOfferRespond(offerId: string, status: 'accepted' | 'declined' | 'revoked', notes?: string) {
+    if (status === 'revoked' && !notes) {
+      // Open revoke dialog instead of directly revoking
+      setRevokeOfferId(offerId)
+      setRevokeReason('')
+      setRevokeDialogOpen(true)
+      return
+    }
     setError(null)
     try {
       const res = await fetch(`/api/offers/${offerId}/respond`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status }),
+        body: JSON.stringify({ status, notes }),
       })
       const data = await res.json()
       if (!res.ok) {
@@ -516,6 +539,16 @@ export default function ApplicationDetailPage() {
     } catch {
       setError(`Failed to mark offer as ${status}`)
     }
+  }
+
+  async function handleRevokeConfirm() {
+    if (!revokeOfferId || !revokeReason.trim()) return
+    setRevoking(true)
+    await handleOfferRespond(revokeOfferId, 'revoked', revokeReason.trim())
+    setRevoking(false)
+    setRevokeDialogOpen(false)
+    setRevokeOfferId(null)
+    setRevokeReason('')
   }
 
   async function handleStageChange(newStageId: string) {
@@ -873,41 +906,20 @@ export default function ApplicationDetailPage() {
                   Rollback
                 </Button>
               )}
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button size="sm" variant="outline" className="h-8 w-8 p-0">
-                    <MoreHorizontal className="w-4 h-4" />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-48">
-                  <DropdownMenuItem
-                    onClick={() => {
-                      const url = `${window.location.origin}/careers/${organization?.slug}/${application?.job?.id}`
-                      navigator.clipboard.writeText(url)
-                      setLinkCopied(true)
-                      setTimeout(() => setLinkCopied(false), 2000)
-                    }}
-                    className="flex items-center gap-2 text-[12px]"
-                  >
-                    {linkCopied ? <Check className="w-3.5 h-3.5 text-green-600" /> : <Link2 className="w-3.5 h-3.5 text-gray-500" />}
-                    {linkCopied ? 'Link Copied!' : 'Copy Job Link'}
-                  </DropdownMenuItem>
-                  {canManageCandidates && (
-                    <DropdownMenuItem asChild>
-                      <Link href={`/candidates/${candidate?.id}`} className="flex items-center gap-2 text-[12px]">
-                        <UserCircle className="w-3.5 h-3.5 text-gray-500" />
-                        View Candidate Profile
-                      </Link>
-                    </DropdownMenuItem>
-                  )}
-                  {application.status === 'rejected' && canManageCandidates && (
-                    <DropdownMenuItem onClick={() => setRollbackOpen(true)} className="flex items-center gap-2 text-[12px] text-amber-600">
-                      <RotateCcw className="w-3.5 h-3.5" />
-                      Rollback to Previous Stage
-                    </DropdownMenuItem>
-                  )}
-                </DropdownMenuContent>
-              </DropdownMenu>
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-8 w-8 p-0"
+                title="Copy Job Link"
+                onClick={() => {
+                  const url = `${window.location.origin}/careers/${organization?.slug}/${application?.job?.id}`
+                  navigator.clipboard.writeText(url)
+                  setLinkCopied(true)
+                  setTimeout(() => setLinkCopied(false), 2000)
+                }}
+              >
+                {linkCopied ? <Check className="w-4 h-4 text-green-600" /> : <Link2 className="w-4 h-4" />}
+              </Button>
             </div>
           </div>
 
@@ -998,6 +1010,12 @@ export default function ApplicationDetailPage() {
             Activity
             {activityLogs.length > 0 && (
               <span className="ml-1.5 text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-gray-900 text-white">{activityLogs.length}</span>
+            )}
+          </TabsTrigger>
+          <TabsTrigger value="emails" className="text-[12px] data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:border-b-2 data-[state=active]:border-gray-900 rounded-none pb-2.5 pt-1 px-4">
+            Emails
+            {emailLogs.length > 0 && (
+              <span className="ml-1.5 text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-gray-900 text-white">{emailLogs.length}</span>
             )}
           </TabsTrigger>
         </TabsList>
@@ -1137,6 +1155,19 @@ export default function ApplicationDetailPage() {
             <div className="lg:col-span-2">
               <div className="lg:sticky lg:top-6 space-y-4 max-h-[calc(100vh-3rem)] overflow-y-auto">
 
+                {/* View Full Profile */}
+                {candidate?.id && (
+                  <Link href={`/candidates/${candidate.id}`} className="block">
+                    <div className="rounded-xl border border-gray-200 bg-white shadow-sm hover:border-gray-300 hover:shadow transition-all px-5 py-3 flex items-center justify-between group cursor-pointer">
+                      <div className="flex items-center gap-2.5">
+                        <UserCircle className="w-4 h-4 text-gray-500" />
+                        <span className="text-[12px] font-semibold text-gray-700 group-hover:text-gray-900">View Full Profile</span>
+                      </div>
+                      <ExternalLink className="w-3.5 h-3.5 text-gray-400 group-hover:text-gray-600" />
+                    </div>
+                  </Link>
+                )}
+
                 {/* Quick Actions */}
                 {isActive && canManageCandidates && (
                   <div className="rounded-xl border border-gray-200 bg-white shadow-sm">
@@ -1264,13 +1295,6 @@ export default function ApplicationDetailPage() {
                   </div>
                 </div>
 
-                {/* View Profile Link */}
-                <Link href={`/candidates/${candidate?.id}`} className="block">
-                  <Button variant="outline" size="sm" className="w-full justify-start gap-2 h-8 text-[12px] rounded-lg">
-                    <User className="w-3.5 h-3.5" />
-                    View Full Profile
-                  </Button>
-                </Link>
               </div>
             </div>
           </div>
@@ -1807,6 +1831,100 @@ export default function ApplicationDetailPage() {
           </div>
         </TabsContent>
 
+        {/* ============ TAB 7: Emails ============ */}
+        <TabsContent value="emails" className="mt-6">
+          <div className="rounded-xl border border-gray-200 bg-white shadow-sm overflow-hidden">
+            <div className="px-5 py-3.5 border-b border-gray-100">
+              <h3 className="text-[13px] font-semibold text-gray-900">
+                Email History
+                {emailLogs.length > 0 && (
+                  <span className="ml-2 text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-gray-900 text-white">
+                    {emailLogs.length}
+                  </span>
+                )}
+              </h3>
+              <p className="text-[11px] text-gray-500 mt-0.5">All emails sent to this candidate</p>
+            </div>
+
+            {emailLogsLoading ? (
+              <div className="p-5 space-y-3">
+                {[1, 2, 3].map((i) => (
+                  <div key={i} className="flex items-center gap-3">
+                    <Skeleton className="h-4 w-4 rounded-full" />
+                    <Skeleton className="h-4 w-48" />
+                    <Skeleton className="h-4 w-24 ml-auto" />
+                  </div>
+                ))}
+              </div>
+            ) : emailLogs.length === 0 ? (
+              <div className="py-14 text-center">
+                <Mail className="w-8 h-8 text-gray-200 mx-auto mb-3" />
+                <p className="text-sm text-gray-500 font-medium">No emails sent yet</p>
+                <p className="text-xs text-gray-400 mt-1">Emails sent to this candidate will appear here</p>
+              </div>
+            ) : (
+              <div className="divide-y divide-gray-100">
+                {emailLogs.map((log: AnyData) => {
+                  const sentDate = log.sent_at || log.created_at
+                  const dateStr = sentDate
+                    ? new Date(sentDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })
+                    : '—'
+                  const timeStr = sentDate
+                    ? new Date(sentDate).toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit', hour12: true })
+                    : ''
+                  const statusColor = log.status === 'sent'
+                    ? 'bg-emerald-500'
+                    : log.status === 'failed'
+                    ? 'bg-rose-500'
+                    : 'bg-amber-500'
+
+                  return (
+                    <details key={log.id} className="group">
+                      <summary className="flex items-center gap-3 px-5 py-3 cursor-pointer hover:bg-gray-50/60 transition-colors list-none [&::-webkit-details-marker]:hidden">
+                        <span className={`w-2 h-2 rounded-full shrink-0 ${statusColor}`} title={log.status} />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-[13px] font-medium text-gray-900 truncate">{log.subject || '(no subject)'}</p>
+                          <p className="text-[11px] text-gray-400 mt-0.5">
+                            To: {log.to_email}
+                            {log.from_email && <span className="ml-2">From: {log.from_email}</span>}
+                          </p>
+                        </div>
+                        <div className="text-right shrink-0">
+                          <p className="text-[11px] text-gray-500">{dateStr}</p>
+                          <p className="text-[10px] text-gray-400">{timeStr}</p>
+                        </div>
+                        <ChevronDown className="w-3.5 h-3.5 text-gray-300 transition-transform group-open:rotate-180 shrink-0" />
+                      </summary>
+                      <div className="px-5 pb-4 pt-1">
+                        <div className="rounded-lg border border-gray-100 bg-gray-50/50 p-4">
+                          <div className="flex items-center gap-4 mb-3 text-[11px] text-gray-400">
+                            <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-medium ${
+                              log.status === 'sent' ? 'bg-emerald-50 text-emerald-600' :
+                              log.status === 'failed' ? 'bg-rose-50 text-rose-600' :
+                              'bg-amber-50 text-amber-600'
+                            }`}>
+                              {log.status === 'sent' ? <CheckCircle2 className="w-3 h-3" /> :
+                               log.status === 'failed' ? <XCircle className="w-3 h-3" /> :
+                               <Clock className="w-3 h-3" />}
+                              {log.status}
+                            </span>
+                            {log.template?.name && (
+                              <span>Template: {log.template.name}</span>
+                            )}
+                          </div>
+                          <div
+                            className="text-[12px] text-gray-700 leading-relaxed prose prose-sm max-w-none [&_a]:text-blue-600 [&_table]:text-[11px]"
+                            dangerouslySetInnerHTML={{ __html: log.body_html || '<p class="text-gray-400 italic">No content</p>' }}
+                          />
+                        </div>
+                      </div>
+                    </details>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+        </TabsContent>
 
       </Tabs>
 
@@ -1938,6 +2056,66 @@ export default function ApplicationDetailPage() {
           )}
         </div>
       </div>
+
+      {/* Revoke Offer Dialog */}
+      <Dialog open={revokeDialogOpen} onOpenChange={(open) => { setRevokeDialogOpen(open); if (!open) { setRevokeReason(''); setRevokeOfferId(null) } }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-[15px] flex items-center gap-2">
+              <div className="w-8 h-8 rounded-full bg-orange-100 flex items-center justify-center">
+                <Ban className="w-4 h-4 text-orange-600" />
+              </div>
+              Revoke Offer
+            </DialogTitle>
+            <DialogDescription className="text-[12px]">
+              This will revoke the offer and send a notification email to the candidate.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <div className="space-y-1.5">
+              <label className="text-[12px] font-semibold text-gray-700">
+                Reason for Revocation <span className="text-red-500">*</span>
+              </label>
+              <Textarea
+                placeholder="e.g. Position has been put on hold, budget constraints, role requirements changed..."
+                value={revokeReason}
+                onChange={(e) => setRevokeReason(e.target.value)}
+                rows={3}
+                className="text-[12px] resize-none"
+              />
+              <p className="text-[10px] text-gray-400">This reason is for internal records only and will not be shared with the candidate.</p>
+            </div>
+            <div className="bg-gray-50 rounded-lg border border-gray-100 p-3 space-y-1.5">
+              <div className="flex items-center gap-1.5 text-[11px] font-semibold text-gray-500">
+                <Mail className="w-3.5 h-3.5" />
+                Email will be sent
+              </div>
+              <div className="flex items-center justify-between text-[11px]">
+                <span className="text-gray-400">To</span>
+                <span className="text-gray-700">{application?.candidate?.email}</span>
+              </div>
+              <div className="flex items-center justify-between text-[11px]">
+                <span className="text-gray-400">CC</span>
+                <span className="text-gray-700">You (recruiter)</span>
+              </div>
+            </div>
+          </div>
+          <div className="flex justify-end gap-2 pt-2">
+            <Button variant="outline" size="sm" className="text-[12px]" onClick={() => setRevokeDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              size="sm"
+              className="text-[12px] bg-orange-600 hover:bg-orange-700 gap-1.5"
+              onClick={handleRevokeConfirm}
+              disabled={revoking || !revokeReason.trim()}
+            >
+              <Send className="w-3.5 h-3.5" />
+              {revoking ? 'Sending & Revoking...' : 'Revoke & Send Email'}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* Reject Dialog */}
       <Dialog open={rejectOpen} onOpenChange={(open) => {

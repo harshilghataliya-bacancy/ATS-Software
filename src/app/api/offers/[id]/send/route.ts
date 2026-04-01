@@ -131,21 +131,36 @@ export async function POST(
   const acceptUrl = `${appUrl}/offers/respond?token=${responseToken}&action=accept`
   const declineUrl = `${appUrl}/offers/respond?token=${responseToken}&action=decline`
 
-  // Append Accept/Decline buttons to the inner body
+  // Append Accept/Decline action block
   emailHtml += `
-<div style="margin-top:32px;padding-top:24px;border-top:1px solid #e5e7eb;text-align:center;">
-  <p style="font-size:14px;color:#374151;margin-bottom:16px;">Please respond to this offer:</p>
-  <table role="presentation" cellpadding="0" cellspacing="0" style="margin:0 auto;">
+<div style="margin-top:40px;padding-top:32px;border-top:2px solid #f0f0f0;">
+  <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="background:linear-gradient(135deg,#f8fafc 0%,#f1f5f9 100%);border-radius:12px;border:1px solid #e2e8f0;">
     <tr>
-      <td style="padding-right:12px;">
-        <a href="${acceptUrl}" target="_blank" style="display:inline-block;padding:12px 32px;background-color:#16a34a;color:#ffffff;text-decoration:none;border-radius:6px;font-weight:600;font-size:14px;mso-padding-alt:0;text-underline-color:#16a34a;"><!--[if mso]><i style="letter-spacing:32px;mso-font-width:-100%;mso-text-raise:18pt;">&nbsp;</i><![endif]-->Accept Offer<!--[if mso]><i style="letter-spacing:32px;mso-font-width:-100%;">&nbsp;</i><![endif]--></a>
+      <td style="padding:28px 24px 8px;text-align:center;">
+        <p style="font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:#64748b;margin:0 0 4px;">Your Response</p>
+        <p style="font-size:14px;color:#94a3b8;margin:0 0 24px;">Please review the attached offer letter and respond below</p>
       </td>
-      <td>
-        <a href="${declineUrl}" target="_blank" style="display:inline-block;padding:12px 32px;background-color:#dc2626;color:#ffffff;text-decoration:none;border-radius:6px;font-weight:600;font-size:14px;mso-padding-alt:0;text-underline-color:#dc2626;"><!--[if mso]><i style="letter-spacing:32px;mso-font-width:-100%;mso-text-raise:18pt;">&nbsp;</i><![endif]-->Decline Offer<!--[if mso]><i style="letter-spacing:32px;mso-font-width:-100%;">&nbsp;</i><![endif]--></a>
+    </tr>
+    <tr>
+      <td style="padding:0 24px 28px;text-align:center;">
+        <table role="presentation" cellpadding="0" cellspacing="0" style="margin:0 auto;">
+          <tr>
+            <td style="padding-right:16px;">
+              <a href="${acceptUrl}" target="_blank" style="display:inline-block;padding:14px 40px;background-color:#059669;color:#ffffff;text-decoration:none;border-radius:8px;font-weight:700;font-size:15px;letter-spacing:0.3px;box-shadow:0 2px 8px rgba(5,150,105,0.35);mso-padding-alt:0;">&#10003;&nbsp;&nbsp;Accept Offer</a>
+            </td>
+            <td>
+              <a href="${declineUrl}" target="_blank" style="display:inline-block;padding:14px 40px;background-color:transparent;color:#64748b;text-decoration:none;border-radius:8px;font-weight:600;font-size:15px;letter-spacing:0.3px;border:2px solid #cbd5e1;mso-padding-alt:0;">Decline</a>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+    <tr>
+      <td style="padding:0 24px 20px;text-align:center;">
+        <p style="font-size:11px;color:#94a3b8;margin:0;line-height:1.5;">Having trouble? Copy this link to accept: <a href="${acceptUrl}" style="color:#6366f1;word-break:break-all;text-decoration:underline;">${acceptUrl}</a></p>
       </td>
     </tr>
   </table>
-  <p style="font-size:11px;color:#9ca3af;margin-top:16px;">If the buttons above don&rsquo;t work, copy and paste this link to accept:<br/><a href="${acceptUrl}" style="color:#2563eb;word-break:break-all;">${acceptUrl}</a></p>
 </div>`
 
   // Wrap in professional email chrome
@@ -227,8 +242,10 @@ export async function POST(
     }).catch(() => {})
 
     // Send email + log in background (fire-and-forget)
+    // CC the recruiter who is sending the offer
+    const recruiterCc = user.email || undefined
     const attachments = [{ filename: pdfFilename, content: new Uint8Array(pdfBuffer), contentType: 'application/pdf' }]
-    sendGmailEmail(tokenResult.accessToken, { from: fromEmail, to: candidate.email, subject, html: emailHtml, attachments })
+    sendGmailEmail(tokenResult.accessToken, { from: fromEmail, fromName: org?.name || 'Our Company', to: candidate.email, cc: recruiterCc, subject, html: emailHtml, attachments })
       .then(() => logEmail(supabase, orgId, {
         candidate_id: candidate.id,
         application_id: offer.application_id,

@@ -52,9 +52,18 @@ export async function POST(request: NextRequest) {
   const fromEmail = tokenResult.fromEmail || user.email!
   const accessToken = tokenResult.accessToken
 
+  // Fetch org name for fromName
+  const { data: org } = await supabase
+    .from('organizations')
+    .select('name')
+    .eq('id', orgId)
+    .single()
+  const orgName = org?.name || 'Our Company'
+
   try {
     await sendGmailEmail(accessToken, {
       from: fromEmail,
+      fromName: orgName,
       to,
       subject,
       html,

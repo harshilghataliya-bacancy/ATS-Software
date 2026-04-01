@@ -173,7 +173,9 @@ export async function sendGmailEmail(
   accessToken: string,
   params: {
     from: string
+    fromName?: string
     to: string
+    cc?: string
     subject: string
     html: string
     attachments?: Array<{
@@ -183,9 +185,14 @@ export async function sendGmailEmail(
     }>
   }
 ) {
+  const fromField = params.fromName
+    ? `"${params.fromName.replace(/"/g, '')}" <${params.from}>`
+    : params.from
+
   const mail = new MailComposer({
-    from: params.from,
+    from: fromField,
     to: params.to,
+    cc: params.cc || undefined,
     subject: params.subject,
     html: params.html,
     attachments: params.attachments?.map((a) => ({

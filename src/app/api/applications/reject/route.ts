@@ -158,6 +158,7 @@ async function sendRejectionEmail(
   try {
     await sendGmailEmail(tokenResult.accessToken, {
       from: tokenResult.fromEmail,
+      fromName: companyName,
       to: candidateEmail,
       subject,
       html: bodyHtml,

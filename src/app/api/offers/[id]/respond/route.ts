@@ -3,6 +3,9 @@ import { createClient } from '@/lib/supabase/server'
 import { respondToOffer, expireOffer, revokeOffer } from '@/lib/services/offers'
 import { hireApplication } from '@/lib/services/applications'
 import { logActivity } from '@/lib/services/activity'
+import { getOrCreateTemplate, renderEmail } from '@/lib/email-templates'
+import { getValidAccessToken, sendGmailEmail } from '@/lib/services/gmail'
+import { logEmail } from '@/lib/services/email'
 
 export async function POST(
   request: NextRequest,
@@ -50,7 +53,39 @@ export async function POST(
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 500 })
     }
-    if (data?.application_id) logActivity(supabase, orgId, user.id, 'application', data.application_id, 'offer_revoked', { offer_id: id }).catch(() => {})
+
+    // Fetch offer details for email + activity
+    const { data: offerDetail } = await supabase
+      .from('offer_letters')
+      .select('application_id, applications(candidate_id, candidates(first_name, last_name, email), jobs(title, department))')
+      .eq('id', id)
+      .single()
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const info = offerDetail as any
+    const candidate = info?.applications?.candidates
+    const job = info?.applications?.jobs
+    const candidateName = candidate ? `${candidate.first_name} ${candidate.last_name}` : ''
+    const candidateEmail = candidate?.email || ''
+    const applicationId = info?.application_id || data?.application_id
+
+    // Log activity with reason
+    if (applicationId) {
+      logActivity(supabase, orgId, user.id, 'application', applicationId, 'offer_revoked', {
+        offer_id: id,
+        reason: notes || undefined,
+        candidate_name: candidateName,
+        job_title: job?.title || undefined,
+      }).catch(() => {})
+    }
+
+    // Send revocation email to candidate (CC recruiter)
+    if (candidateEmail) {
+      sendRevokeEmail(supabase, orgId, user, candidateEmail, candidateName, job, notes, applicationId, candidate?.id).catch((err) =>
+        console.error('[Revoke Email Error]', err)
+      )
+    }
+
     return NextResponse.json({ success: true, data })
   }
 
@@ -87,4 +122,74 @@ export async function POST(
   }
 
   return NextResponse.json({ success: true, data })
+}
+
+// ---------------------------------------------------------------------------
+// Send revocation email helper
+// ---------------------------------------------------------------------------
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function sendRevokeEmail(
+  supabase: any,
+  orgId: string,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  user: any,
+  candidateEmail: string,
+  candidateName: string,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  job: any,
+  reason: string | undefined,
+  applicationId: string | undefined,
+  candidateId: string | undefined,
+) {
+  // Get org name
+  const { data: org } = await supabase
+    .from('organizations')
+    .select('name')
+    .eq('id', orgId)
+    .single()
+
+  const companyName = org?.name || 'Our Company'
+
+  // Get Gmail token
+  const tokenResult = await getValidAccessToken(supabase, user.id, orgId)
+  if (!tokenResult.accessToken) return
+
+  // Get template and render (reason is internal only — not included in candidate email)
+  const template = await getOrCreateTemplate(supabase, orgId, 'offer_revoked', user.id)
+  const vars: Record<string, string> = {
+    candidate_name: candidateName,
+    job_title: job?.title || '',
+    company_name: companyName,
+    revoke_reason: '',
+    reason_section: '',
+  }
+
+  const { subject, html } = renderEmail(template, vars, companyName)
+  const fromEmail = tokenResult.fromEmail || user.email!
+  const recruiterCc = user.email || undefined
+
+  await sendGmailEmail(tokenResult.accessToken, {
+    from: fromEmail,
+    fromName: companyName,
+    to: candidateEmail,
+    cc: recruiterCc,
+    subject,
+    html,
+  })
+
+  // Log the email
+  if (candidateId) {
+    await logEmail(supabase, orgId, {
+      candidate_id: candidateId,
+      application_id: applicationId,
+      template_id: template.template_id || undefined,
+      subject,
+      body_html: html,
+      to_email: candidateEmail,
+      from_email: fromEmail,
+      status: 'sent',
+      sent_at: new Date().toISOString(),
+    }).catch(() => {})
+  }
 }

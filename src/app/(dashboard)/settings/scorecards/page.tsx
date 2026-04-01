@@ -19,8 +19,8 @@ import {
 } from '@/components/ui/dropdown-menu'
 import {
   ClipboardList, Plus, PenLine, Trash2, GripVertical,
-  Star, ToggleLeft, FileText, ChevronRight, AlertTriangle,
-  MoreHorizontal,
+  Star, ToggleLeft, FileText, ChevronDown, AlertTriangle,
+  MoreHorizontal, Weight,
 } from 'lucide-react'
 
 interface CriteriaRow {
@@ -41,10 +41,10 @@ interface ScorecardWithCriteria {
   scorecard_template_criteria: CriteriaRow[]
 }
 
-const RATING_TYPE_CONFIG: Record<string, { icon: typeof Star; label: string; color: string; bgColor: string }> = {
-  rating: { icon: Star, label: '1-5 Rating', color: 'text-amber-600', bgColor: 'bg-amber-50 border-amber-100' },
-  yes_no: { icon: ToggleLeft, label: 'Yes / No', color: 'text-blue-600', bgColor: 'bg-blue-50 border-blue-100' },
-  text: { icon: FileText, label: 'Text', color: 'text-gray-600', bgColor: 'bg-gray-50 border-gray-100' },
+const RATING_TYPE_CONFIG: Record<string, { icon: typeof Star; label: string; shortLabel: string; color: string; bgColor: string }> = {
+  rating: { icon: Star, label: '1-5 Rating', shortLabel: 'Rating', color: 'text-amber-600', bgColor: 'bg-amber-50 border-amber-200/60' },
+  yes_no: { icon: ToggleLeft, label: 'Yes / No', shortLabel: 'Y/N', color: 'text-blue-600', bgColor: 'bg-blue-50 border-blue-200/60' },
+  text: { icon: FileText, label: 'Text', shortLabel: 'Text', color: 'text-slate-600', bgColor: 'bg-slate-50 border-slate-200/60' },
 }
 
 export default function ScorecardsPage() {
@@ -198,168 +198,168 @@ export default function ScorecardsPage() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       {/* Header */}
       <div className="flex items-center justify-between">
         <p className="text-sm text-gray-500">Create evaluation scorecards for standardized interview assessments</p>
         <div className="flex items-center gap-2">
-          <Button size="sm" variant="outline" onClick={handleSeedDefaults} disabled={seeding} className="gap-1.5">
+          <Button size="sm" variant="outline" onClick={handleSeedDefaults} disabled={seeding} className="gap-1.5 h-8 text-xs">
             {seeding ? 'Seeding...' : 'Seed Defaults'}
           </Button>
-          <Button size="sm" onClick={openCreate} className="gap-1.5">
-            <Plus className="w-4 h-4" /> New Scorecard
+          <Button size="sm" onClick={openCreate} className="gap-1.5 h-8 text-xs">
+            <Plus className="w-3.5 h-3.5" /> New Scorecard
           </Button>
         </div>
       </div>
 
       {loading ? (
-        <div className="space-y-4">
-          {[1, 2].map((i) => (
-            <div key={i} className="rounded-xl border border-gray-200 p-6">
-              <Skeleton className="h-5 w-48 mb-3" />
-              <Skeleton className="h-4 w-72 mb-5" />
-              <div className="flex gap-3">
-                <Skeleton className="h-8 w-24 rounded-full" />
-                <Skeleton className="h-8 w-24 rounded-full" />
-              </div>
+        <div className="rounded-lg border border-gray-200 overflow-hidden">
+          {[1, 2, 3].map((i) => (
+            <div key={i} className="flex items-center gap-4 px-4 py-3 border-b border-gray-100 last:border-b-0">
+              <Skeleton className="h-4 w-32" />
+              <Skeleton className="h-4 w-48" />
+              <Skeleton className="h-5 w-14 rounded-full ml-auto" />
             </div>
           ))}
         </div>
       ) : scorecards.length === 0 ? (
-        <div className="rounded-xl border-2 border-dashed border-gray-200 py-16 text-center">
-          <div className="mx-auto w-12 h-12 rounded-full bg-gray-100 flex items-center justify-center mb-4">
-            <ClipboardList className="w-5 h-5 text-gray-400" />
+        <div className="rounded-xl border-2 border-dashed border-gray-200 py-14 text-center">
+          <div className="mx-auto w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center mb-3">
+            <ClipboardList className="w-4 h-4 text-gray-400" />
           </div>
-          <p className="text-gray-500 font-medium mb-1">No scorecards yet</p>
-          <p className="text-sm text-gray-400 mb-4 max-w-xs mx-auto">
+          <p className="text-gray-500 font-medium text-sm mb-1">No scorecards yet</p>
+          <p className="text-xs text-gray-400 mb-4 max-w-xs mx-auto">
             Create scorecards to standardize your interview evaluation process
           </p>
-          <Button size="sm" onClick={openCreate} variant="outline" className="gap-1.5">
-            <Plus className="w-4 h-4" /> Create First Scorecard
+          <Button size="sm" onClick={openCreate} variant="outline" className="gap-1.5 h-8 text-xs">
+            <Plus className="w-3.5 h-3.5" /> Create First Scorecard
           </Button>
         </div>
       ) : (
-        <div className="grid gap-4">
+        <div className="rounded-lg border border-gray-200 bg-white overflow-hidden">
+          {/* Table Header */}
+          <div className="grid grid-cols-[1fr_auto_auto_auto_auto] gap-4 items-center px-4 py-2 bg-gray-50 border-b border-gray-200 text-[11px] font-medium text-gray-400 uppercase tracking-wider">
+            <span>Scorecard</span>
+            <span className="w-20 text-center">Criteria</span>
+            <span className="w-20 text-center">Weight</span>
+            <span className="w-16 text-center">Status</span>
+            <span className="w-16" />
+          </div>
+
           {scorecards.map((sc) => {
             const criteriaList = sc.scorecard_template_criteria ?? []
             const criteriaCount = criteriaList.length
             const isExpanded = expandedId === sc.id
             const totalWeight = criteriaList.reduce((sum, c) => sum + c.weight, 0)
 
-            // Count by type
             const typeCounts = criteriaList.reduce<Record<string, number>>((acc, c) => {
               acc[c.rating_type] = (acc[c.rating_type] || 0) + 1
               return acc
             }, {})
 
             return (
-              <div
-                key={sc.id}
-                className="group rounded-xl border border-gray-200 bg-white hover:border-gray-300 hover:shadow-sm transition-all duration-200 overflow-hidden"
-              >
-                {/* Card Header */}
+              <div key={sc.id} className="border-b border-gray-100 last:border-b-0 group">
+                {/* Row */}
                 <div
-                  className="flex items-center gap-4 px-6 py-4 cursor-pointer"
+                  className="grid grid-cols-[1fr_auto_auto_auto_auto] gap-4 items-center px-4 py-2.5 cursor-pointer hover:bg-gray-50/60 transition-colors"
                   onClick={() => setExpandedId(isExpanded ? null : sc.id)}
                 >
-                  <div className={`w-10 h-10 rounded-lg flex items-center justify-center shrink-0 ${
-                    sc.is_active ? 'bg-blue-50 text-blue-600' : 'bg-gray-50 text-gray-400'
-                  }`}>
-                    <ClipboardList className="w-5 h-5" />
+                  {/* Title + Description + Type badges */}
+                  <div className="min-w-0 flex items-center gap-3">
+                    <ChevronDown className={`w-3.5 h-3.5 text-gray-400 shrink-0 transition-transform duration-200 ${isExpanded ? '' : '-rotate-90'}`} />
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="text-[13px] font-semibold text-gray-900 truncate">{sc.title}</span>
+                        {/* Compact type pills */}
+                        <div className="hidden sm:flex items-center gap-1">
+                          {Object.entries(typeCounts).map(([type, count]) => {
+                            const config = RATING_TYPE_CONFIG[type]
+                            if (!config) return null
+                            const TypeIcon = config.icon
+                            return (
+                              <span key={type} className={`inline-flex items-center gap-0.5 px-1.5 py-px rounded text-[9px] font-medium border ${config.bgColor} ${config.color}`}>
+                                <TypeIcon className="w-2.5 h-2.5" />
+                                {count}
+                              </span>
+                            )
+                          })}
+                        </div>
+                      </div>
+                      {sc.description && (
+                        <p className="text-[11px] text-gray-400 truncate mt-px">{sc.description}</p>
+                      )}
+                    </div>
                   </div>
 
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2.5">
-                      <h3 className="text-[15px] font-semibold text-gray-900 truncate">{sc.title}</h3>
-                      <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium border ${
-                        sc.is_active
-                          ? 'bg-emerald-50 text-emerald-600 border-emerald-100'
-                          : 'bg-gray-50 text-gray-400 border-gray-100'
-                      }`}>
-                        {sc.is_active ? 'Active' : 'Inactive'}
-                      </span>
-                    </div>
-                    {sc.description && (
-                      <p className="text-[12px] text-gray-400 mt-0.5 truncate">{sc.description}</p>
-                    )}
+                  {/* Criteria count */}
+                  <span className="w-20 text-center text-[12px] text-gray-500 tabular-nums">{criteriaCount}</span>
+
+                  {/* Total weight */}
+                  <span className="w-20 text-center text-[12px] text-gray-500 tabular-nums flex items-center justify-center gap-1">
+                    <Weight className="w-3 h-3 text-gray-300" />
+                    {totalWeight}
+                  </span>
+
+                  {/* Status */}
+                  <div className="w-16 flex justify-center">
+                    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium ${
+                      sc.is_active
+                        ? 'bg-emerald-50 text-emerald-600'
+                        : 'bg-gray-100 text-gray-400'
+                    }`}>
+                      {sc.is_active ? 'Active' : 'Inactive'}
+                    </span>
                   </div>
 
-                  {/* Quick Stats */}
-                  <div className="flex items-center gap-3 shrink-0">
-                    <div className="text-right hidden sm:block">
-                      <p className="text-[11px] text-gray-400">{criteriaCount} criteria</p>
-                    </div>
-
+                  {/* Actions */}
+                  <div className="w-16 flex justify-end">
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
                         <Button
                           variant="ghost"
                           size="sm"
-                          className="h-8 w-8 p-0 opacity-0 group-hover:opacity-100 transition-opacity"
+                          className="h-7 w-7 p-0 opacity-0 group-hover:opacity-100 transition-opacity"
                           onClick={(e) => e.stopPropagation()}
                         >
-                          <MoreHorizontal className="w-4 h-4" />
+                          <MoreHorizontal className="w-3.5 h-3.5" />
                         </Button>
                       </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end" className="w-36">
-                        <DropdownMenuItem onClick={() => openEdit(sc)} className="gap-2 text-[13px]">
-                          <PenLine className="w-3.5 h-3.5" /> Edit
+                      <DropdownMenuContent align="end" className="w-32">
+                        <DropdownMenuItem onClick={() => openEdit(sc)} className="gap-2 text-[12px]">
+                          <PenLine className="w-3 h-3" /> Edit
                         </DropdownMenuItem>
                         <DropdownMenuItem
                           onClick={() => setDeleteId(sc.id)}
-                          className="gap-2 text-[13px] text-red-600 focus:text-red-600"
+                          className="gap-2 text-[12px] text-red-600 focus:text-red-600"
                         >
-                          <Trash2 className="w-3.5 h-3.5" /> Delete
+                          <Trash2 className="w-3 h-3" /> Delete
                         </DropdownMenuItem>
                       </DropdownMenuContent>
                     </DropdownMenu>
-
-                    <ChevronRight className={`w-4 h-4 text-gray-300 transition-transform duration-200 ${isExpanded ? 'rotate-90' : ''}`} />
                   </div>
                 </div>
 
-                {/* Type Pills Row */}
-                {!isExpanded && criteriaCount > 0 && (
-                  <div className="px-6 pb-3.5 flex items-center gap-2">
-                    {Object.entries(typeCounts).map(([type, count]) => {
-                      const config = RATING_TYPE_CONFIG[type]
-                      if (!config) return null
-                      const TypeIcon = config.icon
-                      return (
-                        <span key={type} className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium border ${config.bgColor} ${config.color}`}>
-                          <TypeIcon className="w-3 h-3" />
-                          {count} {config.label}
-                        </span>
-                      )
-                    })}
-                  </div>
-                )}
-
                 {/* Expanded Criteria */}
                 {isExpanded && criteriaList.length > 0 && (
-                  <div className="border-t border-gray-100 px-6 py-4 bg-gray-50/30">
-                    <div className="flex items-center justify-between mb-3">
-                      <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider">Evaluation Criteria</p>
-                      <p className="text-[11px] text-gray-400">Total weight: <span className="font-semibold tabular-nums">{totalWeight}</span></p>
-                    </div>
-                    <div className="space-y-2">
+                  <div className="bg-gray-50/50 border-t border-gray-100 px-4 py-3">
+                    <div className="ml-6 space-y-1">
                       {[...criteriaList]
                         .sort((a, b) => a.display_order - b.display_order)
                         .map((c, i) => {
                           const typeConfig = RATING_TYPE_CONFIG[c.rating_type] || RATING_TYPE_CONFIG.rating
                           const TypeIcon = typeConfig.icon
                           return (
-                            <div key={c.id || i} className="flex items-center gap-3 bg-white rounded-lg border border-gray-100 px-3.5 py-2.5">
-                              <span className="text-[11px] font-bold text-gray-300 w-5 text-center tabular-nums">{i + 1}</span>
-                              <div className="flex-1 min-w-0">
-                                <p className="text-[13px] font-medium text-gray-800">{c.name}</p>
-                                {c.description && <p className="text-[11px] text-gray-400 truncate mt-0.5">{c.description}</p>}
-                              </div>
-                              <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium border shrink-0 ${typeConfig.bgColor} ${typeConfig.color}`}>
-                                <TypeIcon className="w-3 h-3" />
-                                {typeConfig.label}
+                            <div key={c.id || i} className="flex items-center gap-3 py-1.5 px-3 rounded-md hover:bg-white/70 transition-colors">
+                              <span className="text-[10px] font-semibold text-gray-300 w-4 text-right tabular-nums">{i + 1}</span>
+                              <span className="text-[12px] font-medium text-gray-700 flex-1 truncate">{c.name}</span>
+                              {c.description && (
+                                <span className="text-[10px] text-gray-400 truncate max-w-[200px] hidden lg:block">{c.description}</span>
+                              )}
+                              <span className={`inline-flex items-center gap-0.5 px-1.5 py-px rounded text-[9px] font-medium border shrink-0 ${typeConfig.bgColor} ${typeConfig.color}`}>
+                                <TypeIcon className="w-2.5 h-2.5" />
+                                {typeConfig.shortLabel}
                               </span>
-                              <span className="text-[11px] font-semibold text-gray-400 bg-gray-50 px-2 py-0.5 rounded-md border border-gray-100 tabular-nums shrink-0">
+                              <span className="text-[10px] text-gray-400 tabular-nums shrink-0 w-8 text-right">
                                 w:{c.weight}
                               </span>
                             </div>
@@ -368,13 +368,6 @@ export default function ScorecardsPage() {
                     </div>
                   </div>
                 )}
-
-                {/* Footer */}
-                <div className="border-t border-gray-100 px-6 py-2.5 flex items-center gap-6 text-[12px] text-gray-400">
-                  <span className="tabular-nums">{criteriaCount} {criteriaCount === 1 ? 'criterion' : 'criteria'}</span>
-                  <span className="w-px h-3 bg-gray-200" />
-                  <span>Total weight: {totalWeight}</span>
-                </div>
               </div>
             )
           })}

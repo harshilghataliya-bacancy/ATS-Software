@@ -421,12 +421,12 @@ export default function NewOfferWizardPage() {
       if (gmailConnected) {
         const sendRes = await fetch(`/api/offers/${offerId}/send`, { method: 'POST' })
         if (!sendRes.ok) {
-          router.push(`/offers/${offerId}`)
+          router.push(redirectTo)
           return
         }
       }
 
-      router.push(`/offers/${offerId}`)
+      router.push(redirectTo)
     } catch {
       setError(`Failed to ${isRevisionMode ? 'revise' : 'create'} offer`)
     } finally {

@@ -14,7 +14,7 @@ const ACTION_CONFIG: Record<string, { icon: string; color: string; label: string
   'offer_sent': { icon: 'send', color: 'bg-blue-100 text-blue-600', label: 'Offer Sent' },
   'offer_accepted': { icon: 'check', color: 'bg-green-100 text-green-600', label: 'Offer Accepted' },
   'offer_declined': { icon: 'x', color: 'bg-red-100 text-red-600', label: 'Offer Declined' },
-  'offer_revoked': { icon: 'x', color: 'bg-red-100 text-red-600', label: 'Offer Revoked' },
+  'offer_revoked': { icon: 'x', color: 'bg-orange-100 text-orange-600', label: 'Offer Revoked' },
   'email_sent': { icon: 'email', color: 'bg-sky-100 text-sky-600', label: 'Email Sent' },
   'feedback_submitted': { icon: 'feedback', color: 'bg-amber-100 text-amber-600', label: 'Feedback Submitted' },
   'application_created': { icon: 'plus', color: 'bg-blue-100 text-blue-600', label: 'Application Created' },
@@ -242,7 +242,13 @@ export function ActivityTimeline({ activities, loading, emptyMessage = 'No activ
                   <p className="text-[12px] text-rose-600 mt-0.5">{activity.metadata.reason}</p>
                 </div>
               )}
-              {description && activity.action !== 'application_rejected' && activity.action !== 'interview_cancelled' && (
+              {activity.action === 'offer_revoked' && activity.metadata?.reason && (
+                <div className="bg-orange-50 border border-orange-200 rounded-lg px-3 py-2 mt-1.5">
+                  <p className="text-[11px] font-medium text-orange-700">Revocation Reason:</p>
+                  <p className="text-[12px] text-orange-600 mt-0.5">{activity.metadata.reason}</p>
+                </div>
+              )}
+              {description && activity.action !== 'application_rejected' && activity.action !== 'interview_cancelled' && activity.action !== 'offer_revoked' && (
                 <p className="text-xs text-gray-500 mt-0.5">{description}</p>
               )}
               {activity.entity_type && activity.action !== 'stage_changed' && !activity.metadata?.user_name && (

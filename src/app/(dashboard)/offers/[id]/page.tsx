@@ -21,8 +21,9 @@ import {
 import {
   ArrowLeft, Download, Loader2, MoreHorizontal,
   CheckCircle2, XCircle, Ban, User, Briefcase,
-  MapPin, Calendar, DollarSign, Building2, Clock, Edit2, History,
+  MapPin, Calendar, DollarSign, Building2, Clock, Edit2, History, Mail, Send,
 } from 'lucide-react'
+import { Label } from '@/components/ui/label'
 
 interface SalaryComponent {
   name: string
@@ -356,16 +357,16 @@ export default function OfferDetailPage() {
                 </button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-48">
-                <DropdownMenuItem onClick={() => setAcceptDialogOpen(true)}>
+                <DropdownMenuItem onSelect={() => setTimeout(() => setAcceptDialogOpen(true), 0)}>
                   <CheckCircle2 className="w-3.5 h-3.5 mr-2 text-emerald-500" />
                   <span className="text-[13px]">Mark Accepted</span>
                 </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => setDeclineDialogOpen(true)}>
+                <DropdownMenuItem onSelect={() => setTimeout(() => setDeclineDialogOpen(true), 0)}>
                   <XCircle className="w-3.5 h-3.5 mr-2 text-rose-500" />
                   <span className="text-[13px]">Mark Declined</span>
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={() => setRevokeDialogOpen(true)} className="text-orange-600">
+                <DropdownMenuItem onSelect={() => setTimeout(() => setRevokeDialogOpen(true), 0)} className="text-orange-600">
                   <Ban className="w-3.5 h-3.5 mr-2" />
                   <span className="text-[13px]">Revoke Offer</span>
                 </DropdownMenuItem>
@@ -773,31 +774,63 @@ export default function OfferDetailPage() {
       </AlertDialog>
 
       {/* Revoke */}
-      <AlertDialog open={revokeDialogOpen} onOpenChange={setRevokeDialogOpen}>
-        <AlertDialogContent>
+      <AlertDialog open={revokeDialogOpen} onOpenChange={(open) => { setRevokeDialogOpen(open); if (!open) setRevokeNotes('') }}>
+        <AlertDialogContent className="max-w-md">
           <AlertDialogHeader>
-            <AlertDialogTitle className="text-[15px]">Revoke Offer?</AlertDialogTitle>
-            <AlertDialogDescription className="text-[12px]">
-              This will revoke the offer on behalf of the company.
-            </AlertDialogDescription>
+            <div className="flex items-center gap-3 mb-1">
+              <div className="w-10 h-10 rounded-full bg-orange-100 flex items-center justify-center shrink-0">
+                <Ban className="w-5 h-5 text-orange-600" />
+              </div>
+              <div>
+                <AlertDialogTitle className="text-[15px]">Revoke Offer</AlertDialogTitle>
+                <AlertDialogDescription className="text-[12px] mt-0.5">
+                  This will revoke the offer and notify <strong className="text-gray-700">{candidateName}</strong> via email.
+                </AlertDialogDescription>
+              </div>
+            </div>
           </AlertDialogHeader>
-          <div className="py-2">
-            <Textarea
-              placeholder="Reason for revoking (optional)"
-              value={revokeNotes}
-              onChange={(e) => setRevokeNotes(e.target.value)}
-              rows={3}
-              className="text-[12px]"
-            />
+
+          <div className="space-y-3 py-2">
+            <div className="space-y-1.5">
+              <Label className="text-[12px] font-semibold text-gray-700">
+                Reason for Revocation <span className="text-red-500">*</span>
+              </Label>
+              <Textarea
+                placeholder="e.g. Position has been put on hold, budget constraints, role requirements changed..."
+                value={revokeNotes}
+                onChange={(e) => setRevokeNotes(e.target.value)}
+                rows={3}
+                className="text-[12px] resize-none"
+              />
+              <p className="text-[10px] text-gray-400">This reason is for internal records only and will not be shared with the candidate.</p>
+            </div>
+
+            {/* Email preview info */}
+            <div className="bg-gray-50 rounded-lg border border-gray-100 p-3 space-y-1.5">
+              <div className="flex items-center gap-1.5 text-[11px] font-semibold text-gray-500">
+                <Mail className="w-3.5 h-3.5" />
+                Email will be sent
+              </div>
+              <div className="flex items-center justify-between text-[11px]">
+                <span className="text-gray-400">To</span>
+                <span className="text-gray-700">{candidate?.email}</span>
+              </div>
+              <div className="flex items-center justify-between text-[11px]">
+                <span className="text-gray-400">CC</span>
+                <span className="text-gray-700">You (recruiter)</span>
+              </div>
+            </div>
           </div>
+
           <AlertDialogFooter>
             <AlertDialogCancel className="text-[12px]">Cancel</AlertDialogCancel>
             <AlertDialogAction
-              className="text-[12px] bg-orange-600 hover:bg-orange-700"
+              className="text-[12px] bg-orange-600 hover:bg-orange-700 gap-1.5"
               onClick={() => handleRespond('revoked', revokeNotes || undefined)}
-              disabled={responding}
+              disabled={responding || !revokeNotes.trim()}
             >
-              {responding ? 'Revoking...' : 'Revoke Offer'}
+              <Send className="w-3.5 h-3.5" />
+              {responding ? 'Sending & Revoking...' : 'Revoke & Send Email'}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

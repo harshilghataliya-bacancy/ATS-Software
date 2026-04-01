@@ -60,7 +60,7 @@ async function autoInviteInterviewer(
           invite_content: inviteContent,
         }, companyName)
 
-        sendGmailEmail(accessToken, { from: fromEmail, to: email, subject, html })
+        sendGmailEmail(accessToken, { from: fromEmail, fromName: companyName, to: email, subject, html })
           .catch((err) => console.error('[Invite email error]', err))
       }
     } else {
@@ -102,7 +102,7 @@ async function autoInviteInterviewer(
               invite_content: inviteContent,
             }, companyName)
 
-            sendGmailEmail(accessToken, { from: fromEmail, to: email, subject, html })
+            sendGmailEmail(accessToken, { from: fromEmail, fromName: companyName, to: email, subject, html })
               .catch((err) => console.error('[Credentials email error]', err))
           }
         } else {
@@ -219,12 +219,15 @@ export async function POST(request: NextRequest) {
   const companyName = org?.name || 'Our Company'
   const orgSlug = org?.slug || ''
 
-  // Get job_id from application for public job URL
+  // Get job_id + candidate resume from application
   const { data: appData } = await supabase
     .from('applications')
-    .select('job_id')
+    .select('job_id, candidate_id, candidates(resume_url)')
     .eq('id', application_id)
     .single()
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const candidateResumeUrl: string | null = (appData as any)?.candidates?.resume_url || null
 
   const appUrl = (process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000').replace(/\/+$/, '')
   const publicJobUrl = orgSlug && appData?.job_id
@@ -358,7 +361,18 @@ export async function POST(request: NextRequest) {
   const dateStr = scheduledDate.toLocaleDateString('en-IN', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', timeZone: 'Asia/Kolkata' })
   const timeStr = scheduledDate.toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit', hour12: true, timeZone: 'Asia/Kolkata' }) + ' IST'
 
-  const detailTable = buildDetailTable([
+  // Detail table for CANDIDATE email (no panel members)
+  const candidateDetailTable = buildDetailTable([
+    { label: 'Job', value: job_title, href: publicJobUrl || undefined },
+    { label: 'Interview Date & Time', value: `${dateStr} | ${timeStr}` },
+    { label: 'Duration', value: `${duration_minutes} minutes` },
+    { label: 'Type', value: interview_type === 'onsite' ? 'Face-to-Face' : interview_type },
+    { label: 'Location', value: interviewLocation || null },
+    { label: 'Meeting Link', value: meetLink ? 'Join Meeting' : null, href: meetLink || undefined },
+  ])
+
+  // Detail table for INTERVIEWER email (includes panel members)
+  const interviewerDetailTable = buildDetailTable([
     { label: 'Candidate', value: candidate_name },
     { label: 'Job', value: job_title, href: publicJobUrl || undefined },
     { label: 'Interview Date & Time', value: `${dateStr} | ${timeStr}` },
@@ -371,7 +385,30 @@ export async function POST(request: NextRequest) {
 
   const notesSection = notes ? `<p><strong>Notes:</strong> ${notes}</p>` : ''
 
-  const sharedVars: Record<string, string> = {
+  const viewInterviewLink = interview?.id ? `${appUrl}/interviews/${interview.id}` : ''
+
+  // Shared vars for candidate email
+  const candidateVars: Record<string, string> = {
+    candidate_name,
+    candidate_email: candidate_email || '',
+    job_title,
+    company_name: companyName,
+    interview_date: dateStr,
+    interview_time: timeStr,
+    duration_minutes: String(duration_minutes),
+    interview_type: interview_type === 'onsite' ? 'Face-to-Face' : interview_type,
+    location: interviewLocation || '',
+    meeting_link: meetLink || '',
+    scheduler_name: `${schedulerName} (${schedulerEmail})`,
+    panel_members: '',
+    notes: notes || '',
+    detail_table: candidateDetailTable,
+    notes_section: notesSection,
+    view_interview_link: viewInterviewLink,
+  }
+
+  // Shared vars for interviewer email
+  const interviewerVars: Record<string, string> = {
     candidate_name,
     candidate_email: candidate_email || '',
     job_title,
@@ -385,19 +422,43 @@ export async function POST(request: NextRequest) {
     scheduler_name: `${schedulerName} (${schedulerEmail})`,
     panel_members: interviewerEmails.join(', '),
     notes: notes || '',
-    detail_table: detailTable,
+    detail_table: interviewerDetailTable,
     notes_section: notesSection,
+    view_interview_link: viewInterviewLink,
   }
 
-  // --- Email to candidate ---
+  // --- Fetch candidate resume for attachment ---
+  let resumeAttachment: { filename: string; content: Buffer | Uint8Array; contentType: string } | null = null
+  if (candidateResumeUrl) {
+    try {
+      const res = await fetch(candidateResumeUrl)
+      if (res.ok) {
+        const buffer = Buffer.from(await res.arrayBuffer())
+        const urlPath = new URL(candidateResumeUrl).pathname
+        const ext = urlPath.split('.').pop() || 'pdf'
+        const safeName = candidate_name.replace(/[^a-zA-Z0-9]/g, '_')
+        resumeAttachment = {
+          filename: `${safeName}_Resume.${ext}`,
+          content: buffer,
+          contentType: ext === 'pdf' ? 'application/pdf' : 'application/octet-stream',
+        }
+      }
+    } catch (err) {
+      console.error('[Resume fetch for attachment]', err)
+    }
+  }
+
+  // --- Email to candidate (no panel members, recruiter in CC) ---
   if (tokenResult.accessToken && candidate_email) {
     try {
       const candidateTemplate = await getOrCreateTemplate(supabase, orgId, 'interview_scheduled')
-      const { subject: candidateSubject, html: candidateHtml } = renderEmail(candidateTemplate, sharedVars, companyName)
+      const { subject: candidateSubject, html: candidateHtml } = renderEmail(candidateTemplate, candidateVars, companyName)
 
       await sendGmailEmail(tokenResult.accessToken, {
         from: fromEmail,
+        fromName: companyName,
         to: candidate_email,
+        cc: schedulerEmail !== candidate_email ? schedulerEmail : undefined,
         subject: candidateSubject,
         html: candidateHtml,
       })
@@ -416,40 +477,23 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  // --- Email to ALL interviewers + recruiter (scheduler) ---
+  // --- Email to ALL interviewers (recruiter in CC, resume attached) ---
   if (tokenResult.accessToken) {
     const interviewerTemplate = await getOrCreateTemplate(supabase, orgId, 'interview_scheduled_interviewer')
-    const { subject: interviewerSubject, html: interviewerHtml } = renderEmail(interviewerTemplate, sharedVars, companyName)
+    const { subject: interviewerSubject, html: interviewerHtml } = renderEmail(interviewerTemplate, interviewerVars, companyName)
 
-    // Send to all interviewers
-    for (const email of interviewerEmails) {
-      try {
-        await sendGmailEmail(tokenResult.accessToken, {
-          from: fromEmail,
-          to: email,
-          subject: interviewerSubject,
-          html: interviewerHtml,
-        })
-        console.log(`[Interview Email] Sent to interviewer: ${email}`)
-      } catch (err) {
-        console.error(`[Interviewer Email Error] Failed to send to ${email}:`, err)
-      }
-    }
-
-    // Also send to the recruiter/scheduler if they're not already in the interviewer list
-    const isSchedulerInList = interviewerEmails.some((e) => e.toLowerCase() === schedulerEmail.toLowerCase())
-    if (!isSchedulerInList && schedulerEmail) {
-      try {
-        await sendGmailEmail(tokenResult.accessToken, {
-          from: fromEmail,
-          to: schedulerEmail,
-          subject: `[Confirmation] ${interviewerSubject}`,
-          html: interviewerHtml,
-        })
-        console.log(`[Interview Email] Sent confirmation to scheduler: ${schedulerEmail}`)
-      } catch (err) {
-        console.error(`[Recruiter Email Error] Failed to send to ${schedulerEmail}:`, err)
-      }
+    try {
+      await sendGmailEmail(tokenResult.accessToken, {
+        from: fromEmail,
+        fromName: companyName,
+        to: interviewerEmails.join(', '),
+        subject: interviewerSubject,
+        html: interviewerHtml,
+        attachments: resumeAttachment ? [resumeAttachment] : undefined,
+      })
+      console.log(`[Interview Email] Sent to interviewers: ${interviewerEmails.join(', ')}`)
+    } catch (err) {
+      console.error('[Interviewer Email Error]', err)
     }
   }
 

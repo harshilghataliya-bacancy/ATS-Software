@@ -2,9 +2,10 @@ import { z } from 'zod'
 
 const emailTemplateTypeEnum = z.enum([
   'rejection', 'offer', 'interview_invite', 'follow_up', 'custom',
+  'application_received',
   'interview_scheduled', 'interview_scheduled_interviewer',
   'interview_updated', 'interview_cancelled',
-  'assessment_invitation', 'interviewer_invite', 'offer_letter',
+  'assessment_invitation', 'interviewer_invite', 'offer_letter', 'offer_revoked',
 ])
 
 export const createEmailTemplateSchema = z.object({

@@ -3,6 +3,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { checkReapplyRestriction } from '@/lib/services/applications'
 import { sendGmailEmail } from '@/lib/services/gmail'
 import { logEmail } from '@/lib/services/email'
+import { getOrCreateTemplate, renderEmail } from '@/lib/email-templates'
 
 /** Prepend https:// if a URL-like string is missing a protocol */
 function normalizeUrl(url: string | null | undefined): string | null {
@@ -235,7 +236,6 @@ async function sendApplicationAcknowledgment(
 
   if (!adminMembers || adminMembers.length === 0) return
 
-  // Try each admin until we find one with a Gmail token
   let accessToken: string | null = null
   let fromEmail = ''
 
@@ -261,31 +261,31 @@ async function sendApplicationAcknowledgment(
 
   if (!accessToken) return
 
-  const subject = `Application Received — ${jobTitle} at ${companyName}`
-  const bodyHtml = `<p>Dear ${candidateName},</p>
+  // Use the unified template system
+  const template = await getOrCreateTemplate(adminSupabase, orgId, 'application_received')
 
-<p>Thank you for applying for the <strong>${jobTitle}</strong> position at <strong>${companyName}</strong>. We have successfully received your application.</p>
+  const vars: Record<string, string> = {
+    candidate_name: candidateName,
+    job_title: jobTitle,
+    company_name: companyName,
+    department: jobResult.data?.department || '',
+  }
 
-<p>Our hiring team will carefully review your profile and qualifications. If your background aligns with our requirements, we will reach out to you with the next steps in the process.</p>
-
-<p>In the meantime, please feel free to reach out if you have any questions.</p>
-
-<p>We appreciate your interest in joining <strong>${companyName}</strong> and wish you the best!</p>
-
-<p>Warm regards,<br/>${companyName} Hiring Team</p>`
+  const { subject, html } = renderEmail(template, vars, companyName)
 
   try {
     await sendGmailEmail(accessToken, {
       from: fromEmail,
+      fromName: companyName,
       to: candidateEmail,
       subject,
-      html: bodyHtml,
+      html,
     })
 
     await logEmail(adminSupabase, orgId, {
       candidate_id: candidateId,
       subject,
-      body_html: bodyHtml,
+      body_html: html,
       to_email: candidateEmail,
       from_email: fromEmail,
       status: 'sent',
@@ -296,7 +296,7 @@ async function sendApplicationAcknowledgment(
     await logEmail(adminSupabase, orgId, {
       candidate_id: candidateId,
       subject,
-      body_html: bodyHtml,
+      body_html: html,
       to_email: candidateEmail,
       from_email: fromEmail,
       status: 'failed',

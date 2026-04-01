@@ -143,9 +143,12 @@ export async function POST(request: NextRequest) {
       expiry_section: expirySection,
     }, orgName)
 
+    const senderEmail = tokenResult.fromEmail || user.email!
     sendGmailEmail(tokenResult.accessToken, {
-      from: tokenResult.fromEmail || user.email!,
+      from: senderEmail,
+      fromName: orgName,
       to: candidate.email,
+      cc: user.email !== candidate.email ? user.email! : undefined,
       subject,
       html,
     }).catch(() => { /* Email failed — non-fatal */ })
