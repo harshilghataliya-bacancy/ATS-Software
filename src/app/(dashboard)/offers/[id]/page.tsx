@@ -54,6 +54,8 @@ interface OfferDetail {
   pf_applicable: boolean
   work_type: string | null
   business_unit: string | null
+  version: number
+  parent_offer_id: string | null
   application: {
     id: string
     candidate: { id: string; first_name: string; last_name: string; email: string; phone?: string } | null
@@ -190,7 +192,6 @@ export default function OfferDetailPage() {
   const isDeclined = offer?.status === 'declined'
   const isExpired = offer?.status === 'expired'
   const isRevised = offer?.status === 'revised'
-  const canResend = isDeclined || isExpired
   const canRevise = canManageOffers && (isSent || isDeclined || isExpired)
 
   async function loadPdfPreview() {
