@@ -16,9 +16,7 @@ import {
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-import { List, LayoutGrid, MoreHorizontal, PenLine, Trash2, Mail, Plus, Calendar, Sparkles } from 'lucide-react'
-
-type ViewMode = 'list' | 'card'
+import { MoreHorizontal, PenLine, Trash2, Mail, Plus, Calendar, Sparkles, Shield, Palette } from 'lucide-react'
 
 const TEMPLATE_TYPES = [
   { value: 'interview_scheduled',              label: 'Interview Scheduled (Candidate)' },
@@ -106,14 +104,15 @@ interface EmailTemplate {
   is_system?: boolean
 }
 
+type ActiveTab = 'system' | 'custom'
+
 export default function EmailTemplatesPage() {
   const { user, organization, isLoading } = useUser()
   const { canManageJobs } = useRole()
 
   const [templates, setTemplates] = useState<EmailTemplate[]>([])
   const [loading, setLoading] = useState(true)
-  const [filterType, setFilterType] = useState<string>('all')
-  const [viewMode, setViewMode] = useState<ViewMode>('list')
+  const [activeTab, setActiveTab] = useState<ActiveTab>('system')
 
   // Create/edit dialog state
   const [dialogOpen, setDialogOpen] = useState(false)
@@ -129,23 +128,25 @@ export default function EmailTemplatesPage() {
 
   useEffect(() => {
     if (organization) loadTemplates()
-  }, [organization, filterType])
+  }, [organization]) // eslint-disable-line react-hooks/exhaustive-deps
 
   async function loadTemplates() {
     if (!organization) return
     setLoading(true)
     const supabase = createClient()
-    const typeFilter = filterType !== 'all' ? filterType : undefined
-    const { data } = await getEmailTemplates(supabase, organization.id, typeFilter)
+    const { data } = await getEmailTemplates(supabase, organization.id)
     if (data) setTemplates(data as EmailTemplate[])
     setLoading(false)
   }
 
+  // Split templates by system vs custom
+  const systemTemplates = templates.filter((t) => t.is_system)
+  const customTemplates = templates.filter((t) => !t.is_system)
+  const displayedTemplates = activeTab === 'system' ? systemTemplates : customTemplates
+
   // Convert plain text to HTML paragraphs (if not already HTML)
   function textToHtml(text: string): string {
-    // If it already contains HTML tags like <p>, <br>, <div>, return as-is
     if (/<(p|br|div|h[1-6]|ul|ol|li|table|strong|em)\b/i.test(text)) return text
-    // Split by double newlines for paragraphs, single newlines become <br>
     return text
       .split(/\n\s*\n/)
       .map((para) => `<p>${para.trim().replace(/\n/g, '<br/>')}</p>`)
@@ -246,233 +247,257 @@ export default function EmailTemplatesPage() {
 
   const typeLabel = (val: string) => TEMPLATE_TYPES.find((t) => t.value === val)?.label ?? val
 
+  // Render a single template row (list style)
+  function renderListItem(template: EmailTemplate) {
+    return (
+      <div
+        key={template.id}
+        onClick={() => openEdit(template)}
+        className="group rounded-xl border border-gray-200 bg-white hover:border-gray-300 hover:shadow-sm transition-all duration-200 cursor-pointer"
+      >
+        <div className="px-4 py-3.5 flex items-center justify-between gap-4">
+          <div className="flex items-center gap-3 flex-1 min-w-0">
+            <span className={`w-2 h-2 rounded-full shrink-0 ${TYPE_DOT[template.template_type] ?? 'bg-gray-400'}`} />
+            <span className="text-sm font-semibold text-gray-900 shrink-0">{template.name}</span>
+            <span className={`text-[11px] font-medium px-2 py-0.5 rounded-full shrink-0 ${TYPE_COLOR[template.template_type] ?? 'bg-gray-100 text-gray-600'}`}>
+              {typeLabel(template.template_type)}
+            </span>
+            <span className="text-sm text-gray-400 truncate">{template.subject}</span>
+          </div>
+          {canManageJobs && (
+            <div onClick={(e) => e.stopPropagation()}>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button className="p-1.5 rounded-md text-gray-400 hover:text-gray-600 hover:bg-gray-100 opacity-0 group-hover:opacity-100 transition-all duration-150">
+                    <MoreHorizontal className="w-4 h-4" />
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-40">
+                  <DropdownMenuItem onClick={() => openEdit(template)}>
+                    <PenLine className="w-3.5 h-3.5 mr-2" />
+                    Edit
+                  </DropdownMenuItem>
+                  {!template.is_system && (
+                    <DropdownMenuItem
+                      className="text-red-600 focus:text-red-600 focus:bg-red-50"
+                      onClick={() => {
+                        if (confirm(`Delete "${template.name}"? This action cannot be undone.`)) {
+                          handleDelete(template.id)
+                        }
+                      }}
+                    >
+                      <Trash2 className="w-3.5 h-3.5 mr-2" />
+                      Delete
+                    </DropdownMenuItem>
+                  )}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
+          )}
+        </div>
+      </div>
+    )
+  }
+
+  // Render a single template card
+  function renderCardItem(template: EmailTemplate) {
+    return (
+      <div
+        key={template.id}
+        onClick={() => openEdit(template)}
+        className={`group rounded-xl border border-gray-200 bg-white hover:border-gray-300 hover:shadow-sm transition-all duration-200 cursor-pointer border-t-[3px] ${TYPE_TOP[template.template_type] ?? 'border-t-gray-300'}`}
+      >
+        <div className="p-4 space-y-3">
+          <div className="flex items-start justify-between gap-2">
+            <div className="flex items-center gap-2.5">
+              <div className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 ${TYPE_ICON_BG[template.template_type] ?? 'bg-gray-50 text-gray-500'}`}>
+                <Mail className="w-4 h-4" />
+              </div>
+              <div>
+                <p className="text-sm font-semibold text-gray-900 group-hover:text-blue-700 transition-colors leading-tight">
+                  {template.name}
+                </p>
+                <span className={`inline-block mt-1 text-[11px] font-medium px-2 py-0.5 rounded-full ${TYPE_COLOR[template.template_type] ?? 'bg-gray-100 text-gray-600'}`}>
+                  {typeLabel(template.template_type)}
+                </span>
+              </div>
+            </div>
+            {canManageJobs && (
+              <div onClick={(e) => e.stopPropagation()}>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <button className="p-1.5 rounded-md text-gray-400 hover:text-gray-600 hover:bg-gray-100 opacity-0 group-hover:opacity-100 transition-all duration-150">
+                      <MoreHorizontal className="w-4 h-4" />
+                    </button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-40">
+                    <DropdownMenuItem onClick={() => openEdit(template)}>
+                      <PenLine className="w-3.5 h-3.5 mr-2" />
+                      Edit
+                    </DropdownMenuItem>
+                    {!template.is_system && (
+                      <DropdownMenuItem
+                        className="text-red-600 focus:text-red-600 focus:bg-red-50"
+                        onClick={() => {
+                          if (confirm(`Delete "${template.name}"? This action cannot be undone.`)) {
+                            handleDelete(template.id)
+                          }
+                        }}
+                      >
+                        <Trash2 className="w-3.5 h-3.5 mr-2" />
+                        Delete
+                      </DropdownMenuItem>
+                    )}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
+            )}
+          </div>
+
+          <div className="text-xs text-gray-500">
+            <span className="text-gray-400">Subject: </span>
+            <span className="text-gray-700 font-medium">{template.subject}</span>
+          </div>
+
+          <p className="text-xs text-gray-400 line-clamp-2 leading-relaxed">
+            {template.body_html.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim()}
+          </p>
+
+          <div className="pt-2.5 border-t border-gray-100 flex items-center gap-1.5 text-[11px] text-gray-400">
+            <Calendar className="w-3 h-3" />
+            {new Date(template.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  function renderEmptyState() {
+    if (activeTab === 'system') {
+      return (
+        <div className="rounded-xl border-2 border-dashed border-gray-200 bg-gray-50/50">
+          <div className="py-16 text-center">
+            <div className="flex flex-col items-center">
+              <div className="w-12 h-12 rounded-full bg-orange-50 flex items-center justify-center mb-4">
+                <Shield className="w-5 h-5 text-orange-400" />
+              </div>
+              <p className="text-gray-900 font-medium mb-1">No system templates yet</p>
+              <p className="text-gray-500 text-sm mb-5">Seed default templates for all email types used by the platform.</p>
+              {canManageJobs && (
+                <Button onClick={handleSeedDefaults} size="sm" disabled={seeding} variant="outline" className="gap-1.5">
+                  <Sparkles className="w-4 h-4" />
+                  {seeding ? 'Seeding...' : 'Seed Default Templates'}
+                </Button>
+              )}
+            </div>
+          </div>
+        </div>
+      )
+    }
+    return (
+      <div className="rounded-xl border-2 border-dashed border-gray-200 bg-gray-50/50">
+        <div className="py-16 text-center">
+          <div className="flex flex-col items-center">
+            <div className="w-12 h-12 rounded-full bg-gray-100 flex items-center justify-center mb-4">
+              <Mail className="w-5 h-5 text-gray-400" />
+            </div>
+            <p className="text-gray-900 font-medium mb-1">No custom templates yet</p>
+            <p className="text-gray-500 text-sm mb-5">Create your own reusable templates for candidate communication.</p>
+            {canManageJobs && (
+              <Button onClick={openCreate} size="sm">
+                <Plus className="w-4 h-4 mr-1.5" />
+                Create Template
+              </Button>
+            )}
+          </div>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="space-y-5">
       {/* Header */}
       <div className="flex items-center justify-between gap-4">
         <div>
           <h1 className="text-[22px] font-bold tracking-tight text-gray-900">Email Templates</h1>
-          <p className="text-sm text-gray-500 mt-0.5">Manage reusable email templates for candidate communication</p>
+          <p className="text-sm text-gray-500 mt-0.5">Manage system and custom email templates for candidate communication</p>
         </div>
         <div className="flex items-center gap-2">
-          {/* View toggle */}
-          <div className="flex items-center gap-0.5 rounded-lg border border-gray-200 bg-gray-50 p-1">
-            <button
-              onClick={() => setViewMode('list')}
-              title="List view"
-              className={`flex items-center justify-center w-8 h-7 rounded-md transition-all duration-150 ${
-                viewMode === 'list' ? 'bg-white text-gray-900 shadow-sm ring-1 ring-gray-200' : 'text-gray-400 hover:text-gray-600'
-              }`}
-            >
-              <List className="w-4 h-4" />
-            </button>
-            <button
-              onClick={() => setViewMode('card')}
-              title="Card view"
-              className={`flex items-center justify-center w-8 h-7 rounded-md transition-all duration-150 ${
-                viewMode === 'card' ? 'bg-white text-gray-900 shadow-sm ring-1 ring-gray-200' : 'text-gray-400 hover:text-gray-600'
-              }`}
-            >
-              <LayoutGrid className="w-4 h-4" />
-            </button>
-          </div>
-          {canManageJobs && (
-            <>
-              <Button size="sm" variant="outline" className="h-9" onClick={handleSeedDefaults} disabled={seeding}>
-                <Sparkles className="w-4 h-4 mr-1.5" />
-                {seeding ? 'Seeding...' : 'Seed Defaults'}
-              </Button>
-              <Button size="sm" className="h-9" onClick={openCreate}>
-                <Plus className="w-4 h-4 mr-1.5" />
-                New Template
-              </Button>
-            </>
+          {canManageJobs && activeTab === 'system' && (
+            <Button size="sm" variant="outline" className="h-9" onClick={handleSeedDefaults} disabled={seeding}>
+              <Sparkles className="w-4 h-4 mr-1.5" />
+              {seeding ? 'Seeding...' : 'Seed Defaults'}
+            </Button>
+          )}
+          {canManageJobs && activeTab === 'custom' && (
+            <Button size="sm" className="h-9" onClick={openCreate}>
+              <Plus className="w-4 h-4 mr-1.5" />
+              New Template
+            </Button>
           )}
         </div>
       </div>
 
-      {/* Filter */}
-      <div className="flex gap-3">
-        <Select value={filterType} onValueChange={setFilterType}>
-          <SelectTrigger className="w-48 h-9">
-            <SelectValue placeholder="Filter by type" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All Types</SelectItem>
-            {TEMPLATE_TYPES.map((t) => (
-              <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+      {/* Tabs */}
+      <div className="flex items-center gap-1 rounded-lg bg-gray-100/80 p-1 w-fit">
+        <button
+          onClick={() => setActiveTab('system')}
+          className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-all duration-150 ${
+            activeTab === 'system'
+              ? 'bg-white text-gray-900 shadow-sm'
+              : 'text-gray-500 hover:text-gray-700'
+          }`}
+        >
+          <Shield className="w-4 h-4" />
+          System Templates
+          {systemTemplates.length > 0 && (
+            <span className={`text-xs px-1.5 py-0.5 rounded-full ${activeTab === 'system' ? 'bg-blue-50 text-blue-600' : 'bg-gray-200 text-gray-500'}`}>
+              {systemTemplates.length}
+            </span>
+          )}
+        </button>
+        <button
+          onClick={() => setActiveTab('custom')}
+          className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-all duration-150 ${
+            activeTab === 'custom'
+              ? 'bg-white text-gray-900 shadow-sm'
+              : 'text-gray-500 hover:text-gray-700'
+          }`}
+        >
+          <Palette className="w-4 h-4" />
+          Custom Templates
+          {customTemplates.length > 0 && (
+            <span className={`text-xs px-1.5 py-0.5 rounded-full ${activeTab === 'custom' ? 'bg-blue-50 text-blue-600' : 'bg-gray-200 text-gray-500'}`}>
+              {customTemplates.length}
+            </span>
+          )}
+        </button>
       </div>
 
+      {/* Template description based on active tab */}
+      {activeTab === 'system' && systemTemplates.length > 0 && (
+        <p className="text-xs text-gray-400">
+          System templates are used automatically when sending emails. Click to edit subject or body text.
+        </p>
+      )}
+
+      {/* Template List */}
       {loading ? (
-        viewMode === 'list' ? (
-          <div className="space-y-2">
-            {[1, 2, 3].map((i) => <Skeleton key={i} className="h-16 rounded-xl" />)}
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-            {[1, 2, 3, 4, 5, 6].map((i) => <Skeleton key={i} className="h-48 rounded-xl" />)}
-          </div>
-        )
-      ) : templates.length === 0 ? (
-        /* ── EMPTY STATE ── */
-        <div className="rounded-xl border-2 border-dashed border-gray-200 bg-gray-50/50">
-          <div className="py-16 text-center">
-            <div className="flex flex-col items-center">
-              <div className="w-12 h-12 rounded-full bg-gray-100 flex items-center justify-center mb-4">
-                <Mail className="w-5 h-5 text-gray-400" />
-              </div>
-              <p className="text-gray-900 font-medium mb-1">No email templates yet</p>
-              <p className="text-gray-500 text-sm mb-5">Create reusable templates to speed up candidate communication.</p>
-              {canManageJobs && (
-                <Button onClick={openCreate} size="sm">
-                  <Plus className="w-4 h-4 mr-1.5" />
-                  Create Template
-                </Button>
-              )}
-            </div>
-          </div>
-        </div>
-
-      ) : viewMode === 'list' ? (
-        /* ── LIST VIEW ── */
         <div className="space-y-2">
-          {templates.map((template) => (
-            <div
-              key={template.id}
-              onClick={() => openEdit(template)}
-              className="group rounded-xl border border-gray-200 bg-white hover:border-gray-300 hover:shadow-sm transition-all duration-200 cursor-pointer"
-            >
-              <div className="px-4 py-3.5 flex items-center justify-between gap-4">
-                <div className="flex items-center gap-3 flex-1 min-w-0">
-                  <span className={`w-2 h-2 rounded-full shrink-0 ${TYPE_DOT[template.template_type] ?? 'bg-gray-400'}`} />
-                  <span className="text-sm font-semibold text-gray-900 shrink-0">{template.name}</span>
-                  <span className={`text-[11px] font-medium px-2 py-0.5 rounded-full shrink-0 ${TYPE_COLOR[template.template_type] ?? 'bg-gray-100 text-gray-600'}`}>
-                    {typeLabel(template.template_type)}
-                  </span>
-                  {template.is_system && (
-                    <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-orange-50 text-orange-600 shrink-0">System</span>
-                  )}
-                  <span className="text-sm text-gray-400 truncate">{template.subject}</span>
-                </div>
-                {canManageJobs && (
-                  <div onClick={(e) => e.stopPropagation()}>
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <button className="p-1.5 rounded-md text-gray-400 hover:text-gray-600 hover:bg-gray-100 opacity-0 group-hover:opacity-100 transition-all duration-150">
-                          <MoreHorizontal className="w-4 h-4" />
-                        </button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end" className="w-40">
-                        <DropdownMenuItem onClick={() => openEdit(template)}>
-                          <PenLine className="w-3.5 h-3.5 mr-2" />
-                          Edit
-                        </DropdownMenuItem>
-                        {!template.is_system && (
-                          <DropdownMenuItem
-                            className="text-red-600 focus:text-red-600 focus:bg-red-50"
-                            onClick={() => {
-                              if (confirm(`Delete "${template.name}"? This action cannot be undone.`)) {
-                                handleDelete(template.id)
-                              }
-                            }}
-                          >
-                            <Trash2 className="w-3.5 h-3.5 mr-2" />
-                            Delete
-                          </DropdownMenuItem>
-                        )}
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </div>
-                )}
-              </div>
-            </div>
-          ))}
+          {[1, 2, 3].map((i) => <Skeleton key={i} className="h-16 rounded-xl" />)}
         </div>
-
-      ) : (
-        /* ── CARD VIEW ── */
+      ) : displayedTemplates.length === 0 ? (
+        renderEmptyState()
+      ) : activeTab === 'system' ? (
+        /* System templates — always card view for better visibility */
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-          {templates.map((template) => (
-            <div
-              key={template.id}
-              onClick={() => openEdit(template)}
-              className={`group rounded-xl border border-gray-200 bg-white hover:border-gray-300 hover:shadow-sm transition-all duration-200 cursor-pointer border-t-[3px] ${TYPE_TOP[template.template_type] ?? 'border-t-gray-300'}`}
-            >
-              <div className="p-4 space-y-3">
-                {/* Top row */}
-                <div className="flex items-start justify-between gap-2">
-                  <div className="flex items-center gap-2.5">
-                    <div className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 ${TYPE_ICON_BG[template.template_type] ?? 'bg-gray-50 text-gray-500'}`}>
-                      <Mail className="w-4 h-4" />
-                    </div>
-                    <div>
-                      <p className="text-sm font-semibold text-gray-900 group-hover:text-blue-700 transition-colors leading-tight">
-                        {template.name}
-                      </p>
-                      <div className="flex items-center gap-1.5 mt-1">
-                        <span className={`inline-block text-[11px] font-medium px-2 py-0.5 rounded-full ${TYPE_COLOR[template.template_type] ?? 'bg-gray-100 text-gray-600'}`}>
-                          {typeLabel(template.template_type)}
-                        </span>
-                        {template.is_system && (
-                          <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-orange-50 text-orange-600">System</span>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                  {canManageJobs && (
-                    <div onClick={(e) => e.stopPropagation()}>
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <button className="p-1.5 rounded-md text-gray-400 hover:text-gray-600 hover:bg-gray-100 opacity-0 group-hover:opacity-100 transition-all duration-150">
-                            <MoreHorizontal className="w-4 h-4" />
-                          </button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end" className="w-40">
-                          <DropdownMenuItem onClick={() => openEdit(template)}>
-                            <PenLine className="w-3.5 h-3.5 mr-2" />
-                            Edit
-                          </DropdownMenuItem>
-                          {!template.is_system && (
-                            <DropdownMenuItem
-                              className="text-red-600 focus:text-red-600 focus:bg-red-50"
-                              onClick={() => {
-                                if (confirm(`Delete "${template.name}"? This action cannot be undone.`)) {
-                                  handleDelete(template.id)
-                                }
-                              }}
-                            >
-                              <Trash2 className="w-3.5 h-3.5 mr-2" />
-                              Delete
-                            </DropdownMenuItem>
-                          )}
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </div>
-                  )}
-                </div>
-
-                {/* Subject */}
-                <div className="text-xs text-gray-500">
-                  <span className="text-gray-400">Subject: </span>
-                  <span className="text-gray-700 font-medium">{template.subject}</span>
-                </div>
-
-                {/* Body preview */}
-                <p className="text-xs text-gray-400 line-clamp-2 leading-relaxed">
-                  {template.body_html.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim()}
-                </p>
-
-                {/* Footer */}
-                <div className="pt-2.5 border-t border-gray-100 flex items-center gap-1.5 text-[11px] text-gray-400">
-                  <Calendar className="w-3 h-3" />
-                  {new Date(template.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
-                </div>
-              </div>
-            </div>
-          ))}
+          {displayedTemplates.map(renderCardItem)}
+        </div>
+      ) : (
+        /* Custom templates — list view */
+        <div className="space-y-2">
+          {displayedTemplates.map(renderListItem)}
         </div>
       )}
 
