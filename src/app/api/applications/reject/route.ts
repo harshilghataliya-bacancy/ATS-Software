@@ -2,28 +2,11 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { rejectApplication } from '@/lib/services/applications'
-import { getEmailTemplates, logEmail } from '@/lib/services/email'
+import { logEmail } from '@/lib/services/email'
 import { getValidAccessToken, sendGmailEmail } from '@/lib/services/gmail'
 import { logActivity } from '@/lib/services/activity'
-
-const DEFAULT_REJECTION_SUBJECT = 'Update on Your Application for {{job_title}}'
-const DEFAULT_REJECTION_BODY = `<p>Dear {{candidate_name}},</p>
-<p>Thank you for your interest in the <strong>{{job_title}}</strong> position at <strong>{{company_name}}</strong> and for taking the time to go through our interview process.</p>
-<p>After careful consideration, we have decided to move forward with other candidates whose qualifications more closely match our current needs.</p>
-<p>We truly appreciate the time and effort you invested in your application. We encourage you to apply for future openings that align with your skills and experience.</p>
-<p>We wish you all the best in your career journey.</p>
-<p>Warm regards,<br/>{{company_name}} Hiring Team</p>`
-
-function substituteVariables(
-  text: string,
-  vars: Record<string, string>
-): string {
-  let result = text
-  for (const [key, value] of Object.entries(vars)) {
-    result = result.replace(new RegExp(`\\{\\{${key}\\}\\}`, 'g'), value)
-  }
-  return result
-}
+import { getOrCreateTemplate, renderEmail, substituteVariables } from '@/lib/email-templates'
+import { wrapEmailHtml } from '@/lib/email-templates/wrapper'
 
 // Ensure plain text gets wrapped in <p> tags for proper email rendering
 function ensureHtml(text: string): string {
@@ -59,12 +42,11 @@ export async function POST(request: NextRequest) {
   const companyName = (membership.organization as any)?.name || 'Our Company'
 
   const body = await request.json()
-  const { applicationId, reason, stageId, sendEmail, templateId, customSubject, customBody } = body as {
+  const { applicationId, reason, stageId, sendEmail, customSubject, customBody } = body as {
     applicationId: string
     reason: string
     stageId?: string
     sendEmail?: boolean
-    templateId?: string
     customSubject?: string
     customBody?: string
   }
@@ -101,7 +83,7 @@ export async function POST(request: NextRequest) {
 
   // 2. Send rejection email only if explicitly requested
   if (sendEmail) {
-    sendRejectionEmail(supabase, user.id, orgId, applicationId, companyName, customSubject, customBody, templateId).catch((err) => {
+    sendRejectionEmail(supabase, user.id, orgId, applicationId, companyName, customSubject, customBody).catch((err) => {
       console.error('[Auto Rejection Email Error]', err)
     })
   }
@@ -116,8 +98,7 @@ async function sendRejectionEmail(
   applicationId: string,
   companyName: string,
   customSubject?: string,
-  customBody?: string,
-  customTemplateId?: string
+  customBody?: string
 ) {
   const adminSupabase = createAdminClient()
 
@@ -142,33 +123,29 @@ async function sendRejectionEmail(
   const candidateEmail = candidate.email
   if (!candidateEmail) return
 
+  const vars: Record<string, string> = {
+    candidate_name: `${candidate.first_name} ${candidate.last_name}`.trim(),
+    job_title: job.title || 'the position',
+    company_name: companyName,
+    department: job.department || '',
+  }
+
   let subject: string
   let bodyHtml: string
-  let templateId: string | undefined = customTemplateId
+  let templateId: string | undefined
 
   // If custom subject/body provided (user edited in dialog), use those directly
   if (customSubject && customBody) {
-    subject = customSubject
-    bodyHtml = ensureHtml(customBody)
+    subject = substituteVariables(customSubject, vars)
+    const innerHtml = ensureHtml(substituteVariables(customBody, vars))
+    bodyHtml = wrapEmailHtml(innerHtml, companyName)
   } else {
-    // Fallback: auto-fetch template
-    const vars: Record<string, string> = {
-      candidate_name: `${candidate.first_name} ${candidate.last_name}`.trim(),
-      job_title: job.title || 'the position',
-      company_name: companyName,
-      department: job.department || '',
-    }
-
-    const { data: templates } = await getEmailTemplates(supabase, orgId, 'rejection')
-    if (templates && templates.length > 0) {
-      const template = templates[0]
-      subject = substituteVariables(template.subject, vars)
-      bodyHtml = ensureHtml(substituteVariables(template.body_html, vars))
-      templateId = template.id
-    } else {
-      subject = substituteVariables(DEFAULT_REJECTION_SUBJECT, vars)
-      bodyHtml = substituteVariables(DEFAULT_REJECTION_BODY, vars)
-    }
+    // Use template system — auto-seeds default if not yet in DB
+    const template = await getOrCreateTemplate(supabase, orgId, 'rejection', userId)
+    templateId = template.template_id || undefined
+    const rendered = renderEmail(template, vars, companyName)
+    subject = rendered.subject
+    bodyHtml = rendered.html
   }
 
   // Get Gmail access token (falls back to admin's token)

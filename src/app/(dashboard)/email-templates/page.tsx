@@ -16,48 +16,83 @@ import {
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-import { List, LayoutGrid, MoreHorizontal, PenLine, Trash2, Mail, Plus, Calendar } from 'lucide-react'
+import { List, LayoutGrid, MoreHorizontal, PenLine, Trash2, Mail, Plus, Calendar, Sparkles } from 'lucide-react'
 
 type ViewMode = 'list' | 'card'
 
 const TEMPLATE_TYPES = [
-  { value: 'rejection',       label: 'Rejection' },
-  { value: 'offer',           label: 'Offer' },
-  { value: 'interview_invite',label: 'Interview Invite' },
-  { value: 'follow_up',       label: 'Follow Up' },
-  { value: 'custom',          label: 'Custom' },
+  { value: 'interview_scheduled',              label: 'Interview Scheduled (Candidate)' },
+  { value: 'interview_scheduled_interviewer',   label: 'Interview Scheduled (Interviewer)' },
+  { value: 'interview_updated',                 label: 'Interview Updated' },
+  { value: 'interview_cancelled',               label: 'Interview Cancelled' },
+  { value: 'offer_letter',                      label: 'Offer Letter' },
+  { value: 'offer',                             label: 'Offer (Legacy)' },
+  { value: 'rejection',                         label: 'Rejection' },
+  { value: 'assessment_invitation',             label: 'Assessment Invitation' },
+  { value: 'interviewer_invite',                label: 'Interviewer Invite' },
+  { value: 'interview_invite',                  label: 'Interview Invite (Legacy)' },
+  { value: 'follow_up',                         label: 'Follow Up' },
+  { value: 'custom',                            label: 'Custom' },
 ] as const
 
 const TYPE_COLOR: Record<string, string> = {
-  rejection:       'bg-red-50 text-red-600',
-  offer:           'bg-emerald-50 text-emerald-700',
-  interview_invite:'bg-blue-50 text-blue-700',
-  follow_up:       'bg-amber-50 text-amber-700',
-  custom:          'bg-gray-100 text-gray-600',
+  interview_scheduled:              'bg-blue-50 text-blue-700',
+  interview_scheduled_interviewer:  'bg-blue-50 text-blue-700',
+  interview_updated:                'bg-indigo-50 text-indigo-700',
+  interview_cancelled:              'bg-red-50 text-red-600',
+  offer_letter:                     'bg-emerald-50 text-emerald-700',
+  offer:                            'bg-emerald-50 text-emerald-700',
+  rejection:                        'bg-red-50 text-red-600',
+  assessment_invitation:            'bg-purple-50 text-purple-700',
+  interviewer_invite:               'bg-cyan-50 text-cyan-700',
+  interview_invite:                 'bg-blue-50 text-blue-700',
+  follow_up:                        'bg-amber-50 text-amber-700',
+  custom:                           'bg-gray-100 text-gray-600',
 }
 
 const TYPE_DOT: Record<string, string> = {
-  rejection:       'bg-red-400',
-  offer:           'bg-emerald-500',
-  interview_invite:'bg-blue-500',
-  follow_up:       'bg-amber-400',
-  custom:          'bg-gray-400',
+  interview_scheduled:              'bg-blue-500',
+  interview_scheduled_interviewer:  'bg-blue-400',
+  interview_updated:                'bg-indigo-500',
+  interview_cancelled:              'bg-red-400',
+  offer_letter:                     'bg-emerald-500',
+  offer:                            'bg-emerald-500',
+  rejection:                        'bg-red-400',
+  assessment_invitation:            'bg-purple-500',
+  interviewer_invite:               'bg-cyan-500',
+  interview_invite:                 'bg-blue-500',
+  follow_up:                        'bg-amber-400',
+  custom:                           'bg-gray-400',
 }
 
 const TYPE_TOP: Record<string, string> = {
-  rejection:       'border-t-red-400',
-  offer:           'border-t-emerald-500',
-  interview_invite:'border-t-blue-500',
-  follow_up:       'border-t-amber-400',
-  custom:          'border-t-gray-300',
+  interview_scheduled:              'border-t-blue-500',
+  interview_scheduled_interviewer:  'border-t-blue-400',
+  interview_updated:                'border-t-indigo-500',
+  interview_cancelled:              'border-t-red-400',
+  offer_letter:                     'border-t-emerald-500',
+  offer:                            'border-t-emerald-500',
+  rejection:                        'border-t-red-400',
+  assessment_invitation:            'border-t-purple-500',
+  interviewer_invite:               'border-t-cyan-500',
+  interview_invite:                 'border-t-blue-500',
+  follow_up:                        'border-t-amber-400',
+  custom:                           'border-t-gray-300',
 }
 
 const TYPE_ICON_BG: Record<string, string> = {
-  rejection:       'bg-red-50 text-red-500',
-  offer:           'bg-emerald-50 text-emerald-600',
-  interview_invite:'bg-blue-50 text-blue-600',
-  follow_up:       'bg-amber-50 text-amber-600',
-  custom:          'bg-gray-50 text-gray-500',
+  interview_scheduled:              'bg-blue-50 text-blue-600',
+  interview_scheduled_interviewer:  'bg-blue-50 text-blue-600',
+  interview_updated:                'bg-indigo-50 text-indigo-600',
+  interview_cancelled:              'bg-red-50 text-red-500',
+  offer_letter:                     'bg-emerald-50 text-emerald-600',
+  offer:                            'bg-emerald-50 text-emerald-600',
+  rejection:                        'bg-red-50 text-red-500',
+  assessment_invitation:            'bg-purple-50 text-purple-600',
+  interviewer_invite:               'bg-cyan-50 text-cyan-600',
+  interview_invite:                 'bg-blue-50 text-blue-600',
+  follow_up:                        'bg-amber-50 text-amber-600',
+  custom:                           'bg-gray-50 text-gray-500',
 }
 
 interface EmailTemplate {
@@ -68,6 +103,7 @@ interface EmailTemplate {
   template_type: string
   variables: Record<string, unknown> | null
   created_at: string
+  is_system?: boolean
 }
 
 export default function EmailTemplatesPage() {
@@ -89,6 +125,7 @@ export default function EmailTemplatesPage() {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [showPreview, setShowPreview] = useState(false)
+  const [seeding, setSeeding] = useState(false)
 
   useEffect(() => {
     if (organization) loadTemplates()
@@ -179,6 +216,18 @@ export default function EmailTemplatesPage() {
     setSaving(false)
   }
 
+  async function handleSeedDefaults() {
+    if (!organization || !user) return
+    setSeeding(true)
+    try {
+      const res = await fetch('/api/email-templates/seed', { method: 'POST' })
+      if (res.ok) loadTemplates()
+    } catch (err) {
+      console.error('[Seed error]', err)
+    }
+    setSeeding(false)
+  }
+
   async function handleDelete(templateId: string) {
     if (!organization) return
     const supabase = createClient()
@@ -228,10 +277,16 @@ export default function EmailTemplatesPage() {
             </button>
           </div>
           {canManageJobs && (
-            <Button size="sm" className="h-9" onClick={openCreate}>
-              <Plus className="w-4 h-4 mr-1.5" />
-              New Template
-            </Button>
+            <>
+              <Button size="sm" variant="outline" className="h-9" onClick={handleSeedDefaults} disabled={seeding}>
+                <Sparkles className="w-4 h-4 mr-1.5" />
+                {seeding ? 'Seeding...' : 'Seed Defaults'}
+              </Button>
+              <Button size="sm" className="h-9" onClick={openCreate}>
+                <Plus className="w-4 h-4 mr-1.5" />
+                New Template
+              </Button>
+            </>
           )}
         </div>
       </div>
@@ -297,6 +352,9 @@ export default function EmailTemplatesPage() {
                   <span className={`text-[11px] font-medium px-2 py-0.5 rounded-full shrink-0 ${TYPE_COLOR[template.template_type] ?? 'bg-gray-100 text-gray-600'}`}>
                     {typeLabel(template.template_type)}
                   </span>
+                  {template.is_system && (
+                    <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-orange-50 text-orange-600 shrink-0">System</span>
+                  )}
                   <span className="text-sm text-gray-400 truncate">{template.subject}</span>
                 </div>
                 {canManageJobs && (
@@ -312,17 +370,19 @@ export default function EmailTemplatesPage() {
                           <PenLine className="w-3.5 h-3.5 mr-2" />
                           Edit
                         </DropdownMenuItem>
-                        <DropdownMenuItem
-                          className="text-red-600 focus:text-red-600 focus:bg-red-50"
-                          onClick={() => {
-                            if (confirm(`Delete "${template.name}"? This action cannot be undone.`)) {
-                              handleDelete(template.id)
-                            }
-                          }}
-                        >
-                          <Trash2 className="w-3.5 h-3.5 mr-2" />
-                          Delete
-                        </DropdownMenuItem>
+                        {!template.is_system && (
+                          <DropdownMenuItem
+                            className="text-red-600 focus:text-red-600 focus:bg-red-50"
+                            onClick={() => {
+                              if (confirm(`Delete "${template.name}"? This action cannot be undone.`)) {
+                                handleDelete(template.id)
+                              }
+                            }}
+                          >
+                            <Trash2 className="w-3.5 h-3.5 mr-2" />
+                            Delete
+                          </DropdownMenuItem>
+                        )}
                       </DropdownMenuContent>
                     </DropdownMenu>
                   </div>
@@ -352,9 +412,14 @@ export default function EmailTemplatesPage() {
                       <p className="text-sm font-semibold text-gray-900 group-hover:text-blue-700 transition-colors leading-tight">
                         {template.name}
                       </p>
-                      <span className={`inline-block mt-1 text-[11px] font-medium px-2 py-0.5 rounded-full ${TYPE_COLOR[template.template_type] ?? 'bg-gray-100 text-gray-600'}`}>
-                        {typeLabel(template.template_type)}
-                      </span>
+                      <div className="flex items-center gap-1.5 mt-1">
+                        <span className={`inline-block text-[11px] font-medium px-2 py-0.5 rounded-full ${TYPE_COLOR[template.template_type] ?? 'bg-gray-100 text-gray-600'}`}>
+                          {typeLabel(template.template_type)}
+                        </span>
+                        {template.is_system && (
+                          <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-orange-50 text-orange-600">System</span>
+                        )}
+                      </div>
                     </div>
                   </div>
                   {canManageJobs && (
@@ -370,17 +435,19 @@ export default function EmailTemplatesPage() {
                             <PenLine className="w-3.5 h-3.5 mr-2" />
                             Edit
                           </DropdownMenuItem>
-                          <DropdownMenuItem
-                            className="text-red-600 focus:text-red-600 focus:bg-red-50"
-                            onClick={() => {
-                              if (confirm(`Delete "${template.name}"? This action cannot be undone.`)) {
-                                handleDelete(template.id)
-                              }
-                            }}
-                          >
-                            <Trash2 className="w-3.5 h-3.5 mr-2" />
-                            Delete
-                          </DropdownMenuItem>
+                          {!template.is_system && (
+                            <DropdownMenuItem
+                              className="text-red-600 focus:text-red-600 focus:bg-red-50"
+                              onClick={() => {
+                                if (confirm(`Delete "${template.name}"? This action cannot be undone.`)) {
+                                  handleDelete(template.id)
+                                }
+                              }}
+                            >
+                              <Trash2 className="w-3.5 h-3.5 mr-2" />
+                              Delete
+                            </DropdownMenuItem>
+                          )}
                         </DropdownMenuContent>
                       </DropdownMenu>
                     </div>

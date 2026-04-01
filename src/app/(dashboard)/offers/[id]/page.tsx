@@ -189,10 +189,11 @@ export default function OfferDetailPage() {
     ? `${candidate.first_name?.[0] ?? ''}${candidate.last_name?.[0] ?? ''}`.toUpperCase()
     : '??'
   const isSent = offer?.status === 'sent'
+  const isAccepted = offer?.status === 'accepted'
   const isDeclined = offer?.status === 'declined'
   const isExpired = offer?.status === 'expired'
   const isRevised = offer?.status === 'revised'
-  const canRevise = canManageOffers && (isSent || isDeclined || isExpired)
+  const canRevise = canManageOffers && (isSent || isAccepted || isDeclined || isExpired)
 
   async function loadPdfPreview() {
     if (!offer) return

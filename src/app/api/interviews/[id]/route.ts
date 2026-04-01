@@ -5,6 +5,7 @@ import { updateInterview, cancelInterview, getInterviewById } from '@/lib/servic
 import { getValidAccessToken, sendGmailEmail } from '@/lib/services/gmail'
 import { createCalendarEvent, deleteCalendarEvent } from '@/lib/services/google-calendar'
 import { logActivity } from '@/lib/services/activity'
+import { getOrCreateTemplate, renderEmail, buildDetailTable } from '@/lib/email-templates'
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -114,7 +115,6 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
   if (oldInterview.google_calendar_event_id && tokenResult.accessToken) {
     try {
       await deleteCalendarEvent(tokenResult.accessToken, oldInterview.google_calendar_event_id)
-      console.log('[Interview Update] Deleted old calendar event:', oldInterview.google_calendar_event_id)
     } catch (err) {
       console.error('[Interview Update] Failed to delete old calendar event:', err)
     }
@@ -126,7 +126,6 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
 
   if (tokenResult.accessToken) {
     try {
-      // Resolve panelist user_ids to emails via admin auth
       const panelistEmails: string[] = []
       if (oldInterview.interview_panelists?.length) {
         const adminSupabase = createAdminClient()
@@ -150,7 +149,6 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       if (isVideo && calResult.meetLink) {
         finalMeetingLink = calResult.meetLink
       }
-      console.log('[Interview Update] Created new calendar event:', calResult.eventId)
     } catch (err) {
       console.error('[Interview Update] Failed to create calendar event:', err)
     }
@@ -170,7 +168,6 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
   if (newCalendarEventId) {
     await supabase.from('interviews').update({ google_calendar_event_id: newCalendarEventId }).eq('id', interviewId)
   } else if (oldInterview.google_calendar_event_id) {
-    // Clear old event ID if we deleted it but couldn't create a new one
     await supabase.from('interviews').update({ google_calendar_event_id: null }).eq('id', interviewId)
   }
 
@@ -181,7 +178,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
   // Fetch updated interview
   const { data: updatedInterview } = await getInterviewById(supabase, interviewId, orgId)
   if (!updatedInterview) {
-    return NextResponse.json({ success: true }) // saved but can't fetch — still ok
+    return NextResponse.json({ success: true })
   }
 
   // Get org info
@@ -197,14 +194,24 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
   const schedulerName = user.user_metadata?.full_name || user.email?.split('@')[0] || ''
 
   const { dateStr, timeStr } = formatDateTime(updatedInterview.scheduled_at)
-  const meetLink = updatedInterview.meeting_link
+  const updMeetLink = updatedInterview.meeting_link
   const interviewLocation = updatedInterview.location
-  const meetInfo = meetLink ? `<p><strong>Meeting Link:</strong> <a href="${meetLink}">${meetLink}</a></p>` : ''
-  const locationInfo = interviewLocation ? `<p><strong>Location:</strong> ${interviewLocation}</p>` : ''
   const publicJobUrl = orgSlug && job?.id ? `${appUrl}/careers/${orgSlug}/${job.id}` : null
-  const jobUrlInfo = publicJobUrl ? `<p><strong>Job Details:</strong> <a href="${publicJobUrl}">View Job Posting</a></p>` : ''
 
-  // Detect what changed (for activity log only)
+  // Build detail table
+  const detailTable = buildDetailTable([
+    { label: 'Candidate', value: candidateName },
+    { label: 'Job', value: jobTitle, href: publicJobUrl || undefined },
+    { label: 'Interview Date & Time', value: `${dateStr} | ${timeStr}` },
+    { label: 'Duration', value: `${updatedInterview.duration_minutes} minutes` },
+    { label: 'Type', value: updatedInterview.interview_type === 'onsite' ? 'Face-to-Face' : 'Video Call' },
+    { label: 'Location', value: interviewLocation || null },
+    { label: 'Meeting Link', value: updMeetLink ? 'Join Meeting' : null, href: updMeetLink || undefined },
+  ])
+
+  const notesSection = updatedInterview.notes ? `<p><strong>Notes:</strong> ${updatedInterview.notes}</p>` : ''
+
+  // Detect changes for activity log
   const changes: string[] = []
   if (oldInterview.interview_type !== updatedInterview.interview_type) {
     const oldType = oldInterview.interview_type === 'onsite' ? 'Face-to-Face' : 'Video Call'
@@ -216,35 +223,34 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
   if (oldInterview.location !== updatedInterview.location) changes.push('Location has been updated')
   if (oldInterview.meeting_link !== updatedInterview.meeting_link) changes.push('Meeting link has been updated')
 
-  // Send update emails (tokenResult already fetched above)
+  // Send update emails
   if (tokenResult.accessToken) {
     const fromEmail = tokenResult.fromEmail || user.email!
     const recipients = await collectRecipients(updatedInterview, orgId, user.email || '', schedulerName)
 
-    const updateHtml = `
-      <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;">
-        <div style="background:#2563eb;color:white;padding:16px 20px;border-radius:12px 12px 0 0;">
-          <h2 style="margin:0;font-size:18px;">Interview Updated</h2>
-        </div>
-        <div style="border:1px solid #e5e7eb;border-top:none;border-radius:0 0 12px 12px;padding:20px;">
-          <p>The interview for <strong>${candidateName}</strong> — <strong>${jobTitle}</strong> at <strong>${companyName}</strong> has been updated.</p>
-          <h3 style="font-size:14px;margin:16px 0 6px;">Updated Details</h3>
-          <p><strong>Date:</strong> ${dateStr}<br/><strong>Time:</strong> ${timeStr}<br/><strong>Duration:</strong> ${updatedInterview.duration_minutes} minutes<br/><strong>Type:</strong> ${updatedInterview.interview_type === 'onsite' ? 'Face-to-Face' : 'Video Call'}</p>
-          ${locationInfo}
-          ${meetInfo}
-          ${jobUrlInfo}
-          ${updatedInterview.notes ? `<p><strong>Notes:</strong> ${updatedInterview.notes}</p>` : ''}
-          <p style="font-size:13px;color:#6b7280;"><strong>Updated by:</strong> ${schedulerName} (${user.email})</p>
-        </div>
-      </div>
-    `
+    const updateTemplate = await getOrCreateTemplate(supabase, orgId, 'interview_updated')
+    const { subject: updateSubject, html: updateHtml } = renderEmail(updateTemplate, {
+      candidate_name: candidateName,
+      job_title: jobTitle,
+      company_name: companyName,
+      interview_date: dateStr,
+      interview_time: timeStr,
+      duration_minutes: String(updatedInterview.duration_minutes),
+      interview_type: updatedInterview.interview_type === 'onsite' ? 'Face-to-Face' : 'Video Call',
+      location: interviewLocation || '',
+      meeting_link: updMeetLink || '',
+      scheduler_name: `${schedulerName} (${user.email})`,
+      notes: updatedInterview.notes || '',
+      detail_table: detailTable,
+      notes_section: notesSection,
+    }, companyName)
 
     for (const r of recipients) {
       try {
         await sendGmailEmail(tokenResult.accessToken, {
           from: fromEmail,
           to: r.email,
-          subject: `[Updated] Interview: ${candidateName} - ${jobTitle}`,
+          subject: updateSubject,
           html: updateHtml,
         })
         console.log(`[Interview Update Email] Sent to: ${r.email}`)
@@ -315,7 +321,6 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
       const calTokenResult = await getValidAccessToken(supabase, user.id, orgId)
       if (calTokenResult.accessToken) {
         await deleteCalendarEvent(calTokenResult.accessToken, interview.google_calendar_event_id)
-        console.log('[Calendar Event] Deleted:', interview.google_calendar_event_id)
       }
     } catch (err) {
       console.error('[Calendar Event Delete Error]', err)
@@ -329,37 +334,42 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
 
   const { dateStr, timeStr } = formatDateTime(interview.scheduled_at)
 
+  // Build detail table for cancellation
+  const detailTable = buildDetailTable([
+    { label: 'Candidate', value: candidateName },
+    { label: 'Position', value: `${jobTitle} at ${companyName}` },
+    { label: 'Was Scheduled', value: `${dateStr} at ${timeStr}` },
+    { label: 'Duration', value: `${interview.duration_minutes} minutes` },
+  ])
+
+  const reasonSection = cancelReason ? `<p><strong>Reason:</strong> ${cancelReason}</p>` : ''
+
   // Send cancellation emails
   const tokenResult = await getValidAccessToken(supabase, user.id, orgId)
   if (tokenResult.accessToken) {
     const fromEmail = tokenResult.fromEmail || user.email!
     const recipients = await collectRecipients(interview, orgId, user.email || '', schedulerName)
 
-    const cancelHtml = `
-      <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;">
-        <div style="background:#dc2626;color:white;padding:16px 20px;border-radius:12px 12px 0 0;">
-          <h2 style="margin:0;font-size:18px;">Interview Cancelled</h2>
-        </div>
-        <div style="border:1px solid #e5e7eb;border-top:none;border-radius:0 0 12px 12px;padding:20px;">
-          <p>The following interview has been <strong>cancelled</strong>:</p>
-          <div style="background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:14px;margin:12px 0;">
-            <p style="margin:0;"><strong>Candidate:</strong> ${candidateName}</p>
-            <p style="margin:6px 0 0;"><strong>Position:</strong> ${jobTitle} at ${companyName}</p>
-            <p style="margin:6px 0 0;"><strong>Was Scheduled:</strong> ${dateStr} at ${timeStr}</p>
-            <p style="margin:6px 0 0;"><strong>Duration:</strong> ${interview.duration_minutes} minutes</p>
-          </div>
-          <p style="font-size:13px;color:#6b7280;"><strong>Cancelled by:</strong> ${schedulerName} (${user.email})</p>
-          <p style="font-size:13px;color:#6b7280;">If you have any questions, please reach out to the recruiting team.</p>
-        </div>
-      </div>
-    `
+    const cancelTemplate = await getOrCreateTemplate(supabase, orgId, 'interview_cancelled')
+    const { subject: cancelSubject, html: cancelHtml } = renderEmail(cancelTemplate, {
+      candidate_name: candidateName,
+      job_title: jobTitle,
+      company_name: companyName,
+      interview_date: dateStr,
+      interview_time: timeStr,
+      duration_minutes: String(interview.duration_minutes),
+      scheduler_name: `${schedulerName} (${user.email})`,
+      cancel_reason: cancelReason || '',
+      detail_table: detailTable,
+      reason_section: reasonSection,
+    }, companyName)
 
     for (const r of recipients) {
       try {
         await sendGmailEmail(tokenResult.accessToken, {
           from: fromEmail,
           to: r.email,
-          subject: `[Cancelled] Interview: ${candidateName} - ${jobTitle}`,
+          subject: cancelSubject,
           html: cancelHtml,
         })
         console.log(`[Interview Cancel Email] Sent to: ${r.email}`)

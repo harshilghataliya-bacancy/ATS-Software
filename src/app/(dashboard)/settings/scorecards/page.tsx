@@ -73,6 +73,7 @@ export default function ScorecardsPage() {
 
   // Expanded card
   const [expandedId, setExpandedId] = useState<string | null>(null)
+  const [seeding, setSeeding] = useState(false)
 
   const loadScorecards = useCallback(async () => {
     if (!organization) return
@@ -165,6 +166,17 @@ export default function ScorecardsPage() {
     setSaving(false)
   }
 
+  async function handleSeedDefaults() {
+    setSeeding(true)
+    try {
+      const res = await fetch('/api/scorecards/seed', { method: 'POST' })
+      if (res.ok) loadScorecards()
+    } catch (err) {
+      console.error('[Seed error]', err)
+    }
+    setSeeding(false)
+  }
+
   async function handleDelete() {
     if (!organization || !deleteId) return
     setDeleting(true)
@@ -190,9 +202,14 @@ export default function ScorecardsPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <p className="text-sm text-gray-500">Create evaluation scorecards for standardized interview assessments</p>
-        <Button size="sm" onClick={openCreate} className="gap-1.5">
-          <Plus className="w-4 h-4" /> New Scorecard
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button size="sm" variant="outline" onClick={handleSeedDefaults} disabled={seeding} className="gap-1.5">
+            {seeding ? 'Seeding...' : 'Seed Defaults'}
+          </Button>
+          <Button size="sm" onClick={openCreate} className="gap-1.5">
+            <Plus className="w-4 h-4" /> New Scorecard
+          </Button>
+        </div>
       </div>
 
       {loading ? (

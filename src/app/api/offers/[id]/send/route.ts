@@ -8,6 +8,7 @@ import { logEmail } from '@/lib/services/email'
 import { logActivity } from '@/lib/services/activity'
 import { substituteOfferVariables, formatSalary } from '@/lib/offer-template'
 import { DEFAULT_OFFER_TEMPLATE, EMPLOYMENT_TYPE_OPTIONS, WORK_TYPE_OPTIONS } from '@/lib/constants'
+import { wrapEmailHtml } from '@/lib/email-templates/wrapper'
 import { renderToBuffer } from '@react-pdf/renderer'
 import { OfferPDFDocument } from '@/components/offers/offer-pdf-document'
 import React from 'react'
@@ -130,6 +131,7 @@ export async function POST(
   const acceptUrl = `${appUrl}/offers/respond?token=${responseToken}&action=accept`
   const declineUrl = `${appUrl}/offers/respond?token=${responseToken}&action=decline`
 
+  // Append Accept/Decline buttons to the inner body
   emailHtml += `
 <div style="margin-top:32px;padding-top:24px;border-top:1px solid #e5e7eb;text-align:center;">
   <p style="font-size:14px;color:#374151;margin-bottom:16px;">Please respond to this offer:</p>
@@ -145,6 +147,9 @@ export async function POST(
   </table>
   <p style="font-size:11px;color:#9ca3af;margin-top:16px;">If the buttons above don&rsquo;t work, copy and paste this link to accept:<br/><a href="${acceptUrl}" style="color:#2563eb;word-break:break-all;">${acceptUrl}</a></p>
 </div>`
+
+  // Wrap in professional email chrome
+  emailHtml = wrapEmailHtml(emailHtml, org?.name || 'Our Company')
 
   const empLabel = EMPLOYMENT_TYPE_OPTIONS.find((e) => e.value === offer.employment_type)?.label || offer.employment_type || ''
   const workLabel = WORK_TYPE_OPTIONS.find((w) => w.value === offer.work_type)?.label || offer.work_type || ''

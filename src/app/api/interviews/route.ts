@@ -4,9 +4,9 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { createInterview } from '@/lib/services/interviews'
 import { moveApplication } from '@/lib/services/applications'
 import { getValidAccessToken, sendGmailEmail } from '@/lib/services/gmail'
-import { createCalendarEvent } from '@/lib/services/google-calendar'
 import { logEmail } from '@/lib/services/email'
 import { logActivity } from '@/lib/services/activity'
+import { getOrCreateTemplate, renderEmail, buildDetailTable } from '@/lib/email-templates'
 
 async function autoInviteInterviewer(
   supabase: ReturnType<typeof createAdminClient>,
@@ -44,26 +44,24 @@ async function autoInviteInterviewer(
 
       if (accessToken) {
         const inviteLink = linkData.properties.action_link
-        sendGmailEmail(accessToken, {
-          from: fromEmail,
-          to: email,
-          subject: `You're invited to join ${companyName} on HireFlow`,
-          html: `
-            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-              <h2>You're invited to join ${companyName}!</h2>
-              <p>You have been invited to join <strong>${companyName}</strong> on HireFlow as an <strong>Interviewer</strong>.</p>
-              <p>Click the button below to accept your invitation and set up your account:</p>
-              <div style="margin: 24px 0;">
-                <a href="${inviteLink}"
-                   style="background-color: #2563eb; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block;">
-                  Accept Invitation
-                </a>
-              </div>
-              <p style="color: #6b7280; font-size: 14px;">If the button doesn&rsquo;t work, copy and paste this link into your browser:</p>
-              <p style="color: #6b7280; font-size: 14px; word-break: break-all;">${inviteLink}</p>
-            </div>
-          `,
-        }).catch((err) => console.error('[Invite email error]', err))
+        // Use template system for invite email
+        const inviteContent = `<p>Click the button below to accept your invitation and set up your account:</p>
+<div style="margin:24px 0;">
+  <a href="${inviteLink}" style="display:inline-block;background-color:#2563eb;color:white;padding:12px 24px;text-decoration:none;border-radius:6px;font-weight:600;">Accept Invitation</a>
+</div>
+<p style="color:#6b7280;font-size:13px;">If the button doesn't work, copy and paste this link:<br/><a href="${inviteLink}" style="color:#2563eb;word-break:break-all;">${inviteLink}</a></p>`
+
+        const template = await getOrCreateTemplate(supabase, orgId, 'interviewer_invite')
+        const { subject, html } = renderEmail(template, {
+          company_name: companyName,
+          invite_link: inviteLink,
+          email,
+          app_url: appUrl,
+          invite_content: inviteContent,
+        }, companyName)
+
+        sendGmailEmail(accessToken, { from: fromEmail, to: email, subject, html })
+          .catch((err) => console.error('[Invite email error]', err))
       }
     } else {
       if (existingAuthUser) {
@@ -85,29 +83,27 @@ async function autoInviteInterviewer(
           interviewerUserId = newUser.user.id
 
           if (accessToken) {
-            sendGmailEmail(accessToken, {
-              from: fromEmail,
-              to: email,
-              subject: `You've been invited to ${companyName} on HireFlow`,
-              html: `
-                <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-                  <h2>Welcome to ${companyName}!</h2>
-                  <p>You have been invited to join <strong>${companyName}</strong> on HireFlow as an <strong>Interviewer</strong>.</p>
-                  <p>An account has been created for you:</p>
-                  <div style="background: #f3f4f6; padding: 16px; border-radius: 8px; margin: 16px 0;">
-                    <p style="margin: 0;"><strong>Email:</strong> ${email}</p>
-                    <p style="margin: 8px 0 0 0;"><strong>Temporary Password:</strong> ${tempPassword}</p>
-                  </div>
-                  <p style="color: #dc2626; font-size: 14px;">Please change your password after first login.</p>
-                  <div style="margin: 24px 0;">
-                    <a href="${appUrl}/login"
-                       style="background-color: #2563eb; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block;">
-                      Login to HireFlow
-                    </a>
-                  </div>
-                </div>
-              `,
-            }).catch((err) => console.error('[Credentials email error]', err))
+            const inviteContent = `<p>An account has been created for you:</p>
+<div style="background:#f3f4f6;padding:16px;border-radius:8px;margin:16px 0;">
+  <p style="margin:0;"><strong>Email:</strong> ${email}</p>
+  <p style="margin:8px 0 0 0;"><strong>Temporary Password:</strong> ${tempPassword}</p>
+</div>
+<p style="color:#dc2626;font-size:13px;">Please change your password after first login.</p>
+<div style="margin:24px 0;">
+  <a href="${appUrl}/login" style="display:inline-block;background-color:#2563eb;color:white;padding:12px 24px;text-decoration:none;border-radius:6px;font-weight:600;">Login to HireFlow</a>
+</div>`
+
+            const template = await getOrCreateTemplate(supabase, orgId, 'interviewer_invite')
+            const { subject, html } = renderEmail(template, {
+              company_name: companyName,
+              email,
+              temp_password: tempPassword,
+              app_url: appUrl,
+              invite_content: inviteContent,
+            }, companyName)
+
+            sendGmailEmail(accessToken, { from: fromEmail, to: email, subject, html })
+              .catch((err) => console.error('[Credentials email error]', err))
           }
         } else {
           console.error('[Auto-create interviewer error]', createError)
@@ -246,8 +242,8 @@ export async function POST(request: NextRequest) {
   const tokenResult = await getValidAccessToken(supabase, user.id, orgId)
   if (tokenResult.accessToken) {
     try {
+      const { createCalendarEvent } = await import('@/lib/services/google-calendar')
       const isOnsite = interview_type === 'onsite'
-      // Include recruiter/scheduler + all interviewers + candidate as attendees (deduplicated)
       const attendees = Array.from(new Set([candidate_email, ...interviewerEmails, schedulerEmail].filter(Boolean)))
       const jobDescSnippet = job_description
         ? `\n\nJob Description:\n${job_description.replace(/<[^>]*>/g, '').slice(0, 500)}`
@@ -322,7 +318,7 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  // Create interview record — store first interviewer email for legacy compat
+  // Create interview record
   const { data: interview, error: interviewError } = await createInterview(
     supabase,
     orgId,
@@ -357,35 +353,48 @@ export async function POST(request: NextRequest) {
       .eq('id', interview.id)
   }
 
-  // Send emails via Gmail — await each to surface errors
+  // --- Build shared variables for email templates ---
   const scheduledDate = new Date(scheduled_at)
   const dateStr = scheduledDate.toLocaleDateString('en-IN', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', timeZone: 'Asia/Kolkata' })
   const timeStr = scheduledDate.toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit', hour12: true, timeZone: 'Asia/Kolkata' }) + ' IST'
-  const meetInfo = meetLink ? `<p><strong>Meeting Link:</strong> <a href="${meetLink}">${meetLink}</a></p>` : ''
-  const locationInfo = interviewLocation ? `<p><strong>Location:</strong> ${interviewLocation}</p>` : ''
-  const jobUrlInfo = publicJobUrl
-    ? `<p><strong>Job Details:</strong> <a href="${publicJobUrl}">View Job Posting</a></p>`
-    : ''
+
+  const detailTable = buildDetailTable([
+    { label: 'Candidate', value: candidate_name },
+    { label: 'Job', value: job_title, href: publicJobUrl || undefined },
+    { label: 'Interview Date & Time', value: `${dateStr} | ${timeStr}` },
+    { label: 'Duration', value: `${duration_minutes} minutes` },
+    { label: 'Type', value: interview_type === 'onsite' ? 'Face-to-Face' : interview_type },
+    { label: 'Location', value: interviewLocation || null },
+    { label: 'Meeting Link', value: meetLink ? 'Join Meeting' : null, href: meetLink || undefined },
+    { label: 'Panel Members', value: interviewerEmails.length > 1 ? interviewerEmails.join(', ') : null },
+  ])
+
+  const notesSection = notes ? `<p><strong>Notes:</strong> ${notes}</p>` : ''
+
+  const sharedVars: Record<string, string> = {
+    candidate_name,
+    candidate_email: candidate_email || '',
+    job_title,
+    company_name: companyName,
+    interview_date: dateStr,
+    interview_time: timeStr,
+    duration_minutes: String(duration_minutes),
+    interview_type: interview_type === 'onsite' ? 'Face-to-Face' : interview_type,
+    location: interviewLocation || '',
+    meeting_link: meetLink || '',
+    scheduler_name: `${schedulerName} (${schedulerEmail})`,
+    panel_members: interviewerEmails.join(', '),
+    notes: notes || '',
+    detail_table: detailTable,
+    notes_section: notesSection,
+  }
 
   // --- Email to candidate ---
   if (tokenResult.accessToken && candidate_email) {
-    const candidateHtml = `
-      <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;">
-        <p>Dear ${candidate_name},</p>
-        <p>You have been scheduled for an interview for the <strong>${job_title}</strong> position at <strong>${companyName}</strong>.</p>
-        <h3>Interview Details</h3>
-        <p><strong>Date:</strong> ${dateStr}<br/><strong>Time:</strong> ${timeStr}<br/><strong>Duration:</strong> ${duration_minutes} minutes<br/><strong>Type:</strong> ${interview_type}</p>
-        ${locationInfo}
-        ${meetInfo}
-        ${jobUrlInfo}
-        ${notes ? `<p><strong>Notes:</strong> ${notes}</p>` : ''}
-        <p><strong>Scheduled by:</strong> ${schedulerName} (${schedulerEmail})</p>
-        <p>Best regards,<br/>${companyName}</p>
-      </div>
-    `
-    const candidateSubject = `Interview Scheduled: ${job_title} at ${companyName}`
-
     try {
+      const candidateTemplate = await getOrCreateTemplate(supabase, orgId, 'interview_scheduled')
+      const { subject: candidateSubject, html: candidateHtml } = renderEmail(candidateTemplate, sharedVars, companyName)
+
       await sendGmailEmail(tokenResult.accessToken, {
         from: fromEmail,
         to: candidate_email,
@@ -409,28 +418,8 @@ export async function POST(request: NextRequest) {
 
   // --- Email to ALL interviewers + recruiter (scheduler) ---
   if (tokenResult.accessToken) {
-    const jobDescSection = job_description
-      ? `<h3>Job Description</h3><div style="background:#f9fafb;padding:12px;border-radius:8px;margin:8px 0;font-size:14px;color:#374151;">${job_description}</div>`
-      : ''
-
-    const interviewerHtml = `
-      <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;">
-        <h2>Interview Assignment</h2>
-        <p>You have been scheduled to interview <strong>${candidate_name}</strong> for the <strong>${job_title}</strong> position at <strong>${companyName}</strong>.</p>
-        <h3>Interview Details</h3>
-        <p><strong>Date:</strong> ${dateStr}<br/><strong>Time:</strong> ${timeStr}<br/><strong>Duration:</strong> ${duration_minutes} minutes<br/><strong>Type:</strong> ${interview_type}</p>
-        ${locationInfo}
-        ${meetInfo}
-        ${interviewerEmails.length > 1 ? `<p><strong>Interview Panel:</strong> ${interviewerEmails.join(', ')}</p>` : ''}
-        ${notes ? `<p><strong>Notes:</strong> ${notes}</p>` : ''}
-        <h3>Candidate Details</h3>
-        <p><strong>Name:</strong> ${candidate_name}<br/><strong>Email:</strong> ${candidate_email || 'N/A'}<br/><strong>Position:</strong> ${job_title}</p>
-        ${jobUrlInfo}
-        <p><strong>Scheduled by:</strong> ${schedulerName} (${schedulerEmail})</p>
-        ${jobDescSection}
-      </div>
-    `
-    const interviewerSubject = `Interview Assignment: ${candidate_name} - ${job_title}`
+    const interviewerTemplate = await getOrCreateTemplate(supabase, orgId, 'interview_scheduled_interviewer')
+    const { subject: interviewerSubject, html: interviewerHtml } = renderEmail(interviewerTemplate, sharedVars, companyName)
 
     // Send to all interviewers
     for (const email of interviewerEmails) {

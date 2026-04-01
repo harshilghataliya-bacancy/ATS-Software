@@ -8,6 +8,7 @@ import {
 import { getValidAccessToken, sendGmailEmail } from '@/lib/services/gmail'
 import { moveApplication } from '@/lib/services/applications'
 import { logActivity } from '@/lib/services/activity'
+import { getOrCreateTemplate, renderEmail } from '@/lib/email-templates'
 
 export async function GET(request: NextRequest) {
   const supabase = await createClient()
@@ -115,36 +116,38 @@ export async function POST(request: NextRequest) {
     .eq('id', membership.organization_id)
     .single()
 
-  // Try to send email via Gmail (non-blocking if not connected)
+  const orgName = org?.name || 'Our Company'
+  const assessmentLabel = assessment_name || 'Online Assessment'
+
+  // Build dynamic sections
+  const instructionsSection = instructions
+    ? `<div style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:6px;padding:16px;margin:16px 0;"><p style="color:#374151;margin:0;white-space:pre-wrap;">${instructions}</p></div>`
+    : ''
+  const expirySection = expiry_date
+    ? `<p style="color:#6b7280;font-size:14px;">Please complete the assessment by <strong>${new Date(expiry_date).toLocaleDateString('en-US', { dateStyle: 'long' })}</strong>.</p>`
+    : ''
+
+  // Try to send email via Gmail
   const tokenResult = await getValidAccessToken(supabase, user.id, membership.organization_id)
   if (tokenResult.accessToken) {
-    const candidateName = `${candidate.first_name} ${candidate.last_name}`
-    const orgName = org?.name || 'Our Company'
-    const jobTitle = job?.title || 'the position'
-    const assessmentLabel = assessment_name || 'Online Assessment'
-
-    const emailHtml = `
-<div style="font-family:sans-serif;max-width:600px;margin:0 auto;padding:20px;">
-  <h2 style="color:#1f2937;">Assessment Invitation – ${assessmentLabel}</h2>
-  <p style="color:#374151;">Dear ${candidateName},</p>
-  <p style="color:#374151;">
-    Thank you for applying for the <strong>${jobTitle}</strong> position at <strong>${orgName}</strong>.
-    As part of our hiring process, we'd like you to complete an online assessment: <strong>${assessmentLabel}</strong>.
-  </p>
-  ${instructions ? `<div style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:6px;padding:16px;margin:16px 0;"><p style="color:#374151;margin:0;white-space:pre-wrap;">${instructions}</p></div>` : ''}
-  ${expiry_date ? `<p style="color:#6b7280;font-size:14px;">Please complete the assessment by <strong>${new Date(expiry_date).toLocaleDateString('en-US', { dateStyle: 'long' })}</strong>.</p>` : ''}
-  <div style="text-align:center;margin:32px 0;">
-    <a href="${assessment_link}" style="display:inline-block;padding:12px 32px;background-color:#4f46e5;color:#ffffff;text-decoration:none;border-radius:6px;font-weight:600;font-size:16px;">Start Assessment</a>
-  </div>
-  <p style="color:#6b7280;font-size:14px;">Or copy this link: <a href="${assessment_link}" style="color:#4f46e5;">${assessment_link}</a></p>
-  <p style="color:#374151;margin-top:24px;">Best regards,<br/>${orgName} Talent Team</p>
-</div>`
+    const template = await getOrCreateTemplate(supabase, membership.organization_id, 'assessment_invitation', user.id)
+    const { subject, html } = renderEmail(template, {
+      candidate_name: candidateName,
+      job_title: jobTitle,
+      company_name: orgName,
+      assessment_name: assessmentLabel,
+      assessment_link,
+      instructions: instructions || '',
+      expiry_date: expiry_date ? new Date(expiry_date).toLocaleDateString('en-US', { dateStyle: 'long' }) : '',
+      instructions_section: instructionsSection,
+      expiry_section: expirySection,
+    }, orgName)
 
     sendGmailEmail(tokenResult.accessToken, {
       from: tokenResult.fromEmail || user.email!,
       to: candidate.email,
-      subject: `Assessment Invitation – ${assessmentLabel} | ${jobTitle} at ${orgName}`,
-      html: emailHtml,
+      subject,
+      html,
     }).catch(() => { /* Email failed — non-fatal */ })
   }
 

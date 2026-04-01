@@ -341,7 +341,12 @@ export function ScheduleInterviewDialog({
           {/* Interview Name */}
           <div className="space-y-2">
             <Label>Interview Name <span className="text-red-500">*</span></Label>
-            <Select value={title} onValueChange={setTitle}>
+            <Select value={title} onValueChange={(val) => {
+              setTitle(val)
+              // Auto-select matching scorecard by title
+              const match = scorecards.find((s) => s.title === val)
+              if (match) setScorecardId(match.id)
+            }}>
               <SelectTrigger>
                 <SelectValue placeholder="Select interview round" />
               </SelectTrigger>
