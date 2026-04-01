@@ -2,20 +2,16 @@
 
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { useUser, useRole } from '@/lib/hooks/use-user'
+import { useUser } from '@/lib/hooks/use-user'
 import { createClient } from '@/lib/supabase/client'
-import { getOffers, deleteOffer } from '@/lib/services/offers'
+import { getOffers } from '@/lib/services/offers'
 import { OFFER_STATUS_CONFIG, ITEMS_PER_PAGE } from '@/lib/constants'
 import { formatSalary } from '@/lib/offer-template'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Skeleton } from '@/components/ui/skeleton'
 import {
-  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
-  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger,
-} from '@/components/ui/alert-dialog'
-import {
-  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger,
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
@@ -23,7 +19,7 @@ import {
 import { Pagination } from '@/components/ui/pagination'
 import {
   List, LayoutGrid, FileText, Briefcase, DollarSign, Calendar,
-  Send, Download, MoreHorizontal, Eye, Trash2, Filter, Search,
+  Send, Download, MoreHorizontal, Eye, Filter, Search,
 } from 'lucide-react'
 
 type ViewMode = 'list' | 'card'
@@ -50,7 +46,6 @@ const STATUS_DOT: Record<string, string> = {
   declined: 'bg-rose-400',
   sent:     'bg-blue-500',
   expired:  'bg-gray-300',
-  draft:    'bg-amber-400',
   revoked:  'bg-orange-400',
 }
 
@@ -59,7 +54,6 @@ const STATUS_PILL: Record<string, string> = {
   declined: 'bg-rose-50 text-rose-600 border-rose-200',
   sent:     'bg-blue-50 text-blue-700 border-blue-200',
   expired:  'bg-gray-50 text-gray-500 border-gray-200',
-  draft:    'bg-amber-50 text-amber-700 border-amber-200',
   revoked:  'bg-orange-50 text-orange-600 border-orange-200',
 }
 
@@ -68,7 +62,6 @@ const STATUS_LABEL: Record<string, string> = {
   declined: 'Declined',
   sent:     'Sent',
   expired:  'Expired',
-  draft:    'Draft',
   revoked:  'Revoked',
 }
 
@@ -90,7 +83,6 @@ function getGradient(name: string) {
 
 export default function OffersPage() {
   const { organization, isLoading } = useUser()
-  const { role } = useRole()
   const router = useRouter()
 
   const [offers, setOffers] = useState<OfferItem[]>([])
@@ -119,13 +111,6 @@ export default function OffersPage() {
     if (data) setOffers(data as OfferItem[])
     if (count !== undefined && count !== null) setTotal(count)
     setLoading(false)
-  }
-
-  async function handleDelete(offerId: string) {
-    if (!organization) return
-    const supabase = createClient()
-    await deleteOffer(supabase, offerId, organization.id)
-    setOffers((prev) => prev.filter((o) => o.id !== offerId))
   }
 
   if (isLoading) {
@@ -190,10 +175,6 @@ export default function OffersPage() {
 
   /* ── Dropdown actions ── */
   function OfferActions({ offer }: { offer: OfferItem }) {
-    const candidateName = offer.application?.candidate
-      ? `${offer.application.candidate.first_name} ${offer.application.candidate.last_name}`
-      : 'Unknown'
-
     return (
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
@@ -206,33 +187,6 @@ export default function OffersPage() {
             <Eye className="w-3.5 h-3.5 mr-2 text-gray-400" />
             <span className="text-[13px]">View Details</span>
           </DropdownMenuItem>
-          {role === 'admin' && offer.status === 'draft' && (
-            <>
-              <DropdownMenuSeparator />
-              <AlertDialog>
-                <AlertDialogTrigger asChild>
-                  <DropdownMenuItem onSelect={(e) => e.preventDefault()} className="text-rose-600">
-                    <Trash2 className="w-3.5 h-3.5 mr-2" />
-                    <span className="text-[13px]">Delete</span>
-                  </DropdownMenuItem>
-                </AlertDialogTrigger>
-                <AlertDialogContent>
-                  <AlertDialogHeader>
-                    <AlertDialogTitle>Delete offer?</AlertDialogTitle>
-                    <AlertDialogDescription>
-                      This will permanently delete the offer for {candidateName}. This action cannot be undone.
-                    </AlertDialogDescription>
-                  </AlertDialogHeader>
-                  <AlertDialogFooter>
-                    <AlertDialogCancel>Cancel</AlertDialogCancel>
-                    <AlertDialogAction onClick={() => handleDelete(offer.id)} className="bg-rose-600 hover:bg-rose-700">
-                      Delete
-                    </AlertDialogAction>
-                  </AlertDialogFooter>
-                </AlertDialogContent>
-              </AlertDialog>
-            </>
-          )}
         </DropdownMenuContent>
       </DropdownMenu>
     )
@@ -362,7 +316,6 @@ export default function OffersPage() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All Status</SelectItem>
-                  <SelectItem value="draft">Draft</SelectItem>
                   <SelectItem value="sent">Sent</SelectItem>
                   <SelectItem value="accepted">Accepted</SelectItem>
                   <SelectItem value="declined">Declined</SelectItem>
@@ -485,9 +438,6 @@ export default function OffersPage() {
                             <Send className="w-3 h-3" />
                             Sent {new Date(offer.sent_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
                           </span>
-                        )}
-                        {!offer.sent_at && offer.status === 'draft' && (
-                          <span className="text-[10px] text-gray-300">Not sent yet</span>
                         )}
                       </div>
                       {expiry && (

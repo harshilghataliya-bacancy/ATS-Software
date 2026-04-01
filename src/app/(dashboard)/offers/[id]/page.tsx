@@ -20,7 +20,7 @@ import {
 } from '@/components/ui/alert-dialog'
 import {
   ArrowLeft, Download, Loader2, Send, MoreHorizontal,
-  CheckCircle2, XCircle, Ban, Trash2, User, Briefcase,
+  CheckCircle2, XCircle, Ban, User, Briefcase,
   MapPin, Calendar, DollarSign, Building2, Clock,
 } from 'lucide-react'
 
@@ -67,7 +67,6 @@ const STATUS_DOT: Record<string, string> = {
   declined: 'bg-rose-400',
   sent:     'bg-blue-500',
   expired:  'bg-gray-300',
-  draft:    'bg-amber-400',
   revoked:  'bg-orange-400',
 }
 
@@ -76,7 +75,6 @@ const STATUS_PILL: Record<string, string> = {
   declined: 'bg-rose-50 text-rose-600 border-rose-200',
   sent:     'bg-blue-50 text-blue-700 border-blue-200',
   expired:  'bg-gray-50 text-gray-500 border-gray-200',
-  draft:    'bg-amber-50 text-amber-700 border-amber-200',
   revoked:  'bg-orange-50 text-orange-600 border-orange-200',
 }
 
@@ -114,7 +112,7 @@ export default function OfferDetailPage() {
   const params = useParams()
   const router = useRouter()
   const { organization, isLoading: userLoading } = useUser()
-  const { canManageOffers, role } = useRole()
+  const { canManageOffers } = useRole()
   const { connected: gmailConnected, loading: gmailLoading } = useGmailStatus()
 
   const [offer, setOffer] = useState<OfferDetail | null>(null)
@@ -130,7 +128,6 @@ export default function OfferDetailPage() {
   // Dialog states
   const [declineDialogOpen, setDeclineDialogOpen] = useState(false)
   const [declineNotes, setDeclineNotes] = useState('')
-  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
   const [sendDialogOpen, setSendDialogOpen] = useState(false)
   const [acceptDialogOpen, setAcceptDialogOpen] = useState(false)
   const [revokeDialogOpen, setRevokeDialogOpen] = useState(false)
@@ -171,7 +168,6 @@ export default function OfferDetailPage() {
   const initials = candidate
     ? `${candidate.first_name?.[0] ?? ''}${candidate.last_name?.[0] ?? ''}`.toUpperCase()
     : '??'
-  const isDraft = offer?.status === 'draft'
   const isSent = offer?.status === 'sent'
   const isDeclined = offer?.status === 'declined'
   const isExpired = offer?.status === 'expired'
@@ -237,21 +233,6 @@ export default function OfferDetailPage() {
       setError(`Failed to mark offer as ${status}`)
     } finally {
       setResponding(false)
-    }
-  }
-
-  async function handleDelete() {
-    if (!offer) return
-    try {
-      const res = await fetch(`/api/offers/${offer.id}`, { method: 'DELETE' })
-      if (!res.ok) {
-        const data = await res.json()
-        setError(data.error || 'Failed to delete offer')
-        return
-      }
-      router.push('/offers')
-    } catch {
-      setError('Failed to delete offer')
     }
   }
 
@@ -339,7 +320,7 @@ export default function OfferDetailPage() {
             {downloadingPdf ? 'Generating...' : 'Download PDF'}
           </button>
 
-          {canManageOffers && (isDraft || canResend) && (
+          {canManageOffers && canResend && (
             <button
               onClick={() => {
                 if (!gmailConnected && !gmailLoading) {
@@ -381,14 +362,6 @@ export default function OfferDetailPage() {
             </DropdownMenu>
           )}
 
-          {role === 'admin' && isDraft && (
-            <button
-              onClick={() => setDeleteDialogOpen(true)}
-              className="flex items-center justify-center w-8 h-8 rounded-lg border border-gray-200 text-gray-400 hover:text-rose-600 hover:border-rose-200 transition-colors"
-            >
-              <Trash2 className="w-3.5 h-3.5" />
-            </button>
-          )}
         </div>
       </div>
 
@@ -778,23 +751,6 @@ export default function OfferDetailPage() {
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* Delete */}
-      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle className="text-[15px]">Delete Offer?</AlertDialogTitle>
-            <AlertDialogDescription className="text-[12px]">
-              This will permanently delete this offer. This action cannot be undone.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel className="text-[12px]">Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={handleDelete} className="text-[12px] bg-rose-600 hover:bg-rose-700">
-              Delete
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
     </div>
   )
 }

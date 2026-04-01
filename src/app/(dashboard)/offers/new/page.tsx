@@ -1200,7 +1200,7 @@ export default function NewOfferWizardPage() {
                         <span className="text-sm text-gray-600">
                           {gmailConnected
                             ? 'Gmail connected — offer will be emailed automatically'
-                            : 'Gmail not connected — offer will be saved as draft'}
+                            : 'Gmail not connected — please connect Gmail in Settings to send offers'}
                         </span>
                       </div>
                     </div>
