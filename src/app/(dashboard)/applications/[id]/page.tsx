@@ -37,7 +37,7 @@ import {
   ArrowLeft, Mail, MessageSquare, FileText, UserCircle, Calendar, Link as LinkIcon,
   Download, X, Eye, Plus, Trash2, CheckCircle2, XCircle, Clock, ChevronDown,
   ClipboardList, Loader2, PenLine, Info, ExternalLink, Pencil,
-  User, ChevronLeft, ChevronRight, Landmark, CheckCircle, RotateCcw, Link2, Check, Ban, Send,
+  ChevronLeft, ChevronRight, Landmark, CheckCircle, RotateCcw, Link2, Check, Ban, Send,
 } from 'lucide-react'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
