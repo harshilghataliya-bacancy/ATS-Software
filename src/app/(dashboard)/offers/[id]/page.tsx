@@ -381,7 +381,7 @@ export default function OfferDetailPage() {
             </DropdownMenu>
           )}
 
-          {role === 'admin' && (
+          {role === 'admin' && isDraft && (
             <button
               onClick={() => setDeleteDialogOpen(true)}
               className="flex items-center justify-center w-8 h-8 rounded-lg border border-gray-200 text-gray-400 hover:text-rose-600 hover:border-rose-200 transition-colors"

@@ -206,7 +206,7 @@ export default function OffersPage() {
             <Eye className="w-3.5 h-3.5 mr-2 text-gray-400" />
             <span className="text-[13px]">View Details</span>
           </DropdownMenuItem>
-          {role === 'admin' && (
+          {role === 'admin' && offer.status === 'draft' && (
             <>
               <DropdownMenuSeparator />
               <AlertDialog>
