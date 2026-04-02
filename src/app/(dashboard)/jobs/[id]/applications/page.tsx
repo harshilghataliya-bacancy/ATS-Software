@@ -482,7 +482,11 @@ export default function ApplicationsPage() {
     // Load job recruiters and resolve names + roles
     if (organization) {
       const supabase2 = createClient()
-      const recruiterIds = await getJobRecruiters(supabase2, params.id as string)
+      // Fetch recruiters and assignable recruiters in parallel
+      const [recruiterIds, assignableResult] = await Promise.all([
+        getJobRecruiters(supabase2, params.id as string),
+        getAssignableRecruiters(organization.id),
+      ])
       setJobRecruiterIds(recruiterIds)
 
       // Collect all recruiter IDs (from job + from applications) + candidate creators
@@ -496,18 +500,19 @@ export default function ApplicationsPage() {
         if (names) setRecruiterNames(names)
       }
       // Fetch roles for job recruiters
-      const { data: recruiterList } = await getAssignableRecruiters(organization.id)
-      if (recruiterList) {
+      if (assignableResult.data) {
         const roleMap: Record<string, string> = {}
-        recruiterList.forEach((r) => { roleMap[r.id] = r.role })
+        assignableResult.data.forEach((r) => { roleMap[r.id] = r.role })
         setRecruiterRoles(roleMap)
       }
     }
 
     setLoading(false)
 
-    const existingScores = await fetchScores()
-    fetchAssessmentInvitations()
+    const [existingScores] = await Promise.all([
+      fetchScores(),
+      fetchAssessmentInvitations(),
+    ])
 
     // Auto-parse unparsed resumes in background
     if (pipelineResult.data) {

@@ -274,39 +274,43 @@ export default function DashboardPage() {
       const endOfWeek = new Date(startOfWeek)
       endOfWeek.setDate(endOfWeek.getDate() + 7)
 
-      const { count: weekCount } = await supabase
-        .from('interviews')
-        .select('id', { count: 'exact', head: true })
-        .in('id', myInterviewIds)
-        .eq('organization_id', organization.id)
-        .eq('status', 'scheduled')
-        .is('deleted_at', null)
-        .gte('scheduled_at', startOfWeek.toISOString())
-        .lt('scheduled_at', endOfWeek.toISOString())
-
-      const { count: totalScheduled } = await supabase
-        .from('interviews')
-        .select('id', { count: 'exact', head: true })
-        .in('id', myInterviewIds)
-        .eq('organization_id', organization.id)
-        .eq('status', 'scheduled')
-        .is('deleted_at', null)
-
-      const { count: totalCompleted } = await supabase
-        .from('interviews')
-        .select('id', { count: 'exact', head: true })
-        .in('id', myInterviewIds)
-        .eq('organization_id', organization.id)
-        .eq('status', 'completed')
-        .is('deleted_at', null)
-
-      const completedIds = await supabase
-        .from('interviews')
-        .select('id')
-        .in('id', myInterviewIds)
-        .eq('organization_id', organization.id)
-        .eq('status', 'completed')
-        .is('deleted_at', null)
+      const [
+        { count: weekCount },
+        { count: totalScheduled },
+        { count: totalCompleted },
+        completedIds,
+      ] = await Promise.all([
+        supabase
+          .from('interviews')
+          .select('id', { count: 'exact', head: true })
+          .in('id', myInterviewIds)
+          .eq('organization_id', organization.id)
+          .eq('status', 'scheduled')
+          .is('deleted_at', null)
+          .gte('scheduled_at', startOfWeek.toISOString())
+          .lt('scheduled_at', endOfWeek.toISOString()),
+        supabase
+          .from('interviews')
+          .select('id', { count: 'exact', head: true })
+          .in('id', myInterviewIds)
+          .eq('organization_id', organization.id)
+          .eq('status', 'scheduled')
+          .is('deleted_at', null),
+        supabase
+          .from('interviews')
+          .select('id', { count: 'exact', head: true })
+          .in('id', myInterviewIds)
+          .eq('organization_id', organization.id)
+          .eq('status', 'completed')
+          .is('deleted_at', null),
+        supabase
+          .from('interviews')
+          .select('id')
+          .in('id', myInterviewIds)
+          .eq('organization_id', organization.id)
+          .eq('status', 'completed')
+          .is('deleted_at', null),
+      ])
 
       let pendingFeedbackCount = 0
       if (completedIds.data && completedIds.data.length > 0) {
@@ -446,20 +450,6 @@ export default function DashboardPage() {
     if (recruiterAppIds) pastQuery = pastQuery.in('application_id', recruiterAppIds)
     const { data: past } = await pastQuery
 
-    // Resolve all user names via server action (uses admin client)
-    const allInterviews = [...(upcoming ?? []), ...(past ?? [])]
-    const allUserIds: string[] = Array.from(new Set([
-      ...allInterviews.map((i) => i.created_by).filter(Boolean),
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      ...allInterviews.flatMap((i) => ((i as any).interview_panelists ?? []).map((p: any) => p.user_id)).filter(Boolean),
-    ]))
-    let userNameMap: Record<string, string> = {}
-    if (allUserIds.length > 0) {
-      const { data: nameMap } = await resolveUserNames(allUserIds)
-      if (nameMap) userNameMap = nameMap
-    }
-    setCreatorNames(userNameMap)
-
     if (upcoming) setDetailedInterviews(upcoming as unknown as DetailedInterview[])
     if (past) setPastInterviews(past as unknown as DetailedInterview[])
 
@@ -484,6 +474,8 @@ export default function DashboardPage() {
     if (recruiterAppIds) completedQuery = completedQuery.in('application_id', recruiterAppIds)
     const { data: completedInterviews } = await completedQuery
 
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let pendingInterviews: any[] = []
     if (completedInterviews && completedInterviews.length > 0 && user) {
       const completedIds = completedInterviews.map((i: { id: string }) => i.id)
       const { data: existingFeedback } = await supabase
@@ -494,33 +486,7 @@ export default function DashboardPage() {
 
       const feedbackInterviewIds = new Set((existingFeedback ?? []).map((f: { interview_id: string }) => f.interview_id))
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const pendingInterviews = completedInterviews.filter((i: any) => !feedbackInterviewIds.has(i.id))
-
-      // Resolve panelist names for pending interviews via server action
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const pendingPanelistIds: string[] = Array.from(new Set(pendingInterviews.flatMap((i: any) => (i.interview_panelists ?? []).map((p: any) => p.user_id as string)).filter(Boolean)))
-      const missingPanelistIds = pendingPanelistIds.filter((id) => !userNameMap[id])
-      if (missingPanelistIds.length > 0) {
-        const { data: pNames } = await resolveUserNames(missingPanelistIds)
-        if (pNames) {
-          Object.assign(userNameMap, pNames)
-        }
-      }
-
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const pending = pendingInterviews.map((i: any) => ({
-        interview_id: i.id,
-        scheduled_at: i.scheduled_at,
-        interview_type: i.interview_type,
-        interview_status: i.status,
-        candidate_name: `${i.application?.candidate?.first_name ?? ''} ${i.application?.candidate?.last_name ?? ''}`.trim(),
-        job_title: i.application?.job?.title ?? 'Unknown Position',
-        application_id: i.application_id,
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        panelist_names: (i.interview_panelists ?? []).map((p: any) => userNameMap[p.user_id] || 'Unknown'),
-      }))
-      setPendingFeedbacks(pending)
-      setCreatorNames({ ...userNameMap })
+      pendingInterviews = completedInterviews.filter((i: any) => !feedbackInterviewIds.has(i.id))
     }
 
     // Fetch new feedbacks (last 7 days)
@@ -560,18 +526,43 @@ export default function DashboardPage() {
     }
     const { data: recentFb } = await recentFbQuery
 
-    if (recentFb && recentFb.length > 0) {
-      // Resolve feedback submitter names via server action
+    // Collect ALL user IDs from all sources and resolve names in a single call
+    const allInterviews = [...(upcoming ?? []), ...(past ?? [])]
+    const allUserIds: string[] = Array.from(new Set([
+      // Creators and panelists from upcoming + past interviews
+      ...allInterviews.map((i) => i.created_by).filter(Boolean),
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const fbUserIds: string[] = Array.from(new Set(recentFb.map((fb: any) => fb.user_id as string).filter(Boolean)))
-      const missingIds = fbUserIds.filter((id) => !userNameMap[id])
-      if (missingIds.length > 0) {
-        const { data: fbNames } = await resolveUserNames(missingIds)
-        if (fbNames) {
-          Object.assign(userNameMap, fbNames)
-          setCreatorNames({ ...userNameMap })
-        }
-      }
+      ...allInterviews.flatMap((i) => ((i as any).interview_panelists ?? []).map((p: any) => p.user_id)).filter(Boolean),
+      // Panelists from pending feedback interviews
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      ...pendingInterviews.flatMap((i: any) => (i.interview_panelists ?? []).map((p: any) => p.user_id as string)).filter(Boolean),
+      // Feedback submitter user IDs
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      ...((recentFb ?? []).map((fb: any) => fb.user_id as string).filter(Boolean)),
+    ]))
+    let userNameMap: Record<string, string> = {}
+    if (allUserIds.length > 0) {
+      const { data: nameMap } = await resolveUserNames(allUserIds)
+      if (nameMap) userNameMap = nameMap
+    }
+
+    if (pendingInterviews.length > 0) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const pending = pendingInterviews.map((i: any) => ({
+        interview_id: i.id,
+        scheduled_at: i.scheduled_at,
+        interview_type: i.interview_type,
+        interview_status: i.status,
+        candidate_name: `${i.application?.candidate?.first_name ?? ''} ${i.application?.candidate?.last_name ?? ''}`.trim(),
+        job_title: i.application?.job?.title ?? 'Unknown Position',
+        application_id: i.application_id,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        panelist_names: (i.interview_panelists ?? []).map((p: any) => userNameMap[p.user_id] || 'Unknown'),
+      }))
+      setPendingFeedbacks(pending)
+    }
+
+    if (recentFb && recentFb.length > 0) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const mapped = recentFb.map((fb: any) => ({
         id: fb.id,
@@ -586,6 +577,7 @@ export default function DashboardPage() {
       setRecentFeedbacks(mapped)
     }
 
+    setCreatorNames(userNameMap)
     setInterviewsLoaded(true)
   }, [organization, interviewsLoaded, isAdmin, user])
 

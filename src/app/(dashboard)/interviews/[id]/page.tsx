@@ -123,50 +123,66 @@ export default function InterviewDetailPage() {
       const feedbackUsers = d.feedback ?? []
       const allUserIds = [...panelists.map((p) => p.user_id), ...feedbackUsers.map((f) => f.user_id)]
         .filter((id, i, arr) => arr.indexOf(id) === i)
-      if (allUserIds.length > 0) {
-        resolveUserNames(allUserIds).then(setUserNames)
-        resolveUserDetails(allUserIds).then(setUserDetails)
-      }
+
+      // Build independent promises for parallel execution
+      const userNamesPromise = allUserIds.length > 0
+        ? resolveUserNames(allUserIds)
+        : Promise.resolve({} as Record<string, string>)
+      const userDetailsPromise = allUserIds.length > 0
+        ? resolveUserDetails(allUserIds)
+        : Promise.resolve({} as Record<string, { name: string; email: string }>)
+
       // Load criteria: prefer interview-linked scorecard, fall back to job-level
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const interviewScorecardId = (d as any).scorecard_id
-      if (interviewScorecardId) {
-        // Fetch scorecard name
-        const { data: scData } = await supabase
-          .from('scorecards')
-          .select('title')
-          .eq('id', interviewScorecardId)
-          .single()
-        if (scData) setScorecardName(scData.title)
+      const scorecardPromise = (async () => {
+        if (interviewScorecardId) {
+          const [scorecardResult, templateCriteriaResult] = await Promise.all([
+            supabase.from('scorecards').select('title').eq('id', interviewScorecardId).single(),
+            getScorecardCriteriaByInterviewId(supabase, d.id, organization.id),
+          ])
+          if (scorecardResult.data) setScorecardName(scorecardResult.data.title)
+          if (templateCriteriaResult.data && templateCriteriaResult.data.length > 0) {
+            setScorecardCriteria(templateCriteriaResult.data as Array<{ id: string; name: string; description?: string; weight: number; rating_type?: string }>)
+          }
+        } else {
+          setScorecardName(null)
+          const jobId = d.application?.job?.id
+          if (jobId) {
+            const { data: criteriaData } = await getScorecardCriteria(supabase, jobId, organization.id)
+            if (criteriaData) setScorecardCriteria(criteriaData as Array<{ id: string; name: string; description?: string; weight: number; rating_type?: string }>)
+          }
+        }
+      })()
 
-        const { data: templateCriteria } = await getScorecardCriteriaByInterviewId(supabase, d.id, organization.id)
-        if (templateCriteria && templateCriteria.length > 0) {
-          setScorecardCriteria(templateCriteria as Array<{ id: string; name: string; description?: string; weight: number; rating_type?: string }>)
-        }
-      } else {
-        setScorecardName(null)
-        const jobId = d.application?.job?.id
-        if (jobId) {
-          const { data: criteriaData } = await getScorecardCriteria(supabase, jobId, organization.id)
-          if (criteriaData) setScorecardCriteria(criteriaData as Array<{ id: string; name: string; description?: string; weight: number; rating_type?: string }>)
-        }
-      }
       // Fetch criteria ratings for each feedback
-      if (d.feedback?.length > 0) {
-        const feedbackIds = d.feedback.map((f: { id: string }) => f.id)
-        const { data: ratingsData } = await supabase
-          .from('scorecard_ratings')
-          .select('feedback_id, criteria_id, rating, notes, rating_type, text_value')
-          .in('feedback_id', feedbackIds)
-        if (ratingsData) {
-          const grouped: Record<string, Array<{ criteria_id: string; rating: number; notes?: string }>> = {}
-          ratingsData.forEach((r: { feedback_id: string; criteria_id: string; rating: number; notes?: string; text_value?: string }) => {
-            if (!grouped[r.feedback_id]) grouped[r.feedback_id] = []
-            grouped[r.feedback_id].push({ criteria_id: r.criteria_id, rating: r.rating ?? 0, notes: r.text_value || r.notes || undefined })
-          })
-          setFeedbackCriteriaRatings(grouped)
+      const feedbackRatingsPromise = (async () => {
+        if (d.feedback?.length > 0) {
+          const feedbackIds = d.feedback.map((f: { id: string }) => f.id)
+          const { data: ratingsData } = await supabase
+            .from('scorecard_ratings')
+            .select('feedback_id, criteria_id, rating, notes, rating_type, text_value')
+            .in('feedback_id', feedbackIds)
+          if (ratingsData) {
+            const grouped: Record<string, Array<{ criteria_id: string; rating: number; notes?: string }>> = {}
+            ratingsData.forEach((r: { feedback_id: string; criteria_id: string; rating: number; notes?: string; text_value?: string }) => {
+              if (!grouped[r.feedback_id]) grouped[r.feedback_id] = []
+              grouped[r.feedback_id].push({ criteria_id: r.criteria_id, rating: r.rating ?? 0, notes: r.text_value || r.notes || undefined })
+            })
+            setFeedbackCriteriaRatings(grouped)
+          }
         }
-      }
+      })()
+
+      // Await all independent operations in parallel
+      const [resolvedNames, resolvedDetails] = await Promise.all([
+        userNamesPromise,
+        userDetailsPromise,
+        scorecardPromise,
+        feedbackRatingsPromise,
+      ])
+      setUserNames(resolvedNames)
+      setUserDetails(resolvedDetails)
     } else {
       setError('Interview not found or you do not have access.')
     }

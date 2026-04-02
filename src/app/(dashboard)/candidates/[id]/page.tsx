@@ -109,31 +109,38 @@ export default function CandidateDetailPage() {
       setCandidate(data)
       setFormData(data)
 
-      // Resolve creator name
-      if (data.created_by) {
-        resolveUserNames([data.created_by]).then((names) => {
-          setCreatorName(names[data.created_by] || null)
-        })
+      // Run independent fetches in parallel: creator name, activity logs, AI scores
+      setActivityLoading(true)
+      const creatorNamePromise = data.created_by
+        ? resolveUserNames([data.created_by])
+        : Promise.resolve(null)
+
+      const activitiesPromise = fetchCandidateActivities(organization.id, data.id)
+
+      const aiScoresPromise = data.applications?.length > 0
+        ? supabase
+            .from('candidate_match_scores')
+            .select('application_id, overall_score, skill_score, experience_score, semantic_score, recommendation')
+            .in('application_id', data.applications.map((a: AnyData) => a.id))
+        : Promise.resolve({ data: null })
+
+      const [creatorNames, activitiesResult, scoresResult] = await Promise.all([
+        creatorNamePromise,
+        activitiesPromise,
+        aiScoresPromise,
+      ])
+
+      if (creatorNames && data.created_by) {
+        setCreatorName(creatorNames[data.created_by] || null)
       }
 
-      // Fetch activity logs with user names resolved (server action)
-      setActivityLoading(true)
-      const { data: activities } = await fetchCandidateActivities(organization.id, data.id)
-      setActivityLogs(activities || [])
+      setActivityLogs(activitiesResult.data || [])
       setActivityLoading(false)
 
-      // Fetch AI scores for all applications
-      if (data.applications?.length > 0) {
-        const appIds = data.applications.map((a: AnyData) => a.id)
-        const { data: scores } = await supabase
-          .from('candidate_match_scores')
-          .select('application_id, overall_score, skill_score, experience_score, semantic_score, recommendation')
-          .in('application_id', appIds)
-        if (scores) {
-          const map: Record<string, AnyData> = {}
-          scores.forEach((s: AnyData) => { map[s.application_id] = s })
-          setAiScores(map)
-        }
+      if (scoresResult.data) {
+        const map: Record<string, AnyData> = {}
+        scoresResult.data.forEach((s: AnyData) => { map[s.application_id] = s })
+        setAiScores(map)
       }
     }
     setLoading(false)

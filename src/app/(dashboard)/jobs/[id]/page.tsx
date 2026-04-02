@@ -121,14 +121,17 @@ export default function JobDetailPage() {
         assigned_to: data.assigned_to ?? null,
       })
 
-      // Load job recruiters
-      const recruiterIds = await getJobRecruiters(supabase, params.id as string)
+      // Load job recruiters and scorecard criteria in parallel
+      const [recruiterIds, scorecardResult] = await Promise.all([
+        getJobRecruiters(supabase, params.id as string),
+        !criteriaLoaded ? getScorecardCriteria(supabase, params.id as string, organization.id) : Promise.resolve({ data: null }),
+      ])
       setSelectedRecruiterIds(recruiterIds)
       setJobOwnerId((data.assigned_to as string) ?? (recruiterIds.length > 0 ? recruiterIds[0] : null))
       initialRecruiterIdsRef.current = JSON.stringify(recruiterIds)
 
       if (!criteriaLoaded) {
-        const { data: criteriaData } = await getScorecardCriteria(supabase, params.id as string, organization.id)
+        const criteriaData = scorecardResult.data
         if (criteriaData && criteriaData.length > 0) {
           const loaded = criteriaData.map((c: Record<string, unknown>) => ({
             name: c.name as string,

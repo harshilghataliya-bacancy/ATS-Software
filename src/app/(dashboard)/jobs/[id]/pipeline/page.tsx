@@ -213,9 +213,10 @@ export default function PipelinePage() {
     if (!organization) return
     const supabase = createClient()
 
-    const [jobResult, pipelineResult] = await Promise.all([
+    const [jobResult, pipelineResult, recruiterIds] = await Promise.all([
       getJobById(supabase, params.id as string, organization.id),
       getApplicationsForJob(supabase, params.id as string, organization.id),
+      getJobRecruiters(supabase, params.id as string),
     ])
 
     if (jobResult.error) {
@@ -230,8 +231,7 @@ export default function PipelinePage() {
       setStages(pipelineResult.data.stages as PipelineStage[])
     }
 
-    // Load job recruiters
-    const recruiterIds = await getJobRecruiters(supabase, params.id as string)
+    // Resolve recruiter names
     setJobRecruiterIds(recruiterIds)
     if (recruiterIds.length > 0) {
       const { data: names } = await resolveUserNames(recruiterIds)
