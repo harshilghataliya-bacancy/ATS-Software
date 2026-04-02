@@ -245,7 +245,7 @@ export async function POST(
     // CC the recruiter who is sending the offer
     const recruiterCc = user.email || undefined
     const attachments = [{ filename: pdfFilename, content: new Uint8Array(pdfBuffer), contentType: 'application/pdf' }]
-    sendGmailEmail(tokenResult.accessToken, { from: fromEmail, fromName: tokenResult.displayName || org?.name || 'Our Company', to: candidate.email, cc: recruiterCc, subject, html: emailHtml, attachments })
+    sendGmailEmail(tokenResult.accessToken, { from: fromEmail, fromName: tokenResult.displayName || org?.name || 'Our Company', to: candidate.email, cc: recruiterCc, subject, html: emailHtml, attachments, refreshToken: tokenResult.refreshToken })
       .then(() => logEmail(supabase, orgId, {
         candidate_id: candidate.id,
         application_id: offer.application_id,

@@ -165,6 +165,7 @@ async function sendBulkRejectionEmails(
         to: candidateEmail,
         subject,
         html: bodyHtml,
+        refreshToken: tokenResult.refreshToken,
       })
 
       await logEmail(supabase, orgId, {

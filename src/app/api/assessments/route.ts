@@ -151,6 +151,7 @@ export async function POST(request: NextRequest) {
       cc: user.email !== candidate.email ? user.email! : undefined,
       subject,
       html,
+      refreshToken: tokenResult.refreshToken,
     }).catch(() => { /* Email failed — non-fatal */ })
   }
 

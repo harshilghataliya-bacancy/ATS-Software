@@ -17,6 +17,7 @@ async function autoInviteInterviewer(
   fromEmail: string,
   appUrl: string,
   senderName?: string,
+  refreshToken?: string | null,
 ): Promise<string | null> {
   try {
     const { data: { users: allUsers } } = await supabase.auth.admin.listUsers()
@@ -61,7 +62,7 @@ async function autoInviteInterviewer(
           invite_content: inviteContent,
         }, companyName)
 
-        sendGmailEmail(accessToken, { from: fromEmail, fromName: senderName || companyName, to: email, subject, html })
+        sendGmailEmail(accessToken, { from: fromEmail, fromName: senderName || companyName, to: email, subject, html, refreshToken: refreshToken || undefined })
           .catch((err) => console.error('[Invite email error]', err))
       }
     } else {
@@ -103,7 +104,7 @@ async function autoInviteInterviewer(
               invite_content: inviteContent,
             }, companyName)
 
-            sendGmailEmail(accessToken, { from: fromEmail, fromName: senderName || companyName, to: email, subject, html })
+            sendGmailEmail(accessToken, { from: fromEmail, fromName: senderName || companyName, to: email, subject, html, refreshToken: refreshToken || undefined })
               .catch((err) => console.error('[Credentials email error]', err))
           }
         } else {
@@ -316,6 +317,7 @@ export async function POST(request: NextRequest) {
         fromEmail,
         appUrl,
         tokenResult.displayName || undefined,
+        tokenResult.refreshToken,
       )
       if (userId) {
         panelists.push({ user_id: userId, role: 'interviewer' })
@@ -463,6 +465,7 @@ export async function POST(request: NextRequest) {
         cc: schedulerEmail !== candidate_email ? schedulerEmail : undefined,
         subject: candidateSubject,
         html: candidateHtml,
+        refreshToken: tokenResult.refreshToken,
       })
       logEmail(supabase, orgId, {
         candidate_id: interview.application?.candidate?.id ?? '',
@@ -492,6 +495,7 @@ export async function POST(request: NextRequest) {
         subject: interviewerSubject,
         html: interviewerHtml,
         attachments: resumeAttachment ? [resumeAttachment] : undefined,
+        refreshToken: tokenResult.refreshToken,
       })
       console.log(`[Interview Email] Sent to interviewers: ${interviewerEmails.join(', ')}`)
     } catch (err) {

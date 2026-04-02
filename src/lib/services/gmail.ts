@@ -1,6 +1,5 @@
 import { google } from 'googleapis'
 import { SupabaseClient } from '@supabase/supabase-js'
-import nodemailer from 'nodemailer'
 import MailComposer from 'nodemailer/lib/mail-composer'
 import { createAdminClient } from '@/lib/supabase/admin'
 
@@ -28,6 +27,7 @@ export function getGmailAuthUrl(state: string) {
     prompt: 'consent',
     scope: [
       'https://www.googleapis.com/auth/gmail.send',
+      'https://www.googleapis.com/auth/gmail.settings.basic',
       'https://www.googleapis.com/auth/calendar.events',
       'https://www.googleapis.com/auth/userinfo.profile',
       'https://www.googleapis.com/auth/userinfo.email',
@@ -83,9 +83,17 @@ export async function getValidAccessToken(
   supabase: SupabaseClient,
   userId: string,
   orgId: string
-): Promise<{ accessToken: string; fromEmail: string; displayName: string | null; error: null } | { accessToken: null; fromEmail: null; displayName: null; error: string }> {
+): Promise<{ accessToken: string; refreshToken: string; fromEmail: string; displayName: string | null; error: null } | { accessToken: null; refreshToken: null; fromEmail: null; displayName: null; error: string }> {
   // Use admin client to bypass RLS on google_oauth_tokens (user-scoped policy)
   const adminSupabase = createAdminClient()
+
+  // Always use org name as display name (not the Gmail account's profile name)
+  const { data: org } = await adminSupabase
+    .from('organizations')
+    .select('name')
+    .eq('id', orgId)
+    .single()
+  const orgDisplayName = org?.name || null
 
   // First try the current user's token
   const { data: tokenRow } = await adminSupabase
@@ -99,8 +107,9 @@ export async function getValidAccessToken(
   if (tokenRow) {
     const result = await resolveToken(adminSupabase, tokenRow)
     if (result) {
-      const { data: userData } = await adminSupabase.auth.admin.getUserById(userId)
-      return { accessToken: result, fromEmail: userData?.user?.email || '', displayName: tokenRow.display_name || null, error: null }
+      // Resolve the actual Gmail email from the OAuth token
+      const gmailEmail = await resolveGmailEmail(result, tokenRow)
+      return { accessToken: result, refreshToken: tokenRow.refresh_token, fromEmail: gmailEmail, displayName: orgDisplayName, error: null }
     }
   }
 
@@ -126,14 +135,31 @@ export async function getValidAccessToken(
       if (adminToken) {
         const result = await resolveToken(adminSupabase, adminToken)
         if (result) {
-          const { data: adminUser } = await adminSupabase.auth.admin.getUserById(admin.user_id)
-          return { accessToken: result, fromEmail: adminUser?.user?.email || '', displayName: adminToken.display_name || null, error: null }
+          const gmailEmail = await resolveGmailEmail(result, adminToken)
+          return { accessToken: result, refreshToken: adminToken.refresh_token, fromEmail: gmailEmail, displayName: orgDisplayName, error: null }
         }
       }
     }
   }
 
-  return { accessToken: null, fromEmail: null, displayName: null, error: 'Gmail not connected. Ask an admin to connect Gmail in Settings.' }
+  return { accessToken: null, refreshToken: null, fromEmail: null, displayName: null, error: 'Gmail not connected. Ask an admin to connect Gmail in Settings.' }
+}
+
+// Resolve the actual Gmail email address from OAuth token
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function resolveGmailEmail(accessToken: string, tokenRow: any): Promise<string> {
+  // If we have a cached gmail_email, use it
+  if (tokenRow.gmail_email) return tokenRow.gmail_email
+  // Otherwise fetch from Google userinfo
+  try {
+    const client = createOAuth2Client()
+    client.setCredentials({ access_token: accessToken })
+    const oauth2 = google.oauth2({ version: 'v2', auth: client })
+    const { data: profile } = await oauth2.userinfo.get()
+    return profile.email || ''
+  } catch {
+    return ''
+  }
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -182,6 +208,7 @@ export async function sendGmailEmail(
     cc?: string
     subject: string
     html: string
+    refreshToken?: string
     attachments?: Array<{
       filename: string
       content: Buffer | Uint8Array
@@ -189,60 +216,8 @@ export async function sendGmailEmail(
     }>
   }
 ) {
-  // Look up refresh token from DB for SMTP auth
-  let refreshToken: string | null = null
-  try {
-    const adminSupabase = createAdminClient()
-    const { data: tokenRow } = await adminSupabase
-      .from('google_oauth_tokens')
-      .select('refresh_token')
-      .eq('provider', 'gmail')
-      .limit(1)
-      .maybeSingle()
-    refreshToken = tokenRow?.refresh_token || null
-  } catch {
-    // Non-fatal
-  }
-
-  // Try SMTP with OAuth2 first (preserves From display name)
-  if (refreshToken) {
-  try {
-    const transporter = nodemailer.createTransport({
-      host: 'smtp.gmail.com',
-      port: 465,
-      secure: true,
-      auth: {
-        type: 'OAuth2',
-        user: params.from,
-        clientId: process.env.GOOGLE_CLIENT_ID,
-        clientSecret: process.env.GOOGLE_CLIENT_SECRET,
-        refreshToken,
-        accessToken,
-      },
-    })
-
-    const result = await transporter.sendMail({
-      from: params.fromName
-        ? { name: params.fromName, address: params.from }
-        : params.from,
-      to: params.to,
-      cc: params.cc || undefined,
-      subject: params.subject,
-      html: params.html,
-      attachments: params.attachments?.map((a) => ({
-        filename: a.filename,
-        content: Buffer.from(a.content),
-        contentType: a.contentType,
-      })),
-    })
-
-    return result
-  } catch (smtpErr) {
-    console.warn('[Gmail SMTP] Failed, falling back to API:', smtpErr)
-  }
-  }
-
-  // Fallback: Gmail REST API (display name may be stripped by Gmail)
+  // The From field display name is respected by Gmail API only when the
+  // email address matches the authenticated Gmail account
   const fromField = params.fromName
     ? `"${params.fromName.replace(/"/g, '')}" <${params.from}>`
     : params.from
@@ -278,6 +253,30 @@ export async function sendGmailEmail(
   })
 
   return result.data
+}
+
+// ---------------------------------------------------------------------------
+// Update Gmail Send As display name (sets the name shown on sent emails)
+// ---------------------------------------------------------------------------
+
+export async function updateSendAsDisplayName(
+  accessToken: string,
+  email: string,
+  displayName: string
+) {
+  const client = createOAuth2Client()
+  client.setCredentials({ access_token: accessToken })
+
+  const gmail = google.gmail({ version: 'v1', auth: client })
+
+  await gmail.users.settings.sendAs.update({
+    userId: 'me',
+    sendAsEmail: email,
+    requestBody: {
+      displayName,
+      sendAsEmail: email,
+    },
+  })
 }
 
 // ---------------------------------------------------------------------------

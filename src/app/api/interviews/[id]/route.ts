@@ -206,6 +206,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
           cc: schedulerEmail !== candidateEmail ? schedulerEmail : undefined,
           subject: updateSubject,
           html: updateHtml,
+          refreshToken: tokenResult.refreshToken,
         })
         console.log(`[Interview Update Email] Sent to candidate: ${candidateEmail}`)
         logEmail(supabase, orgId, {
@@ -248,6 +249,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
           to: interviewerEmails.join(', '),
           subject: updateSubject,
           html: updateHtml,
+          refreshToken: tokenResult.refreshToken,
         })
         console.log(`[Interview Update Email] Sent to interviewers: ${interviewerEmails.join(', ')}`)
       } catch (err) {
@@ -371,6 +373,7 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
           cc: schedulerEmail !== candidateEmail ? schedulerEmail : undefined,
           subject: cancelSubject,
           html: cancelHtml,
+          refreshToken: tokenResult.refreshToken,
         })
         console.log(`[Interview Cancel Email] Sent to candidate: ${candidateEmail}`)
         logEmail(supabase, orgId, {
@@ -413,6 +416,7 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
           to: interviewerEmails.join(', '),
           subject: cancelSubject,
           html: cancelHtml,
+          refreshToken: tokenResult.refreshToken,
         })
         console.log(`[Interview Cancel Email] Sent to interviewers: ${interviewerEmails.join(', ')}`)
       } catch (err) {

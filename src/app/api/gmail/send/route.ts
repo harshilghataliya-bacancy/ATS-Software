@@ -67,6 +67,7 @@ export async function POST(request: NextRequest) {
       to,
       subject,
       html,
+      refreshToken: tokenResult.refreshToken,
     })
 
     // Log activity

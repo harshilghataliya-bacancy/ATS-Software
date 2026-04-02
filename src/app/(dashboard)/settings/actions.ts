@@ -118,6 +118,7 @@ export async function inviteMemberAction(orgId: string, email: string, role: str
             <p style="color: #6b7280; font-size: 14px;">If you did not expect this invitation, you can ignore this email.</p>
           </div>
         `,
+        refreshToken: tokenResult.refreshToken,
       }).catch((err) => console.error('Failed to send member notification email via Gmail:', err))
     }
   } else {
@@ -183,6 +184,7 @@ export async function inviteMemberAction(orgId: string, email: string, role: str
               </div>
             </div>
           `,
+          refreshToken: fallbackToken.refreshToken,
         }).catch((err) => console.error('Failed to send invite email via Gmail:', err))
       }
 
@@ -216,6 +218,7 @@ export async function inviteMemberAction(orgId: string, email: string, role: str
             <p style="color: #6b7280; font-size: 14px; word-break: break-all;">${inviteLink}</p>
           </div>
         `,
+        refreshToken: tokenResult.refreshToken,
       }).catch((err) => console.error('Failed to send invite email via Gmail:', err))
     } else {
       console.warn('Gmail not connected — invite created but no email sent. User:', email)

@@ -237,6 +237,7 @@ async function sendApplicationAcknowledgment(
   if (!adminMembers || adminMembers.length === 0) return
 
   let accessToken: string | null = null
+  let refreshToken: string | null = null
   let fromEmail = ''
   let senderDisplayName: string | null = null
 
@@ -254,6 +255,7 @@ async function sendApplicationAcknowledgment(
       const result = await getValidAccessToken(supabase, admin.user_id, orgId)
       if (result.accessToken) {
         accessToken = result.accessToken
+        refreshToken = result.refreshToken
         fromEmail = result.fromEmail
         senderDisplayName = result.displayName || null
         break
@@ -282,6 +284,7 @@ async function sendApplicationAcknowledgment(
       to: candidateEmail,
       subject,
       html,
+      refreshToken: refreshToken || undefined,
     })
 
     await logEmail(adminSupabase, orgId, {

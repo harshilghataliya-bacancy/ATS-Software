@@ -176,6 +176,7 @@ async function sendRevokeEmail(
     cc: recruiterCc,
     subject,
     html,
+    refreshToken: tokenResult.refreshToken,
   })
 
   // Log the email

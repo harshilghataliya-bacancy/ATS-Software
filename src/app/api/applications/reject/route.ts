@@ -162,6 +162,7 @@ async function sendRejectionEmail(
       to: candidateEmail,
       subject,
       html: bodyHtml,
+      refreshToken: tokenResult.refreshToken,
     })
 
     await logEmail(supabase, orgId, {
