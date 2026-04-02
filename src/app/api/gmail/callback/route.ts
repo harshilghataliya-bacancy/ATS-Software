@@ -50,10 +50,13 @@ export async function GET(request: NextRequest) {
       oauthClient.setCredentials({ access_token: tokens.access_token })
       const oauth2 = google.oauth2({ version: 'v2', auth: oauthClient })
       const { data: profile } = await oauth2.userinfo.get()
+      console.log('[Gmail OAuth] Profile fetched:', JSON.stringify(profile))
       displayName = profile.name || undefined
-    } catch {
+    } catch (err) {
+      console.error('[Gmail OAuth] Failed to fetch profile:', err)
       // Non-fatal — display name will fall back to org name
     }
+    console.log('[Gmail OAuth] Display name to store:', displayName)
 
     // Store tokens
     const { error } = await storeGmailTokens(supabase, userId, orgId, {

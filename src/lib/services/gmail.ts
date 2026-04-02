@@ -1,5 +1,6 @@
 import { google } from 'googleapis'
 import { SupabaseClient } from '@supabase/supabase-js'
+import nodemailer from 'nodemailer'
 import MailComposer from 'nodemailer/lib/mail-composer'
 import { createAdminClient } from '@/lib/supabase/admin'
 
@@ -188,6 +189,60 @@ export async function sendGmailEmail(
     }>
   }
 ) {
+  // Look up refresh token from DB for SMTP auth
+  let refreshToken: string | null = null
+  try {
+    const adminSupabase = createAdminClient()
+    const { data: tokenRow } = await adminSupabase
+      .from('google_oauth_tokens')
+      .select('refresh_token')
+      .eq('provider', 'gmail')
+      .limit(1)
+      .maybeSingle()
+    refreshToken = tokenRow?.refresh_token || null
+  } catch {
+    // Non-fatal
+  }
+
+  // Try SMTP with OAuth2 first (preserves From display name)
+  if (refreshToken) {
+  try {
+    const transporter = nodemailer.createTransport({
+      host: 'smtp.gmail.com',
+      port: 465,
+      secure: true,
+      auth: {
+        type: 'OAuth2',
+        user: params.from,
+        clientId: process.env.GOOGLE_CLIENT_ID,
+        clientSecret: process.env.GOOGLE_CLIENT_SECRET,
+        refreshToken,
+        accessToken,
+      },
+    })
+
+    const result = await transporter.sendMail({
+      from: params.fromName
+        ? { name: params.fromName, address: params.from }
+        : params.from,
+      to: params.to,
+      cc: params.cc || undefined,
+      subject: params.subject,
+      html: params.html,
+      attachments: params.attachments?.map((a) => ({
+        filename: a.filename,
+        content: Buffer.from(a.content),
+        contentType: a.contentType,
+      })),
+    })
+
+    return result
+  } catch (smtpErr) {
+    console.warn('[Gmail SMTP] Failed, falling back to API:', smtpErr)
+  }
+  }
+
+  // Fallback: Gmail REST API (display name may be stripped by Gmail)
   const fromField = params.fromName
     ? `"${params.fromName.replace(/"/g, '')}" <${params.from}>`
     : params.from
