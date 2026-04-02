@@ -31,16 +31,15 @@ export async function fetchApplicationActivities(orgId: string, applicationId: s
   const adminSupabase = createAdminClient()
   const userMap: Record<string, string> = {}
 
-  for (const uid of userIds) {
-    try {
-      const { data } = await adminSupabase.auth.admin.getUserById(uid)
-      if (data?.user) {
-        userMap[uid] = data.user.user_metadata?.full_name || data.user.email || 'Unknown'
-      }
-    } catch {
-      // skip
+  const settled = await Promise.allSettled(
+    userIds.map((uid) => adminSupabase.auth.admin.getUserById(uid))
+  )
+  settled.forEach((res, i) => {
+    if (res.status === 'fulfilled' && res.value.data?.user) {
+      const u = res.value.data.user
+      userMap[userIds[i]] = u.user_metadata?.full_name || u.email || 'Unknown'
     }
-  }
+  })
 
   const enriched = activities.map((activity) => ({
     ...activity,

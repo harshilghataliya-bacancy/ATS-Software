@@ -13,12 +13,15 @@ export async function resolveUserNames(userIds: string[]): Promise<Record<string
   const adminSupabase = createAdminClient()
   const result: Record<string, string> = {}
 
-  for (const uid of userIds) {
-    const { data } = await adminSupabase.auth.admin.getUserById(uid)
-    if (data?.user) {
-      result[uid] = data.user.user_metadata?.full_name || data.user.email?.split('@')[0] || 'Unknown'
+  const settled = await Promise.allSettled(
+    userIds.map((uid) => adminSupabase.auth.admin.getUserById(uid))
+  )
+  settled.forEach((res, i) => {
+    if (res.status === 'fulfilled' && res.value.data?.user) {
+      const u = res.value.data.user
+      result[userIds[i]] = u.user_metadata?.full_name || u.email?.split('@')[0] || 'Unknown'
     }
-  }
+  })
 
   return result
 }
@@ -33,15 +36,18 @@ export async function resolveUserDetails(userIds: string[]): Promise<Record<stri
   const adminSupabase = createAdminClient()
   const result: Record<string, { name: string; email: string }> = {}
 
-  for (const uid of userIds) {
-    const { data } = await adminSupabase.auth.admin.getUserById(uid)
-    if (data?.user) {
-      result[uid] = {
-        name: data.user.user_metadata?.full_name || data.user.email?.split('@')[0] || 'Unknown',
-        email: data.user.email || '',
+  const settled = await Promise.allSettled(
+    userIds.map((uid) => adminSupabase.auth.admin.getUserById(uid))
+  )
+  settled.forEach((res, i) => {
+    if (res.status === 'fulfilled' && res.value.data?.user) {
+      const u = res.value.data.user
+      result[userIds[i]] = {
+        name: u.user_metadata?.full_name || u.email?.split('@')[0] || 'Unknown',
+        email: u.email || '',
       }
     }
-  }
+  })
 
   return result
 }
