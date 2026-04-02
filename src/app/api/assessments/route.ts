@@ -146,7 +146,7 @@ export async function POST(request: NextRequest) {
     const senderEmail = tokenResult.fromEmail || user.email!
     sendGmailEmail(tokenResult.accessToken, {
       from: senderEmail,
-      fromName: orgName,
+      fromName: tokenResult.displayName || orgName,
       to: candidate.email,
       cc: user.email !== candidate.email ? user.email! : undefined,
       subject,

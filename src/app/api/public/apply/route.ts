@@ -238,6 +238,7 @@ async function sendApplicationAcknowledgment(
 
   let accessToken: string | null = null
   let fromEmail = ''
+  let senderDisplayName: string | null = null
 
   for (const admin of adminMembers) {
     const { data: tokenRow } = await adminSupabase
@@ -254,6 +255,7 @@ async function sendApplicationAcknowledgment(
       if (result.accessToken) {
         accessToken = result.accessToken
         fromEmail = result.fromEmail
+        senderDisplayName = result.displayName || null
         break
       }
     }
@@ -276,7 +278,7 @@ async function sendApplicationAcknowledgment(
   try {
     await sendGmailEmail(accessToken, {
       from: fromEmail,
-      fromName: companyName,
+      fromName: senderDisplayName || companyName,
       to: candidateEmail,
       subject,
       html,

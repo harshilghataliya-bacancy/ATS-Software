@@ -161,7 +161,7 @@ async function sendBulkRejectionEmails(
 
       await sendGmailEmail(tokenResult.accessToken, {
         from: tokenResult.fromEmail,
-        fromName: companyName,
+        fromName: tokenResult.displayName || companyName,
         to: candidateEmail,
         subject,
         html: bodyHtml,

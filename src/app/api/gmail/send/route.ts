@@ -63,7 +63,7 @@ export async function POST(request: NextRequest) {
   try {
     await sendGmailEmail(accessToken, {
       from: fromEmail,
-      fromName: orgName,
+      fromName: tokenResult.displayName || orgName,
       to,
       subject,
       html,

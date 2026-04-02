@@ -171,7 +171,7 @@ async function sendRevokeEmail(
 
   await sendGmailEmail(tokenResult.accessToken, {
     from: fromEmail,
-    fromName: companyName,
+    fromName: tokenResult.displayName || companyName,
     to: candidateEmail,
     cc: recruiterCc,
     subject,

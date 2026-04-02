@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { google } from 'googleapis'
 import { createClient } from '@/lib/supabase/server'
-import { exchangeCodeForTokens, storeGmailTokens } from '@/lib/services/gmail'
+import { exchangeCodeForTokens, storeGmailTokens, createOAuth2Client } from '@/lib/services/gmail'
 
 export async function GET(request: NextRequest) {
   const baseUrl = (process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000').replace(/\/+$/, '')
@@ -42,12 +43,25 @@ export async function GET(request: NextRequest) {
       return NextResponse.redirect(settingsUrl)
     }
 
+    // Fetch Gmail profile display name using the access token
+    let displayName: string | undefined
+    try {
+      const oauthClient = createOAuth2Client()
+      oauthClient.setCredentials({ access_token: tokens.access_token })
+      const oauth2 = google.oauth2({ version: 'v2', auth: oauthClient })
+      const { data: profile } = await oauth2.userinfo.get()
+      displayName = profile.name || undefined
+    } catch {
+      // Non-fatal — display name will fall back to org name
+    }
+
     // Store tokens
     const { error } = await storeGmailTokens(supabase, userId, orgId, {
       access_token: tokens.access_token,
       refresh_token: tokens.refresh_token,
       expiry_date: tokens.expiry_date,
       scope: tokens.scope ?? undefined,
+      display_name: displayName,
     })
 
     if (error) {

@@ -27,8 +27,9 @@ export function getGmailAuthUrl(state: string) {
     prompt: 'consent',
     scope: [
       'https://www.googleapis.com/auth/gmail.send',
-      'https://www.googleapis.com/auth/gmail.settings.basic',
       'https://www.googleapis.com/auth/calendar.events',
+      'https://www.googleapis.com/auth/userinfo.profile',
+      'https://www.googleapis.com/auth/userinfo.email',
     ],
     state,
   })
@@ -52,7 +53,7 @@ export async function storeGmailTokens(
   supabase: SupabaseClient,
   userId: string,
   orgId: string,
-  tokens: { access_token: string; refresh_token: string; expiry_date: number; scope?: string }
+  tokens: { access_token: string; refresh_token: string; expiry_date: number; scope?: string; display_name?: string }
 ) {
   const { error } = await supabase
     .from('google_oauth_tokens')
@@ -65,6 +66,7 @@ export async function storeGmailTokens(
         token_expiry: new Date(tokens.expiry_date).toISOString(),
         scopes: tokens.scope ? tokens.scope.split(' ') : ['https://www.googleapis.com/auth/gmail.send'],
         provider: 'gmail',
+        display_name: tokens.display_name || null,
       },
       { onConflict: 'user_id,organization_id,provider' }
     )
@@ -80,7 +82,7 @@ export async function getValidAccessToken(
   supabase: SupabaseClient,
   userId: string,
   orgId: string
-): Promise<{ accessToken: string; fromEmail: string; error: null } | { accessToken: null; fromEmail: null; error: string }> {
+): Promise<{ accessToken: string; fromEmail: string; displayName: string | null; error: null } | { accessToken: null; fromEmail: null; displayName: null; error: string }> {
   // Use admin client to bypass RLS on google_oauth_tokens (user-scoped policy)
   const adminSupabase = createAdminClient()
 
@@ -97,7 +99,7 @@ export async function getValidAccessToken(
     const result = await resolveToken(adminSupabase, tokenRow)
     if (result) {
       const { data: userData } = await adminSupabase.auth.admin.getUserById(userId)
-      return { accessToken: result, fromEmail: userData?.user?.email || '', error: null }
+      return { accessToken: result, fromEmail: userData?.user?.email || '', displayName: tokenRow.display_name || null, error: null }
     }
   }
 
@@ -124,13 +126,13 @@ export async function getValidAccessToken(
         const result = await resolveToken(adminSupabase, adminToken)
         if (result) {
           const { data: adminUser } = await adminSupabase.auth.admin.getUserById(admin.user_id)
-          return { accessToken: result, fromEmail: adminUser?.user?.email || '', error: null }
+          return { accessToken: result, fromEmail: adminUser?.user?.email || '', displayName: adminToken.display_name || null, error: null }
         }
       }
     }
   }
 
-  return { accessToken: null, fromEmail: null, error: 'Gmail not connected. Ask an admin to connect Gmail in Settings.' }
+  return { accessToken: null, fromEmail: null, displayName: null, error: 'Gmail not connected. Ask an admin to connect Gmail in Settings.' }
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -187,7 +189,7 @@ export async function sendGmailEmail(
   }
 ) {
   const fromField = params.fromName
-    ? `=?UTF-8?B?${Buffer.from(params.fromName).toString('base64')}?= <${params.from}>`
+    ? `"${params.fromName.replace(/"/g, '')}" <${params.from}>`
     : params.from
 
   const mail = new MailComposer({
@@ -196,7 +198,6 @@ export async function sendGmailEmail(
     cc: params.cc || undefined,
     subject: params.subject,
     html: params.html,
-    headers: params.fromName ? { 'X-Mailer': 'HireFlow ATS' } : undefined,
     attachments: params.attachments?.map((a) => ({
       filename: a.filename,
       content: Buffer.from(a.content),
@@ -215,19 +216,6 @@ export async function sendGmailEmail(
   client.setCredentials({ access_token: accessToken })
 
   const gmail = google.gmail({ version: 'v1', auth: client })
-
-  // Update the Gmail sendAs display name to match org name
-  if (params.fromName && params.from) {
-    try {
-      await gmail.users.settings.sendAs.update({
-        userId: 'me',
-        sendAsEmail: params.from,
-        requestBody: { displayName: params.fromName },
-      })
-    } catch {
-      // Non-fatal — continue sending even if display name update fails
-    }
-  }
 
   const result = await gmail.users.messages.send({
     userId: 'me',

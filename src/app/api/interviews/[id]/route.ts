@@ -201,7 +201,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       try {
         await sendGmailEmail(tokenResult.accessToken, {
           from: fromEmail,
-          fromName: companyName,
+          fromName: tokenResult.displayName || companyName,
           to: candidateEmail,
           cc: schedulerEmail !== candidateEmail ? schedulerEmail : undefined,
           subject: updateSubject,
@@ -244,7 +244,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       try {
         await sendGmailEmail(tokenResult.accessToken, {
           from: fromEmail,
-          fromName: companyName,
+          fromName: tokenResult.displayName || companyName,
           to: interviewerEmails.join(', '),
           subject: updateSubject,
           html: updateHtml,
@@ -366,7 +366,7 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
       try {
         await sendGmailEmail(tokenResult.accessToken, {
           from: fromEmail,
-          fromName: companyName,
+          fromName: tokenResult.displayName || companyName,
           to: candidateEmail,
           cc: schedulerEmail !== candidateEmail ? schedulerEmail : undefined,
           subject: cancelSubject,
@@ -409,7 +409,7 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
       try {
         await sendGmailEmail(tokenResult.accessToken, {
           from: fromEmail,
-          fromName: companyName,
+          fromName: tokenResult.displayName || companyName,
           to: interviewerEmails.join(', '),
           subject: cancelSubject,
           html: cancelHtml,

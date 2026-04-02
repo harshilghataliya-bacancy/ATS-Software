@@ -101,7 +101,7 @@ export async function inviteMemberAction(orgId: string, email: string, role: str
       // Fire-and-forget: send notification email in background
       sendGmailEmail(tokenResult.accessToken, {
         from: tokenResult.fromEmail || user.email!,
-        fromName: orgName,
+        fromName: tokenResult.displayName || orgName,
         to: email,
         subject: `You've been added to ${orgName} on HireFlow`,
         html: `
@@ -162,7 +162,7 @@ export async function inviteMemberAction(orgId: string, email: string, role: str
         // Fire-and-forget: send credentials email in background
         sendGmailEmail(fallbackToken.accessToken, {
           from: fallbackToken.fromEmail || user.email!,
-          fromName: orgName,
+          fromName: fallbackToken.displayName || orgName,
           to: email,
           subject: `You've been invited to ${orgName} on HireFlow`,
           html: `
@@ -198,7 +198,7 @@ export async function inviteMemberAction(orgId: string, email: string, role: str
       // Fire-and-forget: send invite email in background
       sendGmailEmail(tokenResult.accessToken, {
         from: tokenResult.fromEmail || user.email!,
-        fromName: orgName,
+        fromName: tokenResult.displayName || orgName,
         to: email,
         subject: `You've been invited to ${orgName} on HireFlow`,
         html: `

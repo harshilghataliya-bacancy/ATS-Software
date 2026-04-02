@@ -16,6 +16,7 @@ async function autoInviteInterviewer(
   accessToken: string | null,
   fromEmail: string,
   appUrl: string,
+  senderName?: string,
 ): Promise<string | null> {
   try {
     const { data: { users: allUsers } } = await supabase.auth.admin.listUsers()
@@ -60,7 +61,7 @@ async function autoInviteInterviewer(
           invite_content: inviteContent,
         }, companyName)
 
-        sendGmailEmail(accessToken, { from: fromEmail, fromName: companyName, to: email, subject, html })
+        sendGmailEmail(accessToken, { from: fromEmail, fromName: senderName || companyName, to: email, subject, html })
           .catch((err) => console.error('[Invite email error]', err))
       }
     } else {
@@ -102,7 +103,7 @@ async function autoInviteInterviewer(
               invite_content: inviteContent,
             }, companyName)
 
-            sendGmailEmail(accessToken, { from: fromEmail, fromName: companyName, to: email, subject, html })
+            sendGmailEmail(accessToken, { from: fromEmail, fromName: senderName || companyName, to: email, subject, html })
               .catch((err) => console.error('[Credentials email error]', err))
           }
         } else {
@@ -314,6 +315,7 @@ export async function POST(request: NextRequest) {
         tokenResult.accessToken,
         fromEmail,
         appUrl,
+        tokenResult.displayName || undefined,
       )
       if (userId) {
         panelists.push({ user_id: userId, role: 'interviewer' })
@@ -456,7 +458,7 @@ export async function POST(request: NextRequest) {
 
       await sendGmailEmail(tokenResult.accessToken, {
         from: fromEmail,
-        fromName: companyName,
+        fromName: tokenResult.displayName || companyName,
         to: candidate_email,
         cc: schedulerEmail !== candidate_email ? schedulerEmail : undefined,
         subject: candidateSubject,
@@ -485,7 +487,7 @@ export async function POST(request: NextRequest) {
     try {
       await sendGmailEmail(tokenResult.accessToken, {
         from: fromEmail,
-        fromName: companyName,
+        fromName: tokenResult.displayName || companyName,
         to: interviewerEmails.join(', '),
         subject: interviewerSubject,
         html: interviewerHtml,
