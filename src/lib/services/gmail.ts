@@ -27,6 +27,7 @@ export function getGmailAuthUrl(state: string) {
     prompt: 'consent',
     scope: [
       'https://www.googleapis.com/auth/gmail.send',
+      'https://www.googleapis.com/auth/gmail.settings.basic',
       'https://www.googleapis.com/auth/calendar.events',
     ],
     state,
@@ -186,7 +187,7 @@ export async function sendGmailEmail(
   }
 ) {
   const fromField = params.fromName
-    ? `"${params.fromName.replace(/"/g, '')}" <${params.from}>`
+    ? `=?UTF-8?B?${Buffer.from(params.fromName).toString('base64')}?= <${params.from}>`
     : params.from
 
   const mail = new MailComposer({
@@ -195,6 +196,7 @@ export async function sendGmailEmail(
     cc: params.cc || undefined,
     subject: params.subject,
     html: params.html,
+    headers: params.fromName ? { 'X-Mailer': 'HireFlow ATS' } : undefined,
     attachments: params.attachments?.map((a) => ({
       filename: a.filename,
       content: Buffer.from(a.content),
@@ -213,6 +215,20 @@ export async function sendGmailEmail(
   client.setCredentials({ access_token: accessToken })
 
   const gmail = google.gmail({ version: 'v1', auth: client })
+
+  // Update the Gmail sendAs display name to match org name
+  if (params.fromName && params.from) {
+    try {
+      await gmail.users.settings.sendAs.update({
+        userId: 'me',
+        sendAsEmail: params.from,
+        requestBody: { displayName: params.fromName },
+      })
+    } catch {
+      // Non-fatal — continue sending even if display name update fails
+    }
+  }
+
   const result = await gmail.users.messages.send({
     userId: 'me',
     requestBody: { raw },
