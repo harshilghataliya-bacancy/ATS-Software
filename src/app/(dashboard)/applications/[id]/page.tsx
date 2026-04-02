@@ -226,95 +226,56 @@ export default function ApplicationDetailPage() {
     )
     if (fetchError) {
       setError(fetchError.message)
-    } else if (data) {
-      setApplication(data)
+      setLoading(false)
+      return
+    }
+    if (!data) {
+      setLoading(false)
+      return
+    }
 
-      // Resolve candidate creator name
-      if (data.candidate?.created_by) {
-        resolveUserNames([data.candidate.created_by]).then((names) => {
-          setCreatorName(names[data.candidate.created_by] || null)
-        })
-      }
+    setApplication(data)
+    setActivityLoading(true)
+    setEmailLogsLoading(true)
 
-      // Resolve panelist + feedback user names
-      const interviews = data.interviews ?? []
-      const allUserIds = interviews.flatMap((iv: AnyData) => [
-        ...(iv.interview_panelists ?? []).map((p: AnyData) => p.user_id),
-        ...(iv.interview_feedback ?? []).map((f: AnyData) => f.user_id),
-      ]).filter((id: string, i: number, arr: string[]) => id && arr.indexOf(id) === i)
-      if (allUserIds.length > 0) {
-        resolveUserNames(allUserIds).then(setUserNames)
-      }
+    // Collect all user IDs upfront for a single resolveUserNames call
+    const interviews = data.interviews ?? []
+    const allUserIds = new Set<string>()
+    if (data.candidate?.created_by) allUserIds.add(data.candidate.created_by)
+    interviews.forEach((iv: AnyData) => {
+      ;(iv.interview_panelists ?? []).forEach((p: AnyData) => { if (p.user_id) allUserIds.add(p.user_id) })
+      ;(iv.interview_feedback ?? []).forEach((f: AnyData) => { if (f.user_id) allUserIds.add(f.user_id) })
+    })
 
-      // Fetch assessment invitations for this application
-      try {
-        const res = await fetch(`/api/assessments?application_id=${data.id}`)
-        if (res.ok) {
-          const { invitations } = await res.json()
-          setAssessmentInvitations(invitations || [])
-        }
-      } catch {
-        // Silently fail
-      }
-
-      // Load application notes
-      const supabase2 = createClient()
-      const commentsResult = await getComments(supabase2, organization.id, 'application', data.id)
-      const notesData = commentsResult.data || []
-      // Resolve user names from auth for notes
-      if (notesData.length > 0) {
-        const noteUserIds = Array.from(new Set(notesData.map((n: any) => n.user_id)))
-        const namesMap = await resolveUserNames(noteUserIds)
-        notesData.forEach((n: any) => {
-          if (!n.user_email || n.user_email === null) {
-            n.user_email = namesMap[n.user_id] || 'User'
-          }
-        })
-      }
-      setNotes(notesData)
-
-      // Load AI match score (silently)
-      try {
-        const supabase3 = createClient()
-        const { data: score } = await getMatchScore(supabase3, data.id)
-        setMatchScore(score ?? null)
-      } catch {
-        // ignore
-      }
-
-      // Load activity logs
-      setActivityLoading(true)
-      const { data: activities } = await fetchApplicationActivities(organization.id, data.id, data.candidate_id)
-      setActivityLogs(activities || [])
-      setActivityLoading(false)
-
-      // Load email logs for this candidate
-      setEmailLogsLoading(true)
-      const supabaseEmail = createClient()
-      const { data: emails } = await getEmailLogs(supabaseEmail, organization.id, data.candidate_id)
-      setEmailLogs(emails || [])
-      setEmailLogsLoading(false)
-
-      // Load job recruiters for assignment dropdown
-      if (data.job?.id) {
-        const supabase4 = createClient()
-        const rIds = await getJobRecruiters(supabase4, data.job.id)
-        setJobRecruiterIds(rIds)
-        if (rIds.length > 0) {
-          const rNames = await resolveUserNames(rIds)
-          setRecruiterNames(rNames)
-        }
-        // Fetch roles
-        const { data: recruiterList } = await getAssignableRecruiters(organization.id)
-        if (recruiterList) {
-          const roleMap: Record<string, string> = {}
-          recruiterList.forEach((r) => { roleMap[r.id] = r.role })
-          setRecruiterRoles(roleMap)
-        }
-      }
-
-      // Load sibling application IDs for prev/next navigation
-      if (data.job?.id) {
+    // Fire ALL independent queries in parallel
+    const [
+      assessmentResult,
+      commentsResult,
+      matchScoreResult,
+      activitiesResult,
+      emailsResult,
+      recruitersResult,
+      siblingsResult,
+      bankResult,
+      userNamesResult,
+    ] = await Promise.allSettled([
+      // 1. Assessments
+      fetch(`/api/assessments?application_id=${data.id}`).then((r) => r.ok ? r.json() : null),
+      // 2. Notes/comments
+      getComments(createClient(), organization.id, 'application', data.id),
+      // 3. AI match score
+      getMatchScore(createClient(), data.id),
+      // 4. Activity logs
+      fetchApplicationActivities(organization.id, data.id, data.candidate_id),
+      // 5. Email logs
+      getEmailLogs(createClient(), organization.id, data.candidate_id),
+      // 6. Job recruiters + roles
+      data.job?.id ? Promise.all([
+        getJobRecruiters(createClient(), data.job.id),
+        getAssignableRecruiters(organization.id),
+      ]) : Promise.resolve(null),
+      // 7. Sibling applications for prev/next
+      data.job?.id ? (() => {
         const supabaseSib = createClient()
         const statusFilter = searchParams.get('status')
         let sibQuery = supabaseSib
@@ -326,29 +287,106 @@ export default function ApplicationDetailPage() {
         if (statusFilter && statusFilter !== 'all') {
           sibQuery = sibQuery.eq('status', statusFilter)
         }
-        const { data: siblings } = await sibQuery
-        if (siblings) {
-          setSiblingIds(siblings.map((s: AnyData) => s.id))
-          const names: Record<string, string> = {}
-          siblings.forEach((s: AnyData) => {
-            if (s.candidate) names[s.id] = `${s.candidate.first_name || ''} ${s.candidate.last_name || ''}`.trim()
-          })
-          setSiblingNames(names)
-        }
-      }
+        return sibQuery
+      })() : Promise.resolve(null),
+      // 8. Bank check
+      data.candidate_id ? fetch('/api/banks', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'check_default', candidateId: data.candidate_id }),
+      }).then((r) => r.json()).catch(() => null) : Promise.resolve(null),
+      // 9. Resolve all user names in one batch
+      allUserIds.size > 0 ? resolveUserNames(Array.from(allUserIds)) : Promise.resolve({} as Record<string, string>),
+    ])
 
-      // Check if candidate is already in default bank
-      if (data.candidate_id) {
-        fetch('/api/banks', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ action: 'check_default', candidateId: data.candidate_id }),
-        })
-          .then((r) => r.json())
-          .then((r) => setInDefaultBank(r.inBank === true))
-          .catch(() => {})
+    // Process results
+    // User names (shared across creator, panelists, feedback)
+    const namesMap = userNamesResult.status === 'fulfilled' ? (userNamesResult.value as Record<string, string>) : {}
+    if (data.candidate?.created_by && namesMap[data.candidate.created_by]) {
+      setCreatorName(namesMap[data.candidate.created_by])
+    }
+    setUserNames(namesMap)
+
+    // Assessments
+    if (assessmentResult.status === 'fulfilled' && assessmentResult.value) {
+      setAssessmentInvitations(assessmentResult.value.invitations || [])
+    }
+
+    // Notes — resolve note user names from the already-fetched namesMap
+    if (commentsResult.status === 'fulfilled') {
+      const notesData = commentsResult.value.data || []
+      // Check if any note user IDs weren't in the initial batch
+      const missingNoteUserIds = notesData
+        .map((n: any) => n.user_id)
+        .filter((id: string) => id && !namesMap[id])
+        .filter((id: string, i: number, arr: string[]) => arr.indexOf(id) === i)
+      if (missingNoteUserIds.length > 0) {
+        const extraNames = await resolveUserNames(missingNoteUserIds)
+        Object.assign(namesMap, extraNames)
+      }
+      notesData.forEach((n: any) => {
+        if (!n.user_email || n.user_email === null) {
+          n.user_email = namesMap[n.user_id] || 'User'
+        }
+      })
+      setNotes(notesData)
+    }
+
+    // Match score
+    if (matchScoreResult.status === 'fulfilled') {
+      setMatchScore(matchScoreResult.value.data ?? null)
+    }
+
+    // Activities
+    if (activitiesResult.status === 'fulfilled') {
+      setActivityLogs(activitiesResult.value.data || [])
+    }
+    setActivityLoading(false)
+
+    // Emails
+    if (emailsResult.status === 'fulfilled') {
+      setEmailLogs(emailsResult.value.data || [])
+    }
+    setEmailLogsLoading(false)
+
+    // Recruiters
+    if (recruitersResult.status === 'fulfilled' && recruitersResult.value) {
+      const [rIds, rolesResult] = recruitersResult.value as [string[], { data: { id: string; role: string }[] | null }]
+      setJobRecruiterIds(rIds)
+      if (rIds.length > 0) {
+        // Resolve recruiter names from already-fetched or fetch missing
+        const missingRIds = rIds.filter((id) => !namesMap[id])
+        if (missingRIds.length > 0) {
+          const rNames = await resolveUserNames(missingRIds)
+          Object.assign(namesMap, rNames)
+        }
+        setRecruiterNames(namesMap)
+      }
+      if (rolesResult.data) {
+        const roleMap: Record<string, string> = {}
+        rolesResult.data.forEach((r) => { roleMap[r.id] = r.role })
+        setRecruiterRoles(roleMap)
       }
     }
+
+    // Siblings
+    if (siblingsResult.status === 'fulfilled' && siblingsResult.value) {
+      const siblings = siblingsResult.value.data
+      if (siblings) {
+        setSiblingIds(siblings.map((s: AnyData) => s.id))
+        const sNames: Record<string, string> = {}
+        siblings.forEach((s: AnyData) => {
+          if (s.candidate) sNames[s.id] = `${s.candidate.first_name || ''} ${s.candidate.last_name || ''}`.trim()
+        })
+        setSiblingNames(sNames)
+      }
+    }
+
+    // Bank check
+    if (bankResult.status === 'fulfilled' && bankResult.value) {
+      setInDefaultBank(bankResult.value.inBank === true)
+    }
+
     setLoading(false)
   }, [organization, params.id])
 
