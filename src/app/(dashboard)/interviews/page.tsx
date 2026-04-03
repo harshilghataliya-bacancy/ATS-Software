@@ -8,10 +8,6 @@ import { getInterviews } from '@/lib/services/interviews'
 import { INTERVIEW_TYPES, ITEMS_PER_PAGE } from '@/lib/constants'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Skeleton } from '@/components/ui/skeleton'
-// AlertDialog imports removed — actions moved to interview detail page
-import {
-  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu'
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle,
 } from '@/components/ui/dialog'
@@ -20,9 +16,8 @@ import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from '@/components/ui/table'
 import {
-  List, LayoutGrid, Calendar, Briefcase, Clock, MapPin, Eye,
-  ExternalLink, Star, MoreHorizontal, Filter,
-  Video, Users2,
+  List, LayoutGrid, Calendar, Briefcase, Clock, MapPin,
+  Star, Filter, Video, Users2,
 } from 'lucide-react'
 
 type ViewMode = 'list' | 'card'
@@ -202,48 +197,6 @@ export default function InterviewsPage() {
     return acc
   }, {})
 
-  /* ── Dropdown actions for each interview (used in both views) ── */
-  function InterviewActions({ interview }: { interview: Interview }) {
-    const candidate = interview.application?.candidate
-    const candidateName = candidate ? `${candidate.first_name} ${candidate.last_name}` : 'Unknown'
-    const hasActions = interview.status === 'scheduled' || (interview.interview_feedback?.length ?? 0) > 0
-
-    if (!hasActions) return null
-
-    return (
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <button className="p-1 rounded-md text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors opacity-0 group-hover:opacity-100 focus:opacity-100">
-            <MoreHorizontal className="w-4 h-4" />
-          </button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="w-48">
-          <DropdownMenuItem onClick={() => router.push(`/interviews/${interview.id}?from=interviews`)}>
-            <Eye className="w-3.5 h-3.5 mr-2 text-gray-400" />
-            <span className="text-[13px]">View Details</span>
-          </DropdownMenuItem>
-
-          {(interview.interview_feedback?.length ?? 0) > 0 && (
-            <DropdownMenuItem onClick={() => setFeedbackInterview(interview)}>
-              <Star className="w-3.5 h-3.5 mr-2 text-gray-400" />
-              <span className="text-[13px]">View Feedback ({interview.interview_feedback?.length})</span>
-            </DropdownMenuItem>
-          )}
-
-          {interview.meeting_link && (
-            <DropdownMenuItem asChild>
-              <a href={interview.meeting_link} target="_blank" rel="noopener noreferrer">
-                <ExternalLink className="w-3.5 h-3.5 mr-2 text-gray-400" />
-                <span className="text-[13px]">Join Meeting</span>
-              </a>
-            </DropdownMenuItem>
-          )}
-
-          {/* Mark Complete, No Show, and Cancel actions are available on the interview detail page */}
-        </DropdownMenuContent>
-      </DropdownMenu>
-    )
-  }
 
   return (
     <div className="space-y-5">
@@ -435,13 +388,12 @@ export default function InterviewsPage() {
                           )}
                         </div>
                       </div>
-                      <div className="flex items-center gap-1.5 shrink-0" onClick={(e) => e.stopPropagation()}>
+                      <div className="flex items-center gap-1.5 shrink-0">
                         {/* Status pill */}
                         <span className={`flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full border ${STATUS_PILL[interview.status]}`}>
                           <span className={`w-1.5 h-1.5 rounded-full ${STATUS_DOT[interview.status]}`} />
                           {STATUS_LABEL[interview.status]}
                         </span>
-                        <InterviewActions interview={interview} />
                       </div>
                     </div>
 
@@ -529,8 +481,7 @@ export default function InterviewsPage() {
                   <TableHead className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider py-3">Schedule</TableHead>
                   <TableHead className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider py-3">Type</TableHead>
                   <TableHead className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider py-3">Status</TableHead>
-                  <TableHead className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider py-3">Feedback</TableHead>
-                  <TableHead className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider py-3 pr-4 w-10"></TableHead>
+                  <TableHead className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider py-3 pr-4">Feedback</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -623,10 +574,6 @@ export default function InterviewsPage() {
                         )}
                       </TableCell>
 
-                      {/* Actions */}
-                      <TableCell className="py-3 pr-4" onClick={(e) => e.stopPropagation()}>
-                        <InterviewActions interview={interview} />
-                      </TableCell>
                     </TableRow>
                   )
                 })}

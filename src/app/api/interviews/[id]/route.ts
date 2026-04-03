@@ -178,7 +178,8 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     const schedulerEmail = user.email || ''
 
     const updateTemplate = await getOrCreateTemplate(supabase, orgId, 'interview_updated')
-    const updateVars = {
+    const viewInterviewLink = `${appUrl}/interviews/${interviewId}`
+    const baseUpdateVars = {
       candidate_name: candidateName,
       job_title: jobTitle,
       company_name: companyName,
@@ -193,7 +194,10 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       detail_table: detailTable,
       notes_section: notesSection,
     }
-    const { subject: updateSubject, html: updateHtml } = renderEmail(updateTemplate, updateVars, companyName)
+    // Candidate email: no view button
+    const { subject: updateSubject, html: candidateUpdateHtml } = renderEmail(updateTemplate, { ...baseUpdateVars, view_interview_link: '' }, companyName)
+    // Interviewer email: with view button
+    const { html: interviewerUpdateHtml } = renderEmail(updateTemplate, { ...baseUpdateVars, view_interview_link: viewInterviewLink }, companyName)
 
     // Email 1: To candidate, CC recruiter
     const candidateEmail = updCandidate?.email
@@ -205,7 +209,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
           to: candidateEmail,
           cc: schedulerEmail !== candidateEmail ? schedulerEmail : undefined,
           subject: updateSubject,
-          html: updateHtml,
+          html: candidateUpdateHtml,
           refreshToken: tokenResult.refreshToken,
         })
         console.log(`[Interview Update Email] Sent to candidate: ${candidateEmail}`)
@@ -213,7 +217,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
           candidate_id: updatedInterview.application?.candidate_id || updCandidate?.id || '',
           application_id: updatedInterview.application_id,
           subject: updateSubject,
-          body_html: updateHtml,
+          body_html: candidateUpdateHtml,
           to_email: candidateEmail,
           from_email: fromEmail,
           status: 'sent',
@@ -248,7 +252,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
           fromName: tokenResult.displayName || companyName,
           to: interviewerEmails.join(', '),
           subject: updateSubject,
-          html: updateHtml,
+          html: interviewerUpdateHtml,
           refreshToken: tokenResult.refreshToken,
         })
         console.log(`[Interview Update Email] Sent to interviewers: ${interviewerEmails.join(', ')}`)
@@ -328,6 +332,7 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
   // Get org info
   const { data: org } = await supabase.from('organizations').select('name').eq('id', orgId).single()
   const companyName = org?.name || 'Our Company'
+  const appUrl = (process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000').replace(/\/+$/, '')
   const schedulerName = user.user_metadata?.full_name || user.email?.split('@')[0] || ''
 
   const { dateStr, timeStr } = formatDateTime(interview.scheduled_at)
@@ -348,8 +353,9 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
     const fromEmail = tokenResult.fromEmail || user.email!
     const schedulerEmail = user.email || ''
 
+    const viewInterviewLink = `${appUrl}/interviews/${interviewId}`
     const cancelTemplate = await getOrCreateTemplate(supabase, orgId, 'interview_cancelled')
-    const { subject: cancelSubject, html: cancelHtml } = renderEmail(cancelTemplate, {
+    const baseCancelVars = {
       candidate_name: candidateName,
       job_title: jobTitle,
       company_name: companyName,
@@ -360,7 +366,11 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
       cancel_reason: cancelReason || '',
       detail_table: detailTable,
       reason_section: reasonSection,
-    }, companyName)
+    }
+    // Candidate email: no view button
+    const { subject: cancelSubject, html: candidateCancelHtml } = renderEmail(cancelTemplate, { ...baseCancelVars, view_interview_link: '' }, companyName)
+    // Interviewer email: with view button
+    const { html: interviewerCancelHtml } = renderEmail(cancelTemplate, { ...baseCancelVars, view_interview_link: viewInterviewLink }, companyName)
 
     // Email 1: To candidate, CC recruiter
     const candidateEmail = candidate?.email
@@ -372,7 +382,7 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
           to: candidateEmail,
           cc: schedulerEmail !== candidateEmail ? schedulerEmail : undefined,
           subject: cancelSubject,
-          html: cancelHtml,
+          html: candidateCancelHtml,
           refreshToken: tokenResult.refreshToken,
         })
         console.log(`[Interview Cancel Email] Sent to candidate: ${candidateEmail}`)
@@ -380,7 +390,7 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
           candidate_id: interview.application?.candidate_id || candidate?.id || '',
           application_id: interview.application_id,
           subject: cancelSubject,
-          body_html: cancelHtml,
+          body_html: candidateCancelHtml,
           to_email: candidateEmail,
           from_email: fromEmail,
           status: 'sent',
@@ -415,7 +425,7 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
           fromName: tokenResult.displayName || companyName,
           to: interviewerEmails.join(', '),
           subject: cancelSubject,
-          html: cancelHtml,
+          html: interviewerCancelHtml,
           refreshToken: tokenResult.refreshToken,
         })
         console.log(`[Interview Cancel Email] Sent to interviewers: ${interviewerEmails.join(', ')}`)

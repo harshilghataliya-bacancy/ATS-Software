@@ -108,12 +108,15 @@ export const DEFAULT_EMAIL_TEMPLATES: Record<SystemEmailType, DefaultEmailTempla
 <h3 style="font-size:15px;margin:20px 0 8px;">Updated Details</h3>
 {{detail_table}}
 {{notes_section}}
+<div style="text-align:center;margin:28px 0;">
+  <a href="{{view_interview_link}}" style="display:inline-block;padding:12px 32px;background-color:#4f46e5;color:#ffffff;text-decoration:none;border-radius:6px;font-weight:600;font-size:15px;">View Interview Details</a>
+</div>
 <p style="font-size:13px;color:#6b7280;">Updated by: {{scheduler_name}}</p>
 <p>Best regards,<br/>{{company_name}} Hiring Team</p>`,
     variables: [
       'candidate_name', 'job_title', 'company_name', 'interview_date', 'interview_time',
       'duration_minutes', 'interview_type', 'location', 'meeting_link', 'scheduler_name',
-      'notes', 'detail_table', 'notes_section',
+      'notes', 'detail_table', 'notes_section', 'view_interview_link',
     ],
   },
 
@@ -124,13 +127,15 @@ export const DEFAULT_EMAIL_TEMPLATES: Record<SystemEmailType, DefaultEmailTempla
     body_html: `<p>Hi,</p>
 <p>The following interview has been <strong style="color:#dc2626;">cancelled</strong>:</p>
 {{detail_table}}
-{{reason_section}}
+<div style="text-align:center;margin:28px 0;">
+  <a href="{{view_interview_link}}" style="display:inline-block;padding:12px 32px;background-color:#4f46e5;color:#ffffff;text-decoration:none;border-radius:6px;font-weight:600;font-size:15px;">View Interview Details</a>
+</div>
 <p style="font-size:13px;color:#6b7280;">Cancelled by: {{scheduler_name}}</p>
 <p>If you have any questions, please reach out to the recruiting team.</p>
 <p>Best regards,<br/>{{company_name}} Hiring Team</p>`,
     variables: [
       'candidate_name', 'job_title', 'company_name', 'interview_date', 'interview_time',
-      'duration_minutes', 'scheduler_name', 'cancel_reason', 'detail_table', 'reason_section',
+      'duration_minutes', 'scheduler_name', 'detail_table', 'view_interview_link',
     ],
   },
 

@@ -37,7 +37,7 @@ export async function getOrCreateTemplate(
   // 1. Query DB
   const { data: existing } = await supabase
     .from('email_templates')
-    .select('id, subject, body_html')
+    .select('id, subject, body_html, is_system')
     .eq('organization_id', orgId)
     .eq('template_type', templateType)
     .is('deleted_at', null)
@@ -46,6 +46,29 @@ export async function getOrCreateTemplate(
     .maybeSingle()
 
   if (existing) {
+    // Auto-update system templates when code defaults change (e.g. new variables/buttons added)
+    const defaults = DEFAULT_EMAIL_TEMPLATES[templateType]
+    if (existing.is_system && defaults) {
+      const codeBody = defaults.body_html
+      // Check if the DB body is missing content from the latest code default
+      // by comparing key structural elements (like links/buttons)
+      const dbHasAllVars = (defaults.variables ?? []).every((v: string) => {
+        // If the code default uses this variable in its body, the DB template should too
+        if (!codeBody.includes(`{{${v}}}`)) return true
+        return existing.body_html.includes(`{{${v}}}`)
+      })
+      if (!dbHasAllVars) {
+        const { data: updated } = await supabase
+          .from('email_templates')
+          .update({ body_html: codeBody, subject: defaults.subject, variables: defaults.variables })
+          .eq('id', existing.id)
+          .select('id, subject, body_html')
+          .single()
+        if (updated) {
+          return { subject: updated.subject, body_html: updated.body_html, template_id: updated.id }
+        }
+      }
+    }
     return { subject: existing.subject, body_html: existing.body_html, template_id: existing.id }
   }
 
@@ -92,6 +115,8 @@ export function substituteVariables(
   }
   // Strip any remaining unreplaced variables
   result = result.replace(/\{\{[a-z_]+\}\}/g, '')
+  // Remove button/link divs with empty href (e.g. when view_interview_link is empty)
+  result = result.replace(/<div[^>]*>[\s\S]*?<a\s+href=""\s[^>]*>[\s\S]*?<\/a>[\s\S]*?<\/div>/g, '')
   return result
 }
 
