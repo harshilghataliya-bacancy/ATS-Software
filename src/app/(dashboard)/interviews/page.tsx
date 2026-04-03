@@ -4,16 +4,13 @@ import { useEffect, useState, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { useUser, useRole } from '@/lib/hooks/use-user'
 import { createClient } from '@/lib/supabase/client'
-import { getInterviews, cancelInterview, updateInterview } from '@/lib/services/interviews'
+import { getInterviews } from '@/lib/services/interviews'
 import { INTERVIEW_TYPES, ITEMS_PER_PAGE } from '@/lib/constants'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Skeleton } from '@/components/ui/skeleton'
+// AlertDialog imports removed — actions moved to interview detail page
 import {
-  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
-  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger,
-} from '@/components/ui/alert-dialog'
-import {
-  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger,
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle,
@@ -24,8 +21,8 @@ import {
 } from '@/components/ui/table'
 import {
   List, LayoutGrid, Calendar, Briefcase, Clock, MapPin, Eye,
-  ExternalLink, Star, MoreHorizontal, Filter, CheckCircle2,
-  XCircle, UserX, Video, Users2,
+  ExternalLink, Star, MoreHorizontal, Filter,
+  Video, Users2,
 } from 'lucide-react'
 
 type ViewMode = 'list' | 'card'
@@ -129,14 +126,13 @@ const RECOMMENDATION_PILL: Record<string, string> = {
 
 export default function InterviewsPage() {
   const { user, organization, isLoading } = useUser()
-  const { canManageJobs, isInterviewer } = useRole()
+  const { isInterviewer } = useRole()
   const router = useRouter()
 
   const [interviews, setInterviews] = useState<Interview[]>([])
   const [loading, setLoading] = useState(true)
   const [statusFilter, setStatusFilter] = useState<string>('scheduled')
   const [typeFilter, setTypeFilter] = useState<string>('all')
-  const [cancelError, setCancelError] = useState<string | null>(null)
   const [total, setTotal] = useState(0)
   const [page, setPage] = useState(1)
   const [viewMode, setViewMode] = useState<ViewMode>('card')
@@ -162,33 +158,6 @@ export default function InterviewsPage() {
   }, [organization, loadInterviews])
 
   useEffect(() => { setPage(1) }, [statusFilter, typeFilter])
-
-  async function handleCancel(interviewId: string) {
-    if (!organization) return
-    setCancelError(null)
-    const supabase = createClient()
-    const { error: err } = await cancelInterview(supabase, interviewId, organization.id)
-    if (err) setCancelError(err.message ?? 'Failed to cancel interview')
-    await loadInterviews()
-  }
-
-  async function handleMarkComplete(interviewId: string) {
-    if (!organization) return
-    setCancelError(null)
-    const supabase = createClient()
-    const { error: err } = await updateInterview(supabase, interviewId, organization.id, { status: 'completed' })
-    if (err) setCancelError(err.message ?? 'Failed to mark as completed')
-    await loadInterviews()
-  }
-
-  async function handleNoShow(interviewId: string) {
-    if (!organization) return
-    setCancelError(null)
-    const supabase = createClient()
-    const { error: err } = await updateInterview(supabase, interviewId, organization.id, { status: 'no_show' })
-    if (err) setCancelError(err.message ?? 'Failed to mark as no show')
-    await loadInterviews()
-  }
 
   const typeLabel = (val: string) => INTERVIEW_TYPES.find((t) => t.value === val)?.label ?? val
 
@@ -270,63 +239,7 @@ export default function InterviewsPage() {
             </DropdownMenuItem>
           )}
 
-          {interview.status === 'scheduled' && (
-            <>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={() => handleMarkComplete(interview.id)}>
-                <CheckCircle2 className="w-3.5 h-3.5 mr-2 text-emerald-500" />
-                <span className="text-[13px]">Mark Complete</span>
-              </DropdownMenuItem>
-
-              <AlertDialog>
-                <AlertDialogTrigger asChild>
-                  <DropdownMenuItem onSelect={(e) => e.preventDefault()}>
-                    <UserX className="w-3.5 h-3.5 mr-2 text-amber-500" />
-                    <span className="text-[13px]">Not Shown</span>
-                  </DropdownMenuItem>
-                </AlertDialogTrigger>
-                <AlertDialogContent>
-                  <AlertDialogHeader>
-                    <AlertDialogTitle>Candidate not shown?</AlertDialogTitle>
-                    <AlertDialogDescription>
-                      Mark that {candidateName} did not show up for this interview.
-                    </AlertDialogDescription>
-                  </AlertDialogHeader>
-                  <AlertDialogFooter>
-                    <AlertDialogCancel>Go Back</AlertDialogCancel>
-                    <AlertDialogAction onClick={() => handleNoShow(interview.id)} className="bg-amber-600 hover:bg-amber-700">
-                      Candidate Not Shown
-                    </AlertDialogAction>
-                  </AlertDialogFooter>
-                </AlertDialogContent>
-              </AlertDialog>
-
-              {canManageJobs && (
-                <AlertDialog>
-                  <AlertDialogTrigger asChild>
-                    <DropdownMenuItem onSelect={(e) => e.preventDefault()} className="text-rose-600">
-                      <XCircle className="w-3.5 h-3.5 mr-2" />
-                      <span className="text-[13px]">Cancel Interview</span>
-                    </DropdownMenuItem>
-                  </AlertDialogTrigger>
-                  <AlertDialogContent>
-                    <AlertDialogHeader>
-                      <AlertDialogTitle>Cancel interview?</AlertDialogTitle>
-                      <AlertDialogDescription>
-                        This will cancel the interview with {candidateName}.
-                      </AlertDialogDescription>
-                    </AlertDialogHeader>
-                    <AlertDialogFooter>
-                      <AlertDialogCancel>Keep</AlertDialogCancel>
-                      <AlertDialogAction onClick={() => handleCancel(interview.id)} className="bg-rose-600 hover:bg-rose-700">
-                        Cancel Interview
-                      </AlertDialogAction>
-                    </AlertDialogFooter>
-                  </AlertDialogContent>
-                </AlertDialog>
-              )}
-            </>
-          )}
+          {/* Mark Complete, No Show, and Cancel actions are available on the interview detail page */}
         </DropdownMenuContent>
       </DropdownMenu>
     )
@@ -457,10 +370,6 @@ export default function InterviewsPage() {
         </div>
       )}
 
-      {/* ── Error ── */}
-      {cancelError && (
-        <div className="bg-rose-50 text-rose-700 text-[12px] p-3 rounded-lg border border-rose-200">{cancelError}</div>
-      )}
 
       {/* ── Content ── */}
       {loading ? (
