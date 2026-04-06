@@ -10,7 +10,7 @@ export async function updateSession(request: NextRequest) {
 
   // Integration endpoints authenticate via integration keys and should not depend on user session/tenant resolution.
   // Avoid extra Supabase calls and prevent middleware-level failures from impacting integrations.
-  if (request.nextUrl.pathname.startsWith('/api/integrations/')) {
+  if (request.nextUrl.pathname.startsWith('/api/integrations/') || request.nextUrl.pathname.startsWith('/api/cron/')) {
     return NextResponse.next()
   }
 
