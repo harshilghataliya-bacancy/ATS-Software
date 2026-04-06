@@ -17,6 +17,7 @@ export type EmailTemplateType = 'rejection' | 'offer' | 'interview_invite' | 'fo
   | 'application_received'
   | 'interview_scheduled' | 'interview_scheduled_interviewer'
   | 'interview_updated' | 'interview_cancelled'
+  | 'interview_reminder_candidate' | 'interview_reminder_interviewer'
   | 'assessment_invitation' | 'interviewer_invite' | 'offer_letter'
 export type EmailStatus = 'sent' | 'failed' | 'bounced'
 export type OfferStatus = 'draft' | 'sent' | 'accepted' | 'declined' | 'expired' | 'revoked' | 'revised'
@@ -32,6 +33,7 @@ export interface Organization {
   logo_url: string | null
   careers_page_config: Record<string, unknown> | null
   offer_reapply_restriction_months: number
+  reminder_intervals: number[]
   created_at: string
   updated_at: string
 }

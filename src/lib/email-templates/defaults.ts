@@ -20,6 +20,8 @@ export const SYSTEM_EMAIL_TYPES = [
   'interview_scheduled_interviewer',
   'interview_updated',
   'interview_cancelled',
+  'interview_reminder_candidate',
+  'interview_reminder_interviewer',
   'offer_letter',
   'rejection',
   'assessment_invitation',
@@ -35,6 +37,8 @@ export const SYSTEM_EMAIL_TYPE_LABELS: Record<SystemEmailType, string> = {
   interview_scheduled_interviewer: 'Interview Scheduled (Interviewer)',
   interview_updated: 'Interview Updated',
   interview_cancelled: 'Interview Cancelled',
+  interview_reminder_candidate: 'Interview Reminder (Candidate)',
+  interview_reminder_interviewer: 'Interview Reminder (Interviewer)',
   offer_letter: 'Offer Letter',
   rejection: 'Application Rejection',
   assessment_invitation: 'Assessment Invitation',
@@ -203,6 +207,43 @@ export const DEFAULT_EMAIL_TEMPLATES: Record<SystemEmailType, DefaultEmailTempla
 {{invite_content}}
 <p>Best regards,<br/>{{company_name}} Hiring Team</p>`,
     variables: ['company_name', 'invite_link', 'email', 'temp_password', 'app_url', 'invite_content'],
+  },
+
+  // ── Interview Reminder (to Candidate) ──────────────────────────────────
+  interview_reminder_candidate: {
+    name: 'Interview Reminder (Candidate)',
+    subject: 'Reminder: Your Interview for {{job_title}} is Coming Up',
+    body_html: `<p>Dear {{candidate_name}},</p>
+<p>This is a friendly reminder that your interview for the <strong>{{job_title}}</strong> position at <strong>{{company_name}}</strong> is scheduled <strong>{{time_until}}</strong>.</p>
+{{detail_table}}
+{{notes_section}}
+<p>Please ensure you are available at the scheduled time. If you have any questions or need to reschedule, please contact us at the earliest.</p>
+<p>We wish you the best!</p>
+<p>Best regards,<br/>{{company_name}} Hiring Team</p>`,
+    variables: [
+      'candidate_name', 'job_title', 'company_name', 'interview_date', 'interview_time',
+      'duration_minutes', 'interview_type', 'location', 'meeting_link', 'time_until',
+      'detail_table', 'notes_section',
+    ],
+  },
+
+  // ── Interview Reminder (to Interviewer / Panel) ───────────────────────
+  interview_reminder_interviewer: {
+    name: 'Interview Reminder (Interviewer)',
+    subject: 'Reminder: Interview with {{candidate_name}} for {{job_title}}',
+    body_html: `<p>Hi,</p>
+<p>This is a reminder that you have an interview <strong>{{time_until}}</strong> with <strong>{{candidate_name}}</strong> for the <strong>{{job_title}}</strong> position at <strong>{{company_name}}</strong>.</p>
+{{detail_table}}
+{{notes_section}}
+<div style="text-align:center;margin:28px 0;">
+  <a href="{{view_interview_link}}" style="display:inline-block;padding:12px 32px;background-color:#4f46e5;color:#ffffff;text-decoration:none;border-radius:6px;font-weight:600;font-size:15px;">View Interview & Candidate Details</a>
+</div>
+<p>Best regards,<br/>{{company_name}} Hiring Team</p>`,
+    variables: [
+      'candidate_name', 'candidate_email', 'job_title', 'company_name', 'interview_date',
+      'interview_time', 'duration_minutes', 'interview_type', 'location', 'meeting_link',
+      'panel_members', 'time_until', 'detail_table', 'notes_section', 'view_interview_link',
+    ],
   },
 
   // ── Offer Revoked (to Candidate) ────────────────────────────────────────

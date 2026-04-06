@@ -171,6 +171,14 @@ export const REMUNERATION_TYPES = [
   { value: 'monthly', label: 'Monthly' },
 ] as const
 
+export const REMINDER_INTERVAL_OPTIONS = [
+  { value: 720, label: '12 hours before' },
+  { value: 240, label: '4 hours before' },
+  { value: 60, label: '1 hour before' },
+  { value: 30, label: '30 minutes before' },
+  { value: 15, label: '15 minutes before' },
+] as const
+
 export const REAPPLY_RESTRICTION_OPTIONS = [
   { value: 0, label: 'No restriction' },
   { value: 3, label: '3 Months' },
