@@ -122,6 +122,7 @@ export default function NotificationsPage() {
                     <Switch
                       checked={isActive}
                       onCheckedChange={() => toggleInterval(option.value)}
+                      onClick={(e) => e.stopPropagation()}
                     />
                   </div>
                 )
