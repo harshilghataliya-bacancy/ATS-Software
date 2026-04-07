@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { useUser, useRole } from '@/lib/hooks/use-user'
 import { createClient } from '@/lib/supabase/client'
-import { getJobs, deleteJob, getJobRecruiters } from '@/lib/services/jobs'
+import { getJobs, deleteJob, getJobRecruitersForJobs } from '@/lib/services/jobs'
 import { resolveUserNames } from './actions'
 import {
   JOB_STATUS_CONFIG, EMPLOYMENT_TYPES, EXPERIENCE_LEVELS,
@@ -160,13 +160,7 @@ export default function JobsPage() {
         if (depts.length > 0) setDepartments(depts)
         if (locs.length > 0) setLocations(locs)
       }
-      const recruiterMap: Record<string, string[]> = {}
-      await Promise.all(
-        jobList.map(async (job) => {
-          const ids = await getJobRecruiters(supabase, job.id)
-          recruiterMap[job.id] = ids
-        })
-      )
+      const recruiterMap = await getJobRecruitersForJobs(supabase, jobList.map((j) => j.id))
       setJobRecruitersMap(recruiterMap)
 
       const allRecruiterIds = new Set<string>()

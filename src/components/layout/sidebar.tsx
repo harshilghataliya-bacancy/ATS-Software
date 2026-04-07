@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useUser, useRole } from '@/lib/hooks/use-user'
@@ -73,6 +73,19 @@ export function Sidebar() {
   const { role, canManageMembers, canViewReports, canViewDashboard, canAccessBanks, isInterviewer, isAdmin } = useRole()
   const [collapsed, setCollapsed] = useState(false)
 
+  const filteredMainNav = useMemo(() => mainNav.filter((item) => {
+    if (item.href === '/dashboard' && !canViewDashboard && !isInterviewer && role !== 'recruiter') return false
+    if (item.href === '/reports' && !canViewReports) return false
+    if (item.href === '/banks' && !canAccessBanks) return false
+    if (isInterviewer && !['/dashboard', '/interviews'].includes(item.href)) return false
+    return true
+  }), [role, canViewDashboard, canViewReports, canAccessBanks, isInterviewer])
+
+  const filteredSecondaryNav = useMemo(() => secondaryNav.filter((item) => {
+    if (item.href === '/settings/offer-templates' && !isAdmin) return false
+    return true
+  }), [isAdmin])
+
   const roleBadge: Record<string, { label: string; color: string }> = {
     admin: { label: 'Admin', color: 'bg-violet-100 text-violet-700' },
     recruiter: { label: 'Recruiter', color: 'bg-blue-100 text-blue-700' },
@@ -127,14 +140,7 @@ export function Sidebar() {
 
         {/* Main nav */}
         <nav className={`flex-1 overflow-y-auto ${collapsed ? 'p-2' : 'px-3 py-3'} space-y-0.5`}>
-          {mainNav
-            .filter((item) => {
-              if (item.href === '/dashboard' && !canViewDashboard && !isInterviewer && role !== 'recruiter') return false
-              if (item.href === '/reports' && !canViewReports) return false
-              if (item.href === '/banks' && !canAccessBanks) return false
-              if (isInterviewer && !['/dashboard', '/interviews'].includes(item.href)) return false
-              return true
-            })
+          {filteredMainNav
             .map((item) => (
               <NavItem
                 key={item.href}
@@ -153,11 +159,7 @@ export function Sidebar() {
                   Templates
                 </p>
               )}
-              {secondaryNav
-                .filter((item) => {
-                  if (item.href === '/settings/offer-templates' && !isAdmin) return false
-                  return true
-                })
+              {filteredSecondaryNav
                 .map((item) => (
                 <NavItem
                   key={item.href}

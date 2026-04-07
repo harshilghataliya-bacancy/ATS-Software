@@ -55,6 +55,24 @@ export async function getJobRecruiters(
   return data?.map((r: { user_id: string }) => r.user_id) ?? []
 }
 
+export async function getJobRecruitersForJobs(
+  supabase: SupabaseClient,
+  jobIds: string[]
+): Promise<Record<string, string[]>> {
+  if (jobIds.length === 0) return {}
+  const { data } = await supabase
+    .from('job_recruiters')
+    .select('job_id, user_id')
+    .in('job_id', jobIds)
+  const map: Record<string, string[]> = {}
+  for (const id of jobIds) map[id] = []
+  data?.forEach((r: { job_id: string; user_id: string }) => {
+    if (!map[r.job_id]) map[r.job_id] = []
+    map[r.job_id].push(r.user_id)
+  })
+  return map
+}
+
 // ---------------------------------------------------------------------------
 // Queries
 // ---------------------------------------------------------------------------

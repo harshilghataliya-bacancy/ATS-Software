@@ -7,6 +7,10 @@ export type TenantResolution = {
   source: 'customDomain' | 'subdomain'
 } | null
 
+// In-memory cache for tenant resolution (avoids DB query on every request)
+const tenantCache = new Map<string, { result: TenantResolution; expiry: number }>()
+const CACHE_TTL_MS = 5 * 60 * 1000 // 5 minutes
+
 export async function resolveTenantByHost(host: string): Promise<TenantResolution> {
   // Normalize: lowercase, strip port
   const normalizedHost = host.toLowerCase().replace(/:\d+$/, '')
@@ -18,6 +22,12 @@ export async function resolveTenantByHost(host: string): Promise<TenantResolutio
     normalizedHost === `www.${PLATFORM_DOMAIN}`
   ) {
     return null
+  }
+
+  // Check cache first
+  const cached = tenantCache.get(normalizedHost)
+  if (cached && Date.now() < cached.expiry) {
+    return cached.result
   }
 
   const supabase = createAdminClient()
@@ -37,9 +47,12 @@ export async function resolveTenantByHost(host: string): Promise<TenantResolutio
       .single()
 
     if (data) {
-      return { orgId: data.organization_id, source: 'subdomain' }
+      const result: TenantResolution = { orgId: data.organization_id, source: 'subdomain' }
+      tenantCache.set(normalizedHost, { result, expiry: Date.now() + CACHE_TTL_MS })
+      return result
     }
 
+    tenantCache.set(normalizedHost, { result: null, expiry: Date.now() + CACHE_TTL_MS })
     return null
   }
 
@@ -52,7 +65,9 @@ export async function resolveTenantByHost(host: string): Promise<TenantResolutio
     .single()
 
   if (data) {
-    return { orgId: data.organization_id, source: 'customDomain' }
+    const result: TenantResolution = { orgId: data.organization_id, source: 'customDomain' }
+    tenantCache.set(normalizedHost, { result, expiry: Date.now() + CACHE_TTL_MS })
+    return result
   }
 
   // Try without www prefix
@@ -66,9 +81,12 @@ export async function resolveTenantByHost(host: string): Promise<TenantResolutio
       .single()
 
     if (bareData) {
-      return { orgId: bareData.organization_id, source: 'customDomain' }
+      const result: TenantResolution = { orgId: bareData.organization_id, source: 'customDomain' }
+      tenantCache.set(normalizedHost, { result, expiry: Date.now() + CACHE_TTL_MS })
+      return result
     }
   }
 
+  tenantCache.set(normalizedHost, { result: null, expiry: Date.now() + CACHE_TTL_MS })
   return null
 }
