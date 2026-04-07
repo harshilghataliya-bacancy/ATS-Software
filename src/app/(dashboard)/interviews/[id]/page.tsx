@@ -19,7 +19,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Skeleton } from '@/components/ui/skeleton'
 import { AlertDialog, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog'
-import { ArrowLeft, ExternalLink, PenLine, X, Ban, CheckCircle2, MessageSquare, Eye, Download, ClipboardList, AlertTriangle } from 'lucide-react'
+import { ArrowLeft, ExternalLink, PenLine, X, Ban, CheckCircle2, MessageSquare, Eye, Download, ClipboardList, AlertTriangle, ChevronDown } from 'lucide-react'
 
 interface InterviewDetail {
   id: string
@@ -102,13 +102,14 @@ export default function InterviewDetailPage() {
   const [fbSaving, setFbSaving] = useState(false)
 
   const [editingFeedbackId, setEditingFeedbackId] = useState<string | null>(null)
-  const [scorecardCriteria, setScorecardCriteria] = useState<Array<{ id: string; name: string; description?: string; weight: number; rating_type?: string }>>([])
+  const [scorecardCriteria, setScorecardCriteria] = useState<Array<{ id: string; name: string; description?: string; weight: number; rating_type?: string; category?: string }>>([])
   const [criteriaRatings, setCriteriaRatings] = useState<Record<string, number>>({})
   const [criteriaTextValues, setCriteriaTextValues] = useState<Record<string, string>>({})
   const [userNames, setUserNames] = useState<Record<string, string>>({})
   const [userDetails, setUserDetails] = useState<Record<string, { name: string; email: string }>>({})
   const [feedbackCriteriaRatings, setFeedbackCriteriaRatings] = useState<Record<string, Array<{ criteria_id: string; rating: number; notes?: string }>>>({})
   const [scorecardName, setScorecardName] = useState<string | null>(null)
+  const [expandedFeedbackCats, setExpandedFeedbackCats] = useState<Set<string>>(new Set())
 
   const loadInterview = useCallback(async () => {
     if (!organization) return
@@ -143,14 +144,14 @@ export default function InterviewDetailPage() {
           ])
           if (scorecardResult.data) setScorecardName(scorecardResult.data.title)
           if (templateCriteriaResult.data && templateCriteriaResult.data.length > 0) {
-            setScorecardCriteria(templateCriteriaResult.data as Array<{ id: string; name: string; description?: string; weight: number; rating_type?: string }>)
+            setScorecardCriteria(templateCriteriaResult.data as Array<{ id: string; name: string; description?: string; weight: number; rating_type?: string; category?: string }>)
           }
         } else {
           setScorecardName(null)
           const jobId = d.application?.job?.id
           if (jobId) {
             const { data: criteriaData } = await getScorecardCriteria(supabase, jobId, organization.id)
-            if (criteriaData) setScorecardCriteria(criteriaData as Array<{ id: string; name: string; description?: string; weight: number; rating_type?: string }>)
+            if (criteriaData) setScorecardCriteria(criteriaData as Array<{ id: string; name: string; description?: string; weight: number; rating_type?: string; category?: string }>)
           }
         }
       })()
@@ -737,75 +738,133 @@ export default function InterviewDetailPage() {
                     </div>
                   </div>
 
-                  {scorecardCriteria.length > 0 && (
-                    <div className="rounded-xl border border-gray-100 bg-gray-50 p-4 space-y-3">
-                      <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Evaluation Criteria <span className="text-red-400">*</span></p>
-                      {scorecardCriteria.map((c) => {
-                        const rt = c.rating_type || 'rating'
-                        const ratingTypeLabel = SCORECARD_RATING_TYPES.find((t) => t.value === rt)?.label
-                        return (
-                          <div key={c.id} className="space-y-1.5">
-                            <div className="flex items-center justify-between gap-3">
-                              <div className="flex-1 min-w-0">
-                                <span className="text-sm text-gray-700 font-medium">{c.name}</span>
-                                <span className="ml-2 text-[10px] text-gray-400 bg-gray-200 px-1.5 py-0.5 rounded">w:{c.weight}</span>
-                                {rt !== 'rating' && (
-                                  <span className="ml-1 text-[10px] text-blue-500 bg-blue-50 px-1.5 py-0.5 rounded">{ratingTypeLabel}</span>
-                                )}
-                              </div>
-                              {rt === 'rating' && (
-                                <div className="flex items-center gap-1 shrink-0">
-                                  {[1,2,3,4,5].map((r) => (
-                                    <button
-                                      key={r}
-                                      onClick={() => setCriteriaRatings((prev) => ({ ...prev, [c.id]: r }))}
-                                      className={`w-6 h-6 rounded text-xs font-bold transition-all ${
-                                        criteriaRatings[c.id] === r
-                                          ? 'bg-blue-600 text-white'
-                                          : 'bg-gray-200 text-gray-500 hover:bg-gray-300'
-                                      }`}
-                                    >{r}</button>
-                                  ))}
+                  {scorecardCriteria.length > 0 && (() => {
+                    // Group criteria by category
+                    const catMap = new Map<string, typeof scorecardCriteria>()
+                    for (const c of scorecardCriteria) {
+                      const cat = c.category || 'General'
+                      if (!catMap.has(cat)) catMap.set(cat, [])
+                      catMap.get(cat)!.push(c)
+                    }
+                    const groups = Array.from(catMap.entries())
+                    const hasMultiCats = groups.length > 1
+
+                    return (
+                      <div className="rounded-xl border border-gray-100 bg-gray-50 p-4 space-y-1">
+                        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Evaluation Criteria <span className="text-red-400">*</span></p>
+                        {groups.map(([catName, items]) => {
+                          const isCollapsed = !expandedFeedbackCats.has(catName)
+                          // Count how many are rated in this category
+                          const ratedCount = items.filter((c) => {
+                            const rt = c.rating_type || 'rating'
+                            if (rt === 'text') return !!criteriaTextValues[c.id]?.trim()
+                            return !!criteriaRatings[c.id] && criteriaRatings[c.id] > 0
+                          }).length
+
+                          return (
+                            <div key={catName} className="rounded-lg border border-gray-200 bg-white overflow-hidden">
+                              {/* Category header — always clickable */}
+                              {hasMultiCats && (
+                                <div
+                                  className="flex items-center justify-between px-3 py-2.5 cursor-pointer hover:bg-gray-50 transition-colors select-none"
+                                  onClick={() => setExpandedFeedbackCats((prev) => {
+                                    const next = new Set(prev)
+                                    if (next.has(catName)) next.delete(catName)
+                                    else next.add(catName)
+                                    return next
+                                  })}
+                                >
+                                  <div className="flex items-center gap-2">
+                                    <ChevronDown className={`w-3.5 h-3.5 text-gray-400 transition-transform duration-150 ${isCollapsed ? '-rotate-90' : ''}`} />
+                                    <span className="text-[12px] font-bold text-gray-600 uppercase tracking-wider">{catName}</span>
+                                    <span className="text-[10px] text-gray-400">({items.length})</span>
+                                  </div>
+                                  <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded ${
+                                    ratedCount === items.length
+                                      ? 'bg-emerald-50 text-emerald-600'
+                                      : ratedCount > 0
+                                        ? 'bg-amber-50 text-amber-600'
+                                        : 'bg-gray-100 text-gray-400'
+                                  }`}>
+                                    {ratedCount}/{items.length}
+                                  </span>
                                 </div>
                               )}
-                              {rt === 'yes_no' && (
-                                <div className="flex items-center gap-1.5 shrink-0">
-                                  <button
-                                    onClick={() => setCriteriaRatings((prev) => ({ ...prev, [c.id]: 5 }))}
-                                    className={`px-3 py-1 rounded text-xs font-semibold transition-all ${
-                                      criteriaRatings[c.id] === 5
-                                        ? 'bg-emerald-600 text-white'
-                                        : 'bg-gray-200 text-gray-500 hover:bg-gray-300'
-                                    }`}
-                                  >Yes</button>
-                                  <button
-                                    onClick={() => setCriteriaRatings((prev) => ({ ...prev, [c.id]: 1 }))}
-                                    className={`px-3 py-1 rounded text-xs font-semibold transition-all ${
-                                      criteriaRatings[c.id] === 1
-                                        ? 'bg-red-600 text-white'
-                                        : 'bg-gray-200 text-gray-500 hover:bg-gray-300'
-                                    }`}
-                                  >No</button>
+                              {/* Criteria items */}
+                              {(!hasMultiCats || !isCollapsed) && (
+                                <div className={`space-y-2 px-3 py-2.5 ${hasMultiCats ? 'border-t border-gray-100' : ''}`}>
+                                  {items.map((c) => {
+                                    const rt = c.rating_type || 'rating'
+                                    const ratingTypeLabel = SCORECARD_RATING_TYPES.find((t) => t.value === rt)?.label
+                                    return (
+                                      <div key={c.id} className="space-y-1.5">
+                                        <div className="flex items-center justify-between gap-3">
+                                          <div className="flex-1 min-w-0">
+                                            <span className="text-sm text-gray-700 font-medium">{c.name}</span>
+                                            <span className="ml-2 text-[10px] text-gray-400 bg-gray-200 px-1.5 py-0.5 rounded">w:{c.weight}</span>
+                                            {rt !== 'rating' && (
+                                              <span className="ml-1 text-[10px] text-blue-500 bg-blue-50 px-1.5 py-0.5 rounded">{ratingTypeLabel}</span>
+                                            )}
+                                          </div>
+                                          {rt === 'rating' && (
+                                            <div className="flex items-center gap-1 shrink-0">
+                                              {[1,2,3,4,5].map((r) => (
+                                                <button
+                                                  key={r}
+                                                  onClick={() => setCriteriaRatings((prev) => ({ ...prev, [c.id]: r }))}
+                                                  className={`w-6 h-6 rounded text-xs font-bold transition-all ${
+                                                    criteriaRatings[c.id] === r
+                                                      ? 'bg-blue-600 text-white'
+                                                      : 'bg-gray-200 text-gray-500 hover:bg-gray-300'
+                                                  }`}
+                                                >{r}</button>
+                                              ))}
+                                            </div>
+                                          )}
+                                          {rt === 'yes_no' && (
+                                            <div className="flex items-center gap-1.5 shrink-0">
+                                              <button
+                                                onClick={() => setCriteriaRatings((prev) => ({ ...prev, [c.id]: 5 }))}
+                                                className={`px-3 py-1 rounded text-xs font-semibold transition-all ${
+                                                  criteriaRatings[c.id] === 5
+                                                    ? 'bg-emerald-600 text-white'
+                                                    : 'bg-gray-200 text-gray-500 hover:bg-gray-300'
+                                                }`}
+                                              >Yes</button>
+                                              <button
+                                                onClick={() => setCriteriaRatings((prev) => ({ ...prev, [c.id]: 1 }))}
+                                                className={`px-3 py-1 rounded text-xs font-semibold transition-all ${
+                                                  criteriaRatings[c.id] === 1
+                                                    ? 'bg-red-600 text-white'
+                                                    : 'bg-gray-200 text-gray-500 hover:bg-gray-300'
+                                                }`}
+                                              >No</button>
+                                            </div>
+                                          )}
+                                        </div>
+                                        {rt === 'text' && (
+                                          <Textarea
+                                            rows={2}
+                                            value={criteriaTextValues[c.id] || ''}
+                                            onChange={(e) => setCriteriaTextValues((prev) => ({ ...prev, [c.id]: e.target.value }))}
+                                            placeholder={`Feedback for ${c.name}...`}
+                                            className="text-sm resize-none"
+                                          />
+                                        )}
+                                        {c.description && (
+                                          <p className="text-[10px] text-gray-400 pl-0.5">{c.description}</p>
+                                        )}
+                                      </div>
+                                    )
+                                  })}
                                 </div>
                               )}
                             </div>
-                            {rt === 'text' && (
-                              <Textarea
-                                rows={2}
-                                value={criteriaTextValues[c.id] || ''}
-                                onChange={(e) => setCriteriaTextValues((prev) => ({ ...prev, [c.id]: e.target.value }))}
-                                placeholder={`Feedback for ${c.name}...`}
-                                className="text-sm resize-none"
-                              />
-                            )}
-                            {c.description && (
-                              <p className="text-[10px] text-gray-400 pl-0.5">{c.description}</p>
-                            )}
-                          </div>
-                        )
-                      })}
-                    </div>
-                  )}
+                          )
+                        })}
+                      </div>
+                    )
+                  })()}
 
                   <div className="space-y-1.5">
                     <Label className="text-xs text-gray-500">Strengths <span className="text-red-400">*</span></Label>

@@ -168,7 +168,7 @@ export async function getAggregatedScorecard(
 
   // Collect unique criteria IDs and look up names from both tables
   const criteriaIds = Array.from(new Set((ratings ?? []).map((r) => r.criteria_id)))
-  const criteriaLookup: Record<string, { name: string; weight: number }> = {}
+  const criteriaLookup: Record<string, { name: string; weight: number; category?: string }> = {}
   if (criteriaIds.length > 0) {
     // Try scorecard_criteria (job-level)
     const { data: jobCriteria } = await supabase
@@ -180,15 +180,16 @@ export async function getAggregatedScorecard(
     // Try scorecard_template_criteria (template-level)
     const { data: templateCriteria } = await supabase
       .from('scorecard_template_criteria')
-      .select('id, name, weight')
+      .select('id, name, weight, category')
       .in('id', criteriaIds)
-    templateCriteria?.forEach((c) => { criteriaLookup[c.id] = { name: c.name, weight: c.weight } })
+    templateCriteria?.forEach((c: { id: string; name: string; weight: number; category?: string }) => { criteriaLookup[c.id] = { name: c.name, weight: c.weight, category: c.category || undefined } })
   }
 
   // Build per-criteria aggregation
   const criteriaMap = new Map<string, {
     name: string
     weight: number
+    category?: string
     ratings: Array<{ user_id: string; rating: number }>
   }>()
 
@@ -203,6 +204,7 @@ export async function getAggregatedScorecard(
       criteriaMap.set(r.criteria_id, {
         name: criteria.name,
         weight: criteria.weight,
+        category: criteria.category,
         ratings: [],
       })
     }
@@ -218,6 +220,7 @@ export async function getAggregatedScorecard(
     return {
       name: data.name,
       weight: data.weight,
+      category: data.category || 'General',
       avg_rating: Math.round(avg * 10) / 10,
       ratings_by_interviewer: data.ratings,
     }

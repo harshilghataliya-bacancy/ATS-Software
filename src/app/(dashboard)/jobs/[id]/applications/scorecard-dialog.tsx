@@ -1,12 +1,13 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { getAggregatedScorecard } from '@/lib/services/feedback'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
 import { RECOMMENDATION_OPTIONS } from '@/lib/constants'
+import { ChevronDown } from 'lucide-react'
 
 interface ScorecardDialogProps {
   open: boolean
@@ -19,6 +20,7 @@ interface ScorecardDialogProps {
 interface CriteriaResult {
   name: string
   weight: number
+  category?: string
   avg_rating: number
   ratings_by_interviewer: Array<{ user_id: string; rating: number }>
 }
@@ -39,6 +41,7 @@ export function ScorecardDialog({
 }: ScorecardDialogProps) {
   const [data, setData] = useState<ScorecardData | null>(null)
   const [loading, setLoading] = useState(true)
+  const [collapsedCats, setCollapsedCats] = useState<Set<string>>(new Set())
 
   useEffect(() => {
     if (!open) return
@@ -99,43 +102,84 @@ export function ScorecardDialog({
               </div>
             </div>
 
-            {/* Criteria Table */}
-            {data.criteria.length > 0 && (
-              <div className="border rounded-lg overflow-hidden">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="bg-gray-50 border-b text-left">
-                      <th className="px-3 py-2 font-medium text-gray-600">Criteria</th>
-                      <th className="px-3 py-2 font-medium text-gray-600 text-center">Weight</th>
-                      <th className="px-3 py-2 font-medium text-gray-600 text-center">Avg</th>
-                      <th className="px-3 py-2 font-medium text-gray-600 text-center">Consensus</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {data.criteria.map((c, idx) => (
-                      <tr key={idx} className="border-b last:border-0">
-                        <td className="px-3 py-2">{c.name}</td>
-                        <td className="px-3 py-2 text-center">
-                          <Badge variant="outline" className="text-[10px]">{c.weight}</Badge>
-                        </td>
-                        <td className="px-3 py-2 text-center font-medium">{c.avg_rating}</td>
-                        <td className="px-3 py-2 text-center">
-                          <span className={getConsensusColor(c.ratings_by_interviewer)}>
-                            {c.ratings_by_interviewer.length < 2
-                              ? '-'
-                              : Math.max(...c.ratings_by_interviewer.map((r) => r.rating)) -
-                                  Math.min(...c.ratings_by_interviewer.map((r) => r.rating)) <=
-                                1
-                                ? 'Aligned'
-                                : 'Divergent'}
-                          </span>
-                        </td>
+            {/* Criteria Table — grouped by category */}
+            {data.criteria.length > 0 && (() => {
+              const catMap = new Map<string, CriteriaResult[]>()
+              for (const c of data.criteria) {
+                const cat = c.category || 'General'
+                if (!catMap.has(cat)) catMap.set(cat, [])
+                catMap.get(cat)!.push(c)
+              }
+              const groups = Array.from(catMap.entries())
+              const hasMultipleGroups = groups.length > 1
+
+              return (
+                <div className="border rounded-lg overflow-hidden">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="bg-gray-50 border-b text-left">
+                        <th className="px-3 py-2 font-medium text-gray-600">Criteria</th>
+                        <th className="px-3 py-2 font-medium text-gray-600 text-center">Weight</th>
+                        <th className="px-3 py-2 font-medium text-gray-600 text-center">Avg</th>
+                        <th className="px-3 py-2 font-medium text-gray-600 text-center">Consensus</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
+                    </thead>
+                    <tbody>
+                      {groups.map(([catName, items]) => {
+                        const catAvg = items.reduce((s, c) => s + c.avg_rating, 0) / items.length
+                        const isCatCollapsed = collapsedCats.has(catName)
+                        return (
+                          <React.Fragment key={catName}>
+                            {hasMultipleGroups && (
+                              <tr
+                                className="bg-gray-50/80 border-b cursor-pointer hover:bg-gray-100/60"
+                                onClick={() => setCollapsedCats((prev) => {
+                                  const next = new Set(prev)
+                                  if (next.has(catName)) next.delete(catName)
+                                  else next.add(catName)
+                                  return next
+                                })}
+                              >
+                                <td colSpan={3} className="px-3 py-1.5">
+                                  <div className="flex items-center gap-1.5">
+                                    <ChevronDown className={`w-3 h-3 text-gray-400 transition-transform ${isCatCollapsed ? '-rotate-90' : ''}`} />
+                                    <span className="text-[11px] font-bold text-gray-500 uppercase tracking-wider">{catName}</span>
+                                    <span className="text-[10px] text-gray-400">({items.length})</span>
+                                  </div>
+                                </td>
+                                <td className="px-3 py-1.5 text-center text-[11px] font-semibold text-gray-500">
+                                  {(Math.round(catAvg * 10) / 10).toFixed(1)} / 5
+                                </td>
+                              </tr>
+                            )}
+                            {!isCatCollapsed && items.map((c, idx) => (
+                              <tr key={idx} className="border-b last:border-0">
+                                <td className={`px-3 py-2 ${hasMultipleGroups ? 'pl-7' : ''}`}>{c.name}</td>
+                                <td className="px-3 py-2 text-center">
+                                  <Badge variant="outline" className="text-[10px]">{c.weight}</Badge>
+                                </td>
+                                <td className="px-3 py-2 text-center font-medium">{c.avg_rating}</td>
+                                <td className="px-3 py-2 text-center">
+                                  <span className={getConsensusColor(c.ratings_by_interviewer)}>
+                                    {c.ratings_by_interviewer.length < 2
+                                      ? '-'
+                                      : Math.max(...c.ratings_by_interviewer.map((r) => r.rating)) -
+                                          Math.min(...c.ratings_by_interviewer.map((r) => r.rating)) <=
+                                        1
+                                        ? 'Aligned'
+                                        : 'Divergent'}
+                                  </span>
+                                </td>
+                              </tr>
+                            ))}
+                          </React.Fragment>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )
+            })()}
 
             {/* Recommendation Summary */}
             {Object.keys(data.recommendation_counts).length > 0 && (

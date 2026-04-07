@@ -249,17 +249,17 @@ async function processOrgReminders(
         html: candidateEmail.html,
       })
 
-      // --- Send to Each Panelist ---
+      // --- Send single email to all panelists (no CC) ---
+      const panelistEmails = interview.interview_panelists
+        .map((p) => userMap.get(p.user_id)?.email || '')
+        .filter(Boolean)
       const panelistNames = interview.interview_panelists
         .map((p) => userMap.get(p.user_id)?.name || '')
         .filter(Boolean)
         .join(', ')
 
-      const interviewerTemplate = await getOrCreateTemplate(supabase, orgId, 'interview_reminder_interviewer' as SystemEmailType)
-
-      for (const panelist of interview.interview_panelists) {
-        const pUser = userMap.get(panelist.user_id)
-        if (!pUser?.email) continue
+      if (panelistEmails.length > 0) {
+        const interviewerTemplate = await getOrCreateTemplate(supabase, orgId, 'interview_reminder_interviewer' as SystemEmailType)
 
         const interviewerVars: Record<string, string> = {
           candidate_name: `${candidate.first_name} ${candidate.last_name}`,
@@ -284,8 +284,7 @@ async function processOrgReminders(
         await sendGmailEmail(accessToken, {
           from: fromEmail,
           fromName: displayName || orgName,
-          to: pUser.email,
-          cc: recruiterEmail || undefined,
+          to: panelistEmails.join(', '),
           subject: interviewerEmail.subject,
           html: interviewerEmail.html,
         })

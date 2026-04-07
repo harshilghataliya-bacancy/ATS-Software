@@ -20,7 +20,7 @@ import {
 import {
   ClipboardList, Plus, PenLine, Trash2, GripVertical,
   Star, ToggleLeft, FileText, ChevronDown, AlertTriangle,
-  MoreHorizontal, Weight,
+  MoreHorizontal, Weight, FolderPlus,
 } from 'lucide-react'
 
 interface CriteriaRow {
@@ -30,6 +30,7 @@ interface CriteriaRow {
   weight: number
   rating_type: 'rating' | 'yes_no' | 'text'
   display_order: number
+  category: string
 }
 
 interface ScorecardWithCriteria {
@@ -45,6 +46,17 @@ const RATING_TYPE_CONFIG: Record<string, { icon: typeof Star; label: string; sho
   rating: { icon: Star, label: '1-5 Rating', shortLabel: 'Rating', color: 'text-amber-600', bgColor: 'bg-amber-50 border-amber-200/60' },
   yes_no: { icon: ToggleLeft, label: 'Yes / No', shortLabel: 'Y/N', color: 'text-blue-600', bgColor: 'bg-blue-50 border-blue-200/60' },
   text: { icon: FileText, label: 'Text', shortLabel: 'Text', color: 'text-slate-600', bgColor: 'bg-slate-50 border-slate-200/60' },
+}
+
+// Helper to group criteria by category
+function groupByCategory(criteria: CriteriaRow[]): { category: string; items: CriteriaRow[] }[] {
+  const map = new Map<string, CriteriaRow[]>()
+  for (const c of criteria) {
+    const cat = c.category || 'General'
+    if (!map.has(cat)) map.set(cat, [])
+    map.get(cat)!.push(c)
+  }
+  return Array.from(map.entries()).map(([category, items]) => ({ category, items }))
 }
 
 export default function ScorecardsPage() {
@@ -65,7 +77,7 @@ export default function ScorecardsPage() {
   const [formTitle, setFormTitle] = useState('')
   const [formDescription, setFormDescription] = useState('')
   const [formActive, setFormActive] = useState(true)
-  const [criteria, setCriteria] = useState<CriteriaRow[]>([])
+  const [categories, setCategories] = useState<{ name: string; criteria: CriteriaRow[] }[]>([])
 
   // Delete confirmation
   const [deleteId, setDeleteId] = useState<string | null>(null)
@@ -74,6 +86,9 @@ export default function ScorecardsPage() {
   // Expanded card
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const [seeding, setSeeding] = useState(false)
+
+  // Collapsed categories in expanded view
+  const [collapsedCats, setCollapsedCats] = useState<Set<string>>(new Set())
 
   const loadScorecards = useCallback(async () => {
     if (!organization) return
@@ -91,7 +106,10 @@ export default function ScorecardsPage() {
     setFormTitle('')
     setFormDescription('')
     setFormActive(true)
-    setCriteria([{ name: '', description: '', weight: 5, rating_type: 'rating', display_order: 0 }])
+    setCategories([{
+      name: 'General',
+      criteria: [{ name: '', description: '', weight: 5, rating_type: 'rating', display_order: 0, category: 'General' }],
+    }])
     setError(null)
     setDialogOpen(true)
   }
@@ -101,41 +119,103 @@ export default function ScorecardsPage() {
     setFormTitle(sc.title)
     setFormDescription(sc.description ?? '')
     setFormActive(sc.is_active)
+
     const sorted = [...(sc.scorecard_template_criteria ?? [])].sort((a, b) => a.display_order - b.display_order)
-    setCriteria(sorted.length > 0 ? sorted.map((c) => ({
-      name: c.name,
-      description: c.description ?? '',
-      weight: c.weight,
-      rating_type: c.rating_type as 'rating' | 'yes_no' | 'text',
-      display_order: c.display_order,
-    })) : [{ name: '', description: '', weight: 5, rating_type: 'rating', display_order: 0 }])
+    if (sorted.length > 0) {
+      const grouped = groupByCategory(sorted)
+      setCategories(grouped.map((g) => ({
+        name: g.category,
+        criteria: g.items.map((c) => ({
+          name: c.name,
+          description: c.description ?? '',
+          weight: c.weight,
+          rating_type: c.rating_type as 'rating' | 'yes_no' | 'text',
+          display_order: c.display_order,
+          category: c.category || 'General',
+        })),
+      })))
+    } else {
+      setCategories([{
+        name: 'General',
+        criteria: [{ name: '', description: '', weight: 5, rating_type: 'rating', display_order: 0, category: 'General' }],
+      }])
+    }
     setError(null)
     setDialogOpen(true)
   }
 
-  function addCriteria() {
-    setCriteria((prev) => [...prev, {
+  function addCategory() {
+    setCategories((prev) => [...prev, {
       name: '',
-      description: '',
-      weight: 5,
-      rating_type: 'rating',
-      display_order: prev.length,
+      criteria: [{ name: '', description: '', weight: 5, rating_type: 'rating', display_order: 0, category: '' }],
     }])
   }
 
-  function removeCriteria(index: number) {
-    setCriteria((prev) => prev.filter((_, i) => i !== index).map((c, i) => ({ ...c, display_order: i })))
+  function removeCategory(catIndex: number) {
+    setCategories((prev) => prev.filter((_, i) => i !== catIndex))
   }
 
-  function updateCriteria(index: number, field: keyof CriteriaRow, value: string | number) {
-    setCriteria((prev) => prev.map((c, i) => i === index ? { ...c, [field]: value } : c))
+  function updateCategoryName(catIndex: number, name: string) {
+    setCategories((prev) => prev.map((cat, i) => {
+      if (i !== catIndex) return cat
+      return {
+        ...cat,
+        name,
+        criteria: cat.criteria.map((c) => ({ ...c, category: name })),
+      }
+    }))
+  }
+
+  function addCriteriaToCategory(catIndex: number) {
+    setCategories((prev) => prev.map((cat, i) => {
+      if (i !== catIndex) return cat
+      return {
+        ...cat,
+        criteria: [...cat.criteria, {
+          name: '', description: '', weight: 5, rating_type: 'rating' as const,
+          display_order: cat.criteria.length, category: cat.name,
+        }],
+      }
+    }))
+  }
+
+  function removeCriteriaFromCategory(catIndex: number, crIndex: number) {
+    setCategories((prev) => prev.map((cat, i) => {
+      if (i !== catIndex) return cat
+      return { ...cat, criteria: cat.criteria.filter((_, ci) => ci !== crIndex) }
+    }))
+  }
+
+  function updateCriteriaInCategory(catIndex: number, crIndex: number, field: keyof CriteriaRow, value: string | number) {
+    setCategories((prev) => prev.map((cat, i) => {
+      if (i !== catIndex) return cat
+      return {
+        ...cat,
+        criteria: cat.criteria.map((c, ci) => ci === crIndex ? { ...c, [field]: value } : c),
+      }
+    }))
   }
 
   async function handleSave() {
     if (!organization || !user) return
     if (!formTitle.trim()) { setError('Scorecard title is required'); return }
-    const validCriteria = criteria.filter((c) => c.name.trim())
-    if (validCriteria.length === 0) { setError('At least one criteria is required'); return }
+
+    // Flatten categories into criteria
+    let displayOrder = 0
+    const allCriteria: CriteriaRow[] = []
+    for (const cat of categories) {
+      const catName = cat.name.trim() || 'General'
+      for (const c of cat.criteria) {
+        if (!c.name.trim()) continue
+        allCriteria.push({
+          ...c,
+          category: catName,
+          display_order: displayOrder++,
+        })
+      }
+    }
+
+    if (allCriteria.length === 0) { setError('At least one criteria is required'); return }
 
     setSaving(true)
     setError(null)
@@ -145,12 +225,13 @@ export default function ScorecardsPage() {
       title: formTitle.trim(),
       description: formDescription.trim() || undefined,
       is_active: formActive,
-      criteria: validCriteria.map((c, i) => ({
+      criteria: allCriteria.map((c) => ({
         name: c.name.trim(),
         description: c.description?.trim() || undefined,
         weight: c.weight,
         rating_type: c.rating_type,
-        display_order: i,
+        display_order: c.display_order,
+        category: c.category,
       })),
     }
 
@@ -185,6 +266,15 @@ export default function ScorecardsPage() {
     if (err) setError(err.message)
     else { setDeleteId(null); loadScorecards() }
     setDeleting(false)
+  }
+
+  function toggleCatCollapse(key: string) {
+    setCollapsedCats((prev) => {
+      const next = new Set(prev)
+      if (next.has(key)) next.delete(key)
+      else next.add(key)
+      return next
+    })
   }
 
   if (!isAdmin) {
@@ -251,6 +341,7 @@ export default function ScorecardsPage() {
             const criteriaCount = criteriaList.length
             const isExpanded = expandedId === sc.id
             const totalWeight = criteriaList.reduce((sum, c) => sum + c.weight, 0)
+            const grouped = groupByCategory([...criteriaList].sort((a, b) => a.display_order - b.display_order))
 
             const typeCounts = criteriaList.reduce<Record<string, number>>((acc, c) => {
               acc[c.rating_type] = (acc[c.rating_type] || 0) + 1
@@ -264,13 +355,11 @@ export default function ScorecardsPage() {
                   className="grid grid-cols-[1fr_auto_auto_auto_auto] gap-4 items-center px-4 py-2.5 cursor-pointer hover:bg-gray-50/60 transition-colors"
                   onClick={() => setExpandedId(isExpanded ? null : sc.id)}
                 >
-                  {/* Title + Description + Type badges */}
                   <div className="min-w-0 flex items-center gap-3">
                     <ChevronDown className={`w-3.5 h-3.5 text-gray-400 shrink-0 transition-transform duration-200 ${isExpanded ? '' : '-rotate-90'}`} />
                     <div className="min-w-0">
                       <div className="flex items-center gap-2">
                         <span className="text-[13px] font-semibold text-gray-900 truncate">{sc.title}</span>
-                        {/* Compact type pills */}
                         <div className="hidden sm:flex items-center gap-1">
                           {Object.entries(typeCounts).map(([type, count]) => {
                             const config = RATING_TYPE_CONFIG[type]
@@ -290,37 +379,22 @@ export default function ScorecardsPage() {
                       )}
                     </div>
                   </div>
-
-                  {/* Criteria count */}
                   <span className="w-20 text-center text-[12px] text-gray-500 tabular-nums">{criteriaCount}</span>
-
-                  {/* Total weight */}
                   <span className="w-20 text-center text-[12px] text-gray-500 tabular-nums flex items-center justify-center gap-1">
                     <Weight className="w-3 h-3 text-gray-300" />
                     {totalWeight}
                   </span>
-
-                  {/* Status */}
                   <div className="w-16 flex justify-center">
                     <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium ${
-                      sc.is_active
-                        ? 'bg-emerald-50 text-emerald-600'
-                        : 'bg-gray-100 text-gray-400'
+                      sc.is_active ? 'bg-emerald-50 text-emerald-600' : 'bg-gray-100 text-gray-400'
                     }`}>
                       {sc.is_active ? 'Active' : 'Inactive'}
                     </span>
                   </div>
-
-                  {/* Actions */}
                   <div className="w-16 flex justify-end">
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="h-7 w-7 p-0 opacity-0 group-hover:opacity-100 transition-opacity"
-                          onClick={(e) => e.stopPropagation()}
-                        >
+                        <Button variant="ghost" size="sm" className="h-7 w-7 p-0 opacity-0 group-hover:opacity-100 transition-opacity" onClick={(e) => e.stopPropagation()}>
                           <MoreHorizontal className="w-3.5 h-3.5" />
                         </Button>
                       </DropdownMenuTrigger>
@@ -328,10 +402,7 @@ export default function ScorecardsPage() {
                         <DropdownMenuItem onClick={() => openEdit(sc)} className="gap-2 text-[12px]">
                           <PenLine className="w-3 h-3" /> Edit
                         </DropdownMenuItem>
-                        <DropdownMenuItem
-                          onClick={() => setDeleteId(sc.id)}
-                          className="gap-2 text-[12px] text-red-600 focus:text-red-600"
-                        >
+                        <DropdownMenuItem onClick={() => setDeleteId(sc.id)} className="gap-2 text-[12px] text-red-600 focus:text-red-600">
                           <Trash2 className="w-3 h-3" /> Delete
                         </DropdownMenuItem>
                       </DropdownMenuContent>
@@ -339,32 +410,51 @@ export default function ScorecardsPage() {
                   </div>
                 </div>
 
-                {/* Expanded Criteria */}
+                {/* Expanded Criteria — grouped by category (Keka-style) */}
                 {isExpanded && criteriaList.length > 0 && (
                   <div className="bg-gray-50/50 border-t border-gray-100 px-4 py-3">
-                    <div className="ml-6 space-y-1">
-                      {[...criteriaList]
-                        .sort((a, b) => a.display_order - b.display_order)
-                        .map((c, i) => {
-                          const typeConfig = RATING_TYPE_CONFIG[c.rating_type] || RATING_TYPE_CONFIG.rating
-                          const TypeIcon = typeConfig.icon
-                          return (
-                            <div key={c.id || i} className="flex items-center gap-3 py-1.5 px-3 rounded-md hover:bg-white/70 transition-colors">
-                              <span className="text-[10px] font-semibold text-gray-300 w-4 text-right tabular-nums">{i + 1}</span>
-                              <span className="text-[12px] font-medium text-gray-700 flex-1 truncate">{c.name}</span>
-                              {c.description && (
-                                <span className="text-[10px] text-gray-400 truncate max-w-[200px] hidden lg:block">{c.description}</span>
-                              )}
-                              <span className={`inline-flex items-center gap-0.5 px-1.5 py-px rounded text-[9px] font-medium border shrink-0 ${typeConfig.bgColor} ${typeConfig.color}`}>
-                                <TypeIcon className="w-2.5 h-2.5" />
-                                {typeConfig.shortLabel}
-                              </span>
-                              <span className="text-[10px] text-gray-400 tabular-nums shrink-0 w-8 text-right">
-                                w:{c.weight}
-                              </span>
+                    <div className="ml-6 space-y-2">
+                      {grouped.map((group) => {
+                        const catKey = `${sc.id}-${group.category}`
+                        const isCollapsed = collapsedCats.has(catKey)
+                        const catAvgWeight = (group.items.reduce((s, c) => s + c.weight, 0) / group.items.length).toFixed(1)
+                        return (
+                          <div key={group.category}>
+                            {/* Category Header */}
+                            <div
+                              className="flex items-center gap-2 py-1.5 px-3 cursor-pointer hover:bg-white/50 rounded-md"
+                              onClick={(e) => { e.stopPropagation(); toggleCatCollapse(catKey) }}
+                            >
+                              <ChevronDown className={`w-3 h-3 text-gray-400 transition-transform duration-150 ${isCollapsed ? '-rotate-90' : ''}`} />
+                              <span className="text-[11px] font-bold text-gray-500 uppercase tracking-wider">{group.category}</span>
+                              <span className="text-[10px] text-gray-400">({group.items.length})</span>
+                              <span className="ml-auto text-[10px] text-gray-400 tabular-nums">avg w:{catAvgWeight}</span>
                             </div>
-                          )
-                        })}
+                            {/* Category Items */}
+                            {!isCollapsed && (
+                              <div className="ml-5 space-y-0.5">
+                                {group.items.map((c, i) => {
+                                  const typeConfig = RATING_TYPE_CONFIG[c.rating_type] || RATING_TYPE_CONFIG.rating
+                                  const TypeIcon = typeConfig.icon
+                                  return (
+                                    <div key={c.id || i} className="flex items-center gap-3 py-1.5 px-3 rounded-md hover:bg-white/70 transition-colors">
+                                      <span className="text-[12px] font-medium text-gray-700 flex-1 truncate">{c.name}</span>
+                                      {c.description && (
+                                        <span className="text-[10px] text-gray-400 truncate max-w-[200px] hidden lg:block">{c.description}</span>
+                                      )}
+                                      <span className={`inline-flex items-center gap-0.5 px-1.5 py-px rounded text-[9px] font-medium border shrink-0 ${typeConfig.bgColor} ${typeConfig.color}`}>
+                                        <TypeIcon className="w-2.5 h-2.5" />
+                                        {typeConfig.shortLabel}
+                                      </span>
+                                      <span className="text-[10px] text-gray-400 tabular-nums shrink-0 w-8 text-right">w:{c.weight}</span>
+                                    </div>
+                                  )
+                                })}
+                              </div>
+                            )}
+                          </div>
+                        )
+                      })}
                     </div>
                   </div>
                 )}
@@ -374,7 +464,7 @@ export default function ScorecardsPage() {
         </div>
       )}
 
-      {/* Create/Edit Dialog */}
+      {/* Create/Edit Dialog — Category-based */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
@@ -422,100 +512,109 @@ export default function ScorecardsPage() {
               />
             </div>
 
-            {/* Criteria Section */}
+            {/* Categories + Criteria Section */}
             <div className="space-y-3">
               <div className="flex items-center justify-between">
                 <Label className="text-[11px] text-gray-400 font-semibold uppercase tracking-wider">
-                  Evaluation Criteria <span className="text-red-400">*</span>
+                  Categories & Criteria <span className="text-red-400">*</span>
                 </Label>
-                <button onClick={addCriteria} className="text-[12px] text-blue-600 hover:text-blue-700 font-medium">
-                  + Add Criteria
+                <button onClick={addCategory} className="flex items-center gap-1 text-[12px] text-blue-600 hover:text-blue-700 font-medium">
+                  <FolderPlus className="w-3.5 h-3.5" /> Add Category
                 </button>
               </div>
 
-              <div className="space-y-3">
-                {criteria.map((c, index) => (
-                  <div key={index} className="rounded-lg border border-gray-200 bg-gray-50/50 p-3 space-y-3">
-                    <div className="flex items-start gap-2">
-                      <GripVertical className="w-4 h-4 text-gray-300 mt-2 shrink-0" />
-                      <div className="flex-1 space-y-3">
-                        <div className="grid grid-cols-[1fr_120px_80px] gap-2">
-                          <Input
-                            value={c.name}
-                            onChange={(e) => updateCriteria(index, 'name', e.target.value)}
-                            placeholder="Criteria name (e.g. Communication)"
-                            className="h-8 text-sm"
-                          />
-                          <Select
-                            value={c.rating_type}
-                            onValueChange={(v) => updateCriteria(index, 'rating_type', v)}
-                          >
-                            <SelectTrigger className="h-8 text-xs">
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {SCORECARD_RATING_TYPES.map((rt) => (
-                                <SelectItem key={rt.value} value={rt.value}>
-                                  <span className="flex items-center gap-1.5">
-                                    {(() => { const cfg = RATING_TYPE_CONFIG[rt.value]; const I = cfg?.icon || Star; return <I className="w-3 h-3" /> })()}
-                                    {rt.label}
-                                  </span>
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                          <Input
-                            type="number"
-                            min={1}
-                            max={10}
-                            value={c.weight}
-                            onChange={(e) => updateCriteria(index, 'weight', Number(e.target.value))}
-                            className="h-8 text-sm text-center"
-                            title="Weight (1-10)"
-                          />
-                        </div>
-                        <Input
-                          value={c.description}
-                          onChange={(e) => updateCriteria(index, 'description', e.target.value)}
-                          placeholder="Description (optional)"
-                          className="h-7 text-xs text-gray-500"
-                        />
-                      </div>
-                      {criteria.length > 1 && (
+              <div className="space-y-4">
+                {categories.map((cat, catIndex) => (
+                  <div key={catIndex} className="rounded-lg border border-gray-200 overflow-hidden">
+                    {/* Category Header */}
+                    <div className="flex items-center gap-2 px-3 py-2.5 bg-gray-50 border-b border-gray-200">
+                      <GripVertical className="w-4 h-4 text-gray-300 shrink-0" />
+                      <Input
+                        value={cat.name}
+                        onChange={(e) => updateCategoryName(catIndex, e.target.value)}
+                        placeholder="Category name (e.g. Sales Skills, Communication)"
+                        className="h-7 text-sm font-semibold bg-white border-gray-200 flex-1"
+                      />
+                      <button
+                        onClick={() => addCriteriaToCategory(catIndex)}
+                        className="text-[11px] text-blue-600 hover:text-blue-700 font-medium whitespace-nowrap px-2"
+                      >
+                        + Criteria
+                      </button>
+                      {categories.length > 1 && (
                         <button
-                          onClick={() => removeCriteria(index)}
-                          className="p-1 text-gray-400 hover:text-red-500 transition-colors mt-1"
+                          onClick={() => removeCategory(catIndex)}
+                          className="p-1 text-gray-400 hover:text-red-500 transition-colors"
+                          title="Remove category"
                         >
                           <Trash2 className="w-3.5 h-3.5" />
                         </button>
                       )}
                     </div>
+
+                    {/* Criteria inside this category */}
+                    <div className="p-2 space-y-2">
+                      {cat.criteria.map((c, crIndex) => (
+                        <div key={crIndex} className="rounded-md border border-gray-100 bg-white p-2.5 space-y-2">
+                          <div className="flex items-start gap-2">
+                            <div className="flex-1 space-y-2">
+                              <div className="grid grid-cols-[1fr_120px_80px] gap-2">
+                                <Input
+                                  value={c.name}
+                                  onChange={(e) => updateCriteriaInCategory(catIndex, crIndex, 'name', e.target.value)}
+                                  placeholder="Criteria name"
+                                  className="h-8 text-sm"
+                                />
+                                <Select
+                                  value={c.rating_type}
+                                  onValueChange={(v) => updateCriteriaInCategory(catIndex, crIndex, 'rating_type', v)}
+                                >
+                                  <SelectTrigger className="h-8 text-xs">
+                                    <SelectValue />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    {SCORECARD_RATING_TYPES.map((rt) => (
+                                      <SelectItem key={rt.value} value={rt.value}>
+                                        <span className="flex items-center gap-1.5">
+                                          {(() => { const cfg = RATING_TYPE_CONFIG[rt.value]; const I = cfg?.icon || Star; return <I className="w-3 h-3" /> })()}
+                                          {rt.label}
+                                        </span>
+                                      </SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                                <Input
+                                  type="number"
+                                  min={1}
+                                  max={10}
+                                  value={c.weight}
+                                  onChange={(e) => updateCriteriaInCategory(catIndex, crIndex, 'weight', Number(e.target.value))}
+                                  className="h-8 text-sm text-center"
+                                  title="Weight (1-10)"
+                                />
+                              </div>
+                              <Input
+                                value={c.description}
+                                onChange={(e) => updateCriteriaInCategory(catIndex, crIndex, 'description', e.target.value)}
+                                placeholder="Description (optional)"
+                                className="h-7 text-xs text-gray-500"
+                              />
+                            </div>
+                            {cat.criteria.length > 1 && (
+                              <button
+                                onClick={() => removeCriteriaFromCategory(catIndex, crIndex)}
+                                className="p-1 text-gray-400 hover:text-red-500 transition-colors mt-1"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 ))}
               </div>
-
-              {/* Preview */}
-              {criteria.some((c) => c.name.trim()) && (
-                <div className="rounded-lg border border-blue-100 bg-blue-50/50 p-3">
-                  <p className="text-[10px] font-semibold text-blue-600 uppercase tracking-wider mb-2">Preview</p>
-                  <div className="space-y-1.5">
-                    {criteria.filter((c) => c.name.trim()).map((c, i) => {
-                      const typeConfig = RATING_TYPE_CONFIG[c.rating_type] || RATING_TYPE_CONFIG.rating
-                      return (
-                        <div key={i} className="flex items-center gap-2">
-                          <span className="text-[10px] font-bold text-blue-400 w-4">{i + 1}.</span>
-                          <span className="text-xs font-medium text-gray-700 flex-1">{c.name}</span>
-                          <span className="inline-flex items-center gap-1 text-[10px] text-blue-500">
-                            {(() => { const I = typeConfig.icon; return <I className="w-3 h-3" /> })()}
-                            {typeConfig.label}
-                          </span>
-                          <span className="text-[10px] text-blue-400">w:{c.weight}</span>
-                        </div>
-                      )
-                    })}
-                  </div>
-                </div>
-              )}
             </div>
           </div>
 

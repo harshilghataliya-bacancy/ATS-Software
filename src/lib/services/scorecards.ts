@@ -10,6 +10,7 @@ interface CriteriaInput {
   weight: number
   rating_type: 'rating' | 'yes_no' | 'text'
   display_order: number
+  category?: string
 }
 
 interface ScorecardInput {
@@ -130,6 +131,7 @@ export async function createScorecard(
           weight: c.weight,
           rating_type: c.rating_type,
           display_order: c.display_order,
+          category: c.category || 'General',
         }))
       )
 
@@ -183,6 +185,7 @@ export async function updateScorecard(
           weight: c.weight,
           rating_type: c.rating_type,
           display_order: c.display_order,
+          category: c.category || 'General',
         }))
       )
 

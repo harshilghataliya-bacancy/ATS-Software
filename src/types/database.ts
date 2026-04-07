@@ -536,6 +536,7 @@ export interface ScorecardTemplateCriteria {
   weight: number
   rating_type: ScorecardRatingType
   display_order: number
+  category: string | null
   created_at: string
 }
 
