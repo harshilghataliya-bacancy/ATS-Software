@@ -86,6 +86,7 @@ export default function BankDetailPage() {
   const [search, setSearch] = useState('')
   const [sourceFilter, setSourceFilter] = useState('')
   const [locationFilter, setLocationFilter] = useState('')
+  const [positionFilter, setPositionFilter] = useState('')
   const [showFilters, setShowFilters] = useState(false)
   const searchTimeout = useRef<NodeJS.Timeout>()
 
@@ -143,6 +144,7 @@ export default function BankDetailPage() {
       search: search || undefined,
       source: sourceFilter || undefined,
       location: locationFilter || undefined,
+      tags: positionFilter ? [`position:${positionFilter}`] : undefined,
       page,
     }
 
@@ -162,7 +164,7 @@ export default function BankDetailPage() {
       }
     }
     setLoading(false)
-  }, [organization, bank, bankId, search, sourceFilter, locationFilter, page])
+  }, [organization, bank, bankId, search, sourceFilter, locationFilter, positionFilter, page])
 
   useEffect(() => {
     if (organization) loadBank()
@@ -395,7 +397,15 @@ export default function BankDetailPage() {
   }
 
   const totalPages = Math.ceil(totalCount / ITEMS_PER_PAGE)
-  const activeFilterCount = [sourceFilter, locationFilter].filter(Boolean).length
+  const activeFilterCount = [sourceFilter, locationFilter, positionFilter].filter(Boolean).length
+
+  // Extract unique positions from candidate tags (position:xxx)
+  const positionOptions = Array.from(new Set(
+    candidates.flatMap((c) => (c.tags || [])
+      .filter((t: string) => t.startsWith('position:'))
+      .map((t: string) => t.replace('position:', ''))
+    )
+  )).sort()
 
   if (userLoading || (!bank && loading)) {
     return (
@@ -502,9 +512,9 @@ export default function BankDetailPage() {
           )}
         </button>
 
-        {(search || sourceFilter || locationFilter) && (
+        {(search || sourceFilter || locationFilter || positionFilter) && (
           <button
-            onClick={() => { setSearch(''); setSourceFilter(''); setLocationFilter(''); setPage(1) }}
+            onClick={() => { setSearch(''); setSourceFilter(''); setLocationFilter(''); setPositionFilter(''); setPage(1) }}
             className="flex items-center gap-1 h-8 px-2 rounded-lg text-[11px] text-gray-400 hover:text-gray-600 transition-colors"
           >
             <X className="w-3.5 h-3.5" />
@@ -517,6 +527,20 @@ export default function BankDetailPage() {
       {showFilters && (
         <div className="bg-gray-50/50 border border-gray-100 rounded-xl p-4">
           <div className="flex items-center gap-3 flex-wrap">
+            <div>
+              <label className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1 block">Position</label>
+              <Select value={positionFilter || 'all'} onValueChange={(v) => { setPositionFilter(v === 'all' ? '' : v); setPage(1) }}>
+                <SelectTrigger className="w-[180px] h-8 text-[12px]">
+                  <SelectValue placeholder="All Positions" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Positions</SelectItem>
+                  {positionOptions.map((p) => (
+                    <SelectItem key={p} value={p}>{p}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
             <div>
               <label className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1 block">Source</label>
               <Select value={sourceFilter || 'all'} onValueChange={(v) => { setSourceFilter(v === 'all' ? '' : v); setPage(1) }}>
@@ -585,6 +609,7 @@ export default function BankDetailPage() {
                 />
               </TableHead>
               <TableHead className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Candidate</TableHead>
+              <TableHead className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Applied For</TableHead>
               <TableHead className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Current Role</TableHead>
               <TableHead className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Location</TableHead>
               <TableHead className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Source</TableHead>
@@ -600,15 +625,15 @@ export default function BankDetailPage() {
             {loading && candidates.length === 0 ? (
               Array.from({ length: 5 }).map((_, i) => (
                 <TableRow key={i}>
-                  <TableCell colSpan={10} className="px-4 py-3"><Skeleton className="h-8 w-full" /></TableCell>
+                  <TableCell colSpan={11} className="px-4 py-3"><Skeleton className="h-8 w-full" /></TableCell>
                 </TableRow>
               ))
             ) : candidates.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={10} className="px-4 py-16 text-center">
+                <TableCell colSpan={11} className="px-4 py-16 text-center">
                   <Users className="w-8 h-8 text-gray-200 mx-auto mb-2" />
                   <p className="text-[13px] text-gray-400">
-                    {search || sourceFilter || locationFilter ? 'No candidates match your filters' : 'No candidates in this bank'}
+                    {search || sourceFilter || locationFilter || positionFilter ? 'No candidates match your filters' : 'No candidates in this bank'}
                   </p>
                   <p className="text-[11px] text-gray-300 mt-1">Add candidates to start building this talent pool</p>
                 </TableCell>
@@ -649,6 +674,21 @@ export default function BankDetailPage() {
                           <p className="text-[10px] text-gray-400 mt-0.5">{c.email}</p>
                         </div>
                       </Link>
+                    </TableCell>
+                    <TableCell className="py-3">
+                      {(() => {
+                        const posTag = (c.tags || []).find((t: string) => t.startsWith('position:'))
+                        const pos = posTag ? posTag.replace('position:', '') : null
+                        return pos && pos !== 'Unassigned' ? (
+                          <span className="text-[11px] font-medium px-2 py-0.5 rounded-full bg-blue-50 text-blue-600 border border-blue-200/60 truncate max-w-[160px] inline-block">
+                            {pos}
+                          </span>
+                        ) : (
+                          <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-gray-100 text-gray-400 border border-gray-200/60">
+                            Unassigned
+                          </span>
+                        )
+                      })()}
                     </TableCell>
                     <TableCell className="py-3">
                       {c.current_title ? (
@@ -710,14 +750,20 @@ export default function BankDetailPage() {
                       </div>
                     </TableCell>
                     <TableCell className="py-3">
-                      <div className="flex flex-wrap gap-1">
-                        {(c.tags || []).slice(0, 3).map((tag: string) => (
-                          <span key={tag} className="text-[9px] px-1.5 py-0.5 rounded-full bg-gray-100 text-gray-500 border border-gray-200/60">{tag}</span>
-                        ))}
-                        {(c.tags || []).length > 3 && (
-                          <span className="text-[9px] text-gray-300">+{c.tags.length - 3}</span>
-                        )}
-                      </div>
+                      {(() => {
+                        const visibleTags = (c.tags || []).filter((t: string) => !t.startsWith('position:'))
+                        return (
+                          <div className="flex flex-wrap gap-1">
+                            {visibleTags.slice(0, 3).map((tag: string) => (
+                              <span key={tag} className="text-[9px] px-1.5 py-0.5 rounded-full bg-gray-100 text-gray-500 border border-gray-200/60">{tag}</span>
+                            ))}
+                            {visibleTags.length > 3 && (
+                              <span className="text-[9px] text-gray-300">+{visibleTags.length - 3}</span>
+                            )}
+                            {visibleTags.length === 0 && <span className="text-gray-300 text-[11px]">—</span>}
+                          </div>
+                        )
+                      })()}
                     </TableCell>
                     <TableCell className="py-3">
                       {c.bank_added_at ? (

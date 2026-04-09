@@ -321,6 +321,12 @@ async function processMessage(
     }
   }
 
+  // Extract applied position from email subject
+  const subject = getHeader(headers, 'Subject') || ''
+  const appliedPosition = extractPositionFromSubject(subject)
+  const tags: string[] = config.source_tag ? [config.source_tag] : ['email-inbox']
+  tags.push(`position:${appliedPosition}`)
+
   // Create candidate
   const { data: newCandidate, error: insertError } = await supabase
     .from('candidates')
@@ -336,7 +342,7 @@ async function processMessage(
       experience_years: parsedData?.experience_years ?? null,
       source: 'direct',
       source_details: 'Auto-imported from email inbox',
-      tags: config.source_tag ? [config.source_tag] : ['email-inbox'],
+      tags,
       created_by: null,
     })
     .select('id')
@@ -483,6 +489,54 @@ async function addToDefaultBank(supabase: any, orgId: string, candidateId: strin
   } catch {
     // Non-critical — candidate is still created even if bank add fails
   }
+}
+
+/**
+ * Extract the job position/role from an email subject line.
+ * Common patterns:
+ *   "Application for Software Engineer"
+ *   "Resume - React Developer position"
+ *   "Applying for Senior Backend Engineer role"
+ *   "Job Application: Full Stack Developer"
+ *   "CV for the role of Product Manager"
+ *   "Interest in Data Analyst opening"
+ */
+function extractPositionFromSubject(subject: string): string {
+  if (!subject) return 'Unassigned'
+
+  const cleaned = subject.replace(/^(re|fwd?|fw):\s*/gi, '').trim()
+
+  const patterns = [
+    // "Application for <role>"  /  "Applying for <role>"
+    /appl(?:ication|ying)\s+for\s+(?:the\s+)?(?:position\s+of\s+|role\s+of\s+)?(.+)/i,
+    // "Resume for <role>" / "CV for <role>"
+    /(?:resume|cv)\s+(?:for|[-–—])\s+(?:the\s+)?(?:position\s+of\s+|role\s+of\s+)?(.+)/i,
+    // "Job Application: <role>" / "Job Application - <role>"
+    /job\s+application\s*[:–\-—]\s*(.+)/i,
+    // "Interest in <role>" / "Interested in <role>"
+    /interest(?:ed)?\s+in\s+(?:the\s+)?(?:position\s+of\s+|role\s+of\s+)?(.+)/i,
+    // "<role> position" / "<role> role" / "<role> opening"
+    /^(.+?)\s+(?:position|role|opening|vacancy|opportunity)\b/i,
+    // "for the role of <role>"
+    /for\s+the\s+(?:role|position)\s+of\s+(.+)/i,
+  ]
+
+  for (const pat of patterns) {
+    const m = cleaned.match(pat)
+    if (m && m[1]) {
+      // Clean up trailing noise like "at Company", "- John", etc.
+      let pos = m[1]
+        .replace(/\s+at\s+.+$/i, '')
+        .replace(/\s*[-–—]\s*.+$/, '')
+        .replace(/\s*[|(].+$/, '')
+        .trim()
+      // Remove trailing "position" / "role" if captured
+      pos = pos.replace(/\s+(?:position|role|opening|vacancy|opportunity)\s*$/i, '').trim()
+      if (pos.length > 2 && pos.length < 80) return pos
+    }
+  }
+
+  return 'Unassigned'
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
