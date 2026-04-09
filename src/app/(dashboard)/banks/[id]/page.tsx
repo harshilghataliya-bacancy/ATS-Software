@@ -592,6 +592,7 @@ export default function BankDetailPage() {
               <TableHead className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Applications</TableHead>
               <TableHead className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Reason</TableHead>
               <TableHead className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Tags</TableHead>
+              <TableHead className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Added</TableHead>
               <TableHead className="w-10" />
             </TableRow>
           </TableHeader>
@@ -717,6 +718,19 @@ export default function BankDetailPage() {
                           <span className="text-[9px] text-gray-300">+{c.tags.length - 3}</span>
                         )}
                       </div>
+                    </TableCell>
+                    <TableCell className="py-3">
+                      {c.bank_added_at ? (
+                        <span className="text-[11px] text-gray-500">
+                          {new Date(c.bank_added_at).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}
+                          <br />
+                          <span className="text-[10px] text-gray-400">
+                            {new Date(c.bank_added_at).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Asia/Kolkata' })}
+                          </span>
+                        </span>
+                      ) : (
+                        <span className="text-[11px] text-gray-300">&mdash;</span>
+                      )}
                     </TableCell>
                     <TableCell className="py-3">
                       <DropdownMenu>

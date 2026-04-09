@@ -225,14 +225,16 @@ export async function getBankCandidates(
   const from = (page - 1) * limit
   const to = from + limit - 1
 
-  // Get candidate IDs in this bank
+  // Get candidate IDs and added_at in this bank
   const { data: memberIds } = await supabase
     .from('candidate_bank_members')
-    .select('candidate_id')
+    .select('candidate_id, added_at')
     .eq('bank_id', bankId)
     .eq('organization_id', orgId)
 
-  const candidateIds = memberIds?.map((m) => m.candidate_id) ?? []
+  const candidateIds = memberIds?.map((m: { candidate_id: string }) => m.candidate_id) ?? []
+  const addedAtMap: Record<string, string> = {}
+  memberIds?.forEach((m: { candidate_id: string; added_at: string }) => { addedAtMap[m.candidate_id] = m.added_at })
   if (candidateIds.length === 0) {
     return { data: [], error: null, count: 0 }
   }
@@ -267,7 +269,13 @@ export async function getBankCandidates(
 
   const { data, error, count } = await query
 
-  return { data, error, count }
+  // Attach added_at from bank membership
+  const enriched = data?.map((c: { id: string }) => ({
+    ...c,
+    bank_added_at: addedAtMap[c.id] || null,
+  }))
+
+  return { data: enriched, error, count }
 }
 
 // ---------------------------------------------------------------------------
