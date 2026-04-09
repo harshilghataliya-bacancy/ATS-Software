@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { getPublicJobs } from '@/lib/services/jobs'
 import Link from 'next/link'
+import Footer from '@/components/ui/footer'
 
 interface Props {
   params: Promise<{ slug: string }>
@@ -181,11 +182,11 @@ export default async function CareersPage({ params }: Props) {
       </main>
 
       {/* Footer */}
-      <footer className="border-t bg-white mt-auto">
-        <div className="max-w-5xl mx-auto px-6 py-6 text-center text-sm text-gray-400">
-          {branding?.brand_name ? `\u00A9 ${new Date().getFullYear()} ${branding.brand_name}` : 'Powered by HireFlow'}
-        </div>
-      </footer>
+      <Footer
+        brandName={branding?.brand_name || organization.name}
+        primaryColor={primaryColor}
+        accentColor={accentColor}
+      />
     </div>
   )
 }
