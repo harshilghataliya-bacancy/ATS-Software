@@ -44,7 +44,7 @@ export async function getCandidates(
     )
     .eq('organization_id', orgId)
     .is('deleted_at', null)
-    .neq('source_details', 'Auto-imported from email inbox')
+    .or("source_details.neq.Auto-imported from email inbox,source_details.is.null")
     .order('created_at', { ascending: false })
     .range(from, to)
 

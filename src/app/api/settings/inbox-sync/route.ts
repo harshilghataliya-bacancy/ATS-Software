@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { processManualSync } from '@/lib/services/email-inbox-connector'
 
 export async function GET() {
   const supabase = await createClient()
@@ -43,4 +44,41 @@ export async function PUT(req: NextRequest) {
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
   return NextResponse.json({ success: true })
+}
+
+export async function POST() {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return new Response('Unauthorized', { status: 401 })
+
+  const member = (await supabase.from('organization_members').select('organization_id, role').eq('user_id', user.id).is('deleted_at', null).single()).data
+  if (!member || member.role !== 'admin') return new Response('Admin only', { status: 403 })
+
+  const encoder = new TextEncoder()
+  const stream = new ReadableStream({
+    async start(controller) {
+      function send(data: Record<string, unknown>) {
+        controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`))
+      }
+
+      try {
+        const stats = await processManualSync(member.organization_id, (event) => {
+          send(event)
+        })
+        send({ type: 'done', message: 'Sync complete', stats })
+      } catch (err) {
+        send({ type: 'error', message: err instanceof Error ? err.message : 'Sync failed' })
+      }
+
+      controller.close()
+    },
+  })
+
+  return new Response(stream, {
+    headers: {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache',
+      Connection: 'keep-alive',
+    },
+  })
 }

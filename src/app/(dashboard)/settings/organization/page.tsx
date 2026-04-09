@@ -150,6 +150,9 @@ function OrganizationSettingsContent() {
   const [inboxSaving, setInboxSaving] = useState(false)
   const [inboxSuccess, setInboxSuccess] = useState(false)
   const [inboxSyncing, setInboxSyncing] = useState(false)
+  const [syncLogs, setSyncLogs] = useState<Array<{ type: string; message: string; email?: string; current?: number; total?: number }>>([])
+  const [syncStats, setSyncStats] = useState<{ processed: number; created: number; skipped: number; errors: number } | null>(null)
+  const [showSyncPanel, setShowSyncPanel] = useState(false)
 
   // White-Label state
   const [domains, setDomains] = useState<(OrganizationDomain & { dns_instructions?: { verification: { type: string; host: string; value: string }; cname: { type: string; host: string; value: string } } })[]>([])
@@ -348,17 +351,42 @@ function OrganizationSettingsContent() {
 
   async function handleManualSync() {
     setInboxSyncing(true)
+    setSyncLogs([])
+    setSyncStats(null)
+    setShowSyncPanel(true)
+
     try {
-      const res = await fetch('/api/cron/inbox-sync', {
-        headers: { Authorization: `Bearer ${window.location.origin}` },
-      })
-      const data = await res.json()
-      if (data.success) {
-        setInboxLastSynced(data.timestamp)
-        alert(`Sync complete: ${data.created} new candidates, ${data.processed} processed, ${data.skipped} skipped`)
+      const res = await fetch('/api/settings/inbox-sync', { method: 'POST' })
+      const reader = res.body?.getReader()
+      const decoder = new TextDecoder()
+
+      if (!reader) throw new Error('No response stream')
+
+      let buffer = ''
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+
+        buffer += decoder.decode(value, { stream: true })
+        const lines = buffer.split('\n\n')
+        buffer = lines.pop() || ''
+
+        for (const line of lines) {
+          const data = line.replace(/^data: /, '').trim()
+          if (!data) continue
+          try {
+            const event = JSON.parse(data)
+            if (event.type === 'done') {
+              setSyncStats(event.stats)
+              setInboxLastSynced(new Date().toISOString())
+            } else {
+              setSyncLogs(prev => [...prev, event])
+            }
+          } catch { /* ignore parse errors */ }
+        }
       }
     } catch {
-      alert('Sync failed. Check console for details.')
+      setSyncLogs(prev => [...prev, { type: 'error', message: 'Connection failed. Check console.' }])
     }
     setInboxSyncing(false)
   }
@@ -908,9 +936,72 @@ function OrganizationSettingsContent() {
                 disabled={inboxSyncing || !gmailConnected}
                 className="text-xs"
               >
-                {inboxSyncing ? 'Syncing...' : 'Sync Now'}
+                {inboxSyncing ? (
+                  <span className="flex items-center gap-1.5">
+                    <span className="h-3 w-3 animate-spin rounded-full border-2 border-gray-300 border-t-blue-600" />
+                    Syncing...
+                  </span>
+                ) : 'Sync Now'}
               </Button>
             </div>
+
+            {showSyncPanel && (
+              <div className="mt-3 rounded-lg border border-gray-200 bg-gray-50 overflow-hidden">
+                {/* Progress bar */}
+                {inboxSyncing && syncLogs.length > 0 && (() => {
+                  const last = syncLogs[syncLogs.length - 1]
+                  const pct = last.current && last.total ? Math.round((last.current / last.total) * 100) : 0
+                  return (
+                    <div className="h-1.5 bg-gray-200">
+                      <div className="h-full bg-blue-500 transition-all duration-300" style={{ width: `${pct}%` }} />
+                    </div>
+                  )
+                })()}
+
+                {/* Log entries */}
+                <div className="max-h-48 overflow-y-auto px-3 py-2 space-y-1">
+                  {syncLogs.map((log, i) => (
+                    <div key={i} className="flex items-start gap-2 text-[11px]">
+                      <span className={`mt-0.5 flex-shrink-0 h-1.5 w-1.5 rounded-full ${
+                        log.type === 'error' ? 'bg-red-500' :
+                        log.type === 'result' ? 'bg-green-500' :
+                        log.type === 'scanning' ? 'bg-blue-500' :
+                        'bg-yellow-500'
+                      }`} />
+                      <span className={`${log.type === 'error' ? 'text-red-600' : 'text-gray-600'}`}>
+                        {log.current && log.total && <span className="text-gray-400 mr-1">[{log.current}/{log.total}]</span>}
+                        {log.message}
+                      </span>
+                    </div>
+                  ))}
+                  {inboxSyncing && <div className="text-[11px] text-gray-400 animate-pulse">Processing...</div>}
+                </div>
+
+                {/* Results summary */}
+                {syncStats && (
+                  <div className="border-t border-gray-200 px-3 py-2 bg-white">
+                    <div className="flex items-center gap-3 text-[11px]">
+                      <CheckCircle2 className="h-3.5 w-3.5 text-green-500" />
+                      <span className="font-medium text-gray-700">
+                        {syncStats.created} new &middot; {syncStats.processed - syncStats.created} updated &middot; {syncStats.skipped} skipped &middot; {syncStats.errors} errors
+                      </span>
+                    </div>
+                  </div>
+                )}
+
+                {/* Hide button */}
+                {!inboxSyncing && (
+                  <div className="border-t border-gray-200 px-3 py-1.5 text-center">
+                    <button
+                      onClick={() => setShowSyncPanel(false)}
+                      className="text-[11px] text-gray-400 hover:text-gray-600 transition-colors"
+                    >
+                      Hide
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
           <div className="flex items-center gap-2">

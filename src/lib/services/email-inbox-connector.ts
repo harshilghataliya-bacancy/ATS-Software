@@ -7,12 +7,21 @@ import { parseResumeFromBytes } from '@/lib/services/resume-parser'
 // Types
 // ---------------------------------------------------------------------------
 
-interface SyncStats {
+export interface SyncStats {
   processed: number
   created: number
   skipped: number
   errors: number
 }
+
+export type SyncProgressCallback = (event: {
+  type: 'scanning' | 'processing' | 'result' | 'done' | 'error'
+  message: string
+  email?: string
+  current?: number
+  total?: number
+  stats?: SyncStats
+}) => void
 
 interface AttachmentInfo {
   attachmentId: string
@@ -56,11 +65,34 @@ export async function processInboxSync(): Promise<SyncStats> {
 }
 
 // ---------------------------------------------------------------------------
+// Manual sync for a specific org (with progress callback)
+// ---------------------------------------------------------------------------
+
+export async function processManualSync(orgId: string, onProgress?: SyncProgressCallback): Promise<SyncStats> {
+  const supabase = createAdminClient()
+  const { data: config } = await supabase
+    .from('inbox_sync_config')
+    .select('*, organizations(id, name)')
+    .eq('organization_id', orgId)
+    .maybeSingle()
+
+  if (!config) {
+    onProgress?.({ type: 'error', message: 'Inbox sync not configured' })
+    return { processed: 0, created: 0, skipped: 0, errors: 1 }
+  }
+
+  onProgress?.({ type: 'scanning', message: 'Connecting to Gmail...' })
+  const stats = await processOrgInboxSync(supabase, config, onProgress)
+  onProgress?.({ type: 'done', message: 'Sync complete', stats })
+  return stats
+}
+
+// ---------------------------------------------------------------------------
 // Per-org processing
 // ---------------------------------------------------------------------------
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function processOrgInboxSync(supabase: any, config: any): Promise<SyncStats> {
+async function processOrgInboxSync(supabase: any, config: any, onProgress?: SyncProgressCallback): Promise<SyncStats> {
   const stats: SyncStats = { processed: 0, created: 0, skipped: 0, errors: 0 }
   const orgId = config.organization_id
 
@@ -112,18 +144,21 @@ async function processOrgInboxSync(supabase: any, config: any): Promise<SyncStat
 
     const messages = listRes.data.messages || []
     console.log(`[InboxSync] Found ${messages.length} messages for org ${orgId}`)
+    onProgress?.({ type: 'scanning', message: `Found ${messages.length} emails with resume attachments`, total: messages.length })
 
-    for (const msg of messages) {
+    for (let i = 0; i < messages.length; i++) {
+      const msg = messages[i]
       if (!msg.id) continue
 
       try {
-        const result = await processMessage(supabase, gmail, orgId, msg.id, config)
+        const result = await processMessage(supabase, gmail, orgId, msg.id, config, onProgress, i + 1, messages.length)
         if (result === 'created') { stats.created++; stats.processed++ }
         else if (result === 'updated') { stats.processed++ }
         else if (result === 'skipped') { stats.skipped++ }
       } catch (err) {
         console.error(`[InboxSync] Message ${msg.id} failed:`, err)
         stats.errors++
+        onProgress?.({ type: 'error', message: `Failed to process message`, current: i + 1, total: messages.length })
       }
     }
 
@@ -152,7 +187,10 @@ async function processMessage(
   orgId: string,
   messageId: string,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  config: any
+  config: any,
+  onProgress?: SyncProgressCallback,
+  current?: number,
+  total?: number
 ): Promise<'created' | 'updated' | 'skipped'> {
   // Check if already processed
   const { data: existing } = await supabase
@@ -174,6 +212,7 @@ async function processMessage(
   const payload = msgRes.data.payload
   const headers = payload?.headers || []
   const { email: senderEmail, name: senderName } = extractSenderInfo(headers)
+  onProgress?.({ type: 'processing', message: `Processing ${senderEmail || 'unknown'}...`, email: senderEmail, current, total })
 
   if (!senderEmail) {
     await logSync(supabase, orgId, messageId, msgRes.data.threadId, '', '', getHeader(headers, 'Subject'), null, 'failed', 'Could not parse sender email', 0)
@@ -263,6 +302,7 @@ async function processMessage(
     await addToDefaultBank(supabase, orgId, existingCandidate.id)
 
     await logSync(supabase, orgId, messageId, msgRes.data.threadId, senderEmail, senderName, getHeader(headers, 'Subject'), existingCandidate.id, 'processed', 'Updated existing candidate resume', attachments.length)
+    onProgress?.({ type: 'result', message: `Updated resume for ${senderName || senderEmail}`, email: senderEmail, current, total })
     return 'updated'
   }
 
@@ -331,6 +371,7 @@ async function processMessage(
   await addToDefaultBank(supabase, orgId, newCandidate.id)
 
   await logSync(supabase, orgId, messageId, msgRes.data.threadId, senderEmail, senderName, getHeader(headers, 'Subject'), newCandidate.id, 'processed', null, attachments.length)
+  onProgress?.({ type: 'result', message: `Created candidate ${senderName || senderEmail}`, email: senderEmail, current, total })
   return 'created'
 }
 
