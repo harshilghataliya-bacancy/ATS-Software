@@ -77,5 +77,7 @@ CREATE POLICY inbox_sync_log_insert ON inbox_sync_log
   FOR INSERT WITH CHECK (true);
 
 -- 5. Grants
-GRANT SELECT, INSERT, UPDATE ON inbox_sync_config TO authenticated, service_role;
-GRANT SELECT, INSERT ON inbox_sync_log TO authenticated, service_role;
+GRANT SELECT, INSERT, UPDATE ON inbox_sync_config TO authenticated;
+GRANT ALL ON inbox_sync_config TO service_role;
+GRANT SELECT, INSERT ON inbox_sync_log TO authenticated;
+GRANT ALL ON inbox_sync_log TO service_role;

@@ -107,7 +107,6 @@ async function processOrgInboxSync(supabase: any, config: any): Promise<SyncStat
     const listRes = await gmail.users.messages.list({
       userId: 'me',
       q: `${query} after:${afterDate}`,
-      labelIds: [config.scan_label || 'INBOX'],
       maxResults: 50,
     })
 
