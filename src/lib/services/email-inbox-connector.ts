@@ -242,7 +242,7 @@ async function processMessage(
   }
 
   // Decode base64url to bytes
-  const resumeBytes = new Uint8Array(Buffer.from(base64Data, 'base64url'))
+  const resumeBytes = Buffer.from(base64Data, 'base64url')
 
   // Check size (max 10MB)
   if (resumeBytes.length > 10 * 1024 * 1024) {
@@ -276,7 +276,7 @@ async function processMessage(
     // Update existing candidate's resume
     const fileExt = att.filename.split('.').pop() || 'pdf'
     const storagePath = `${orgId}/${existingCandidate.id}/resume.${fileExt}`
-    const { error: uploadError } = await supabase.storage.from('resumes').upload(storagePath, Buffer.from(resumeBytes), {
+    const { error: uploadError } = await supabase.storage.from('resumes').upload(storagePath, resumeBytes, {
       contentType: att.mimeType,
       upsert: true,
     })
@@ -351,7 +351,7 @@ async function processMessage(
   // Upload resume to storage
   const fileExt = att.filename.split('.').pop() || 'pdf'
   const storagePath = `${orgId}/${newCandidate.id}/resume.${fileExt}`
-  const { error: uploadError } = await supabase.storage.from('resumes').upload(storagePath, Buffer.from(resumeBytes), {
+  const { error: uploadError } = await supabase.storage.from('resumes').upload(storagePath, resumeBytes, {
     contentType: att.mimeType,
     upsert: true,
   })
