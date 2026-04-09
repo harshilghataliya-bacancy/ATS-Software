@@ -237,10 +237,13 @@ async function processMessage(
     // Update existing candidate's resume
     const fileExt = att.filename.split('.').pop() || 'pdf'
     const storagePath = `${orgId}/${existingCandidate.id}/resume.${fileExt}`
-    await supabase.storage.from('resumes').upload(storagePath, resumeBytes, {
+    const { error: uploadError } = await supabase.storage.from('resumes').upload(storagePath, Buffer.from(resumeBytes), {
       contentType: att.mimeType,
       upsert: true,
     })
+    if (uploadError) {
+      console.error(`[InboxSync] Resume upload failed for ${senderEmail}:`, uploadError.message)
+    }
     const { data: urlData } = supabase.storage.from('resumes').getPublicUrl(storagePath)
 
     await supabase
@@ -308,10 +311,13 @@ async function processMessage(
   // Upload resume to storage
   const fileExt = att.filename.split('.').pop() || 'pdf'
   const storagePath = `${orgId}/${newCandidate.id}/resume.${fileExt}`
-  await supabase.storage.from('resumes').upload(storagePath, resumeBytes, {
+  const { error: uploadError } = await supabase.storage.from('resumes').upload(storagePath, Buffer.from(resumeBytes), {
     contentType: att.mimeType,
     upsert: true,
   })
+  if (uploadError) {
+    console.error(`[InboxSync] Resume upload failed for ${senderEmail}:`, uploadError.message)
+  }
   const { data: urlData } = supabase.storage.from('resumes').getPublicUrl(storagePath)
 
   // Update candidate with resume URL and parsed data
