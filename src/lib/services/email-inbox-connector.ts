@@ -1,4 +1,5 @@
 import { google } from 'googleapis'
+import OpenAI from 'openai'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createOAuth2Client, getValidAccessToken } from '@/lib/services/gmail'
 import { parseResumeFromBytes } from '@/lib/services/resume-parser'
@@ -323,7 +324,7 @@ async function processMessage(
 
   // Extract applied position from email subject
   const subject = getHeader(headers, 'Subject') || ''
-  const appliedPosition = extractPositionFromSubject(subject)
+  const appliedPosition = await extractPositionFromSubject(subject)
   const tags: string[] = config.source_tag ? [config.source_tag] : ['email-inbox']
   tags.push(`position:${appliedPosition}`)
 
@@ -491,52 +492,34 @@ async function addToDefaultBank(supabase: any, orgId: string, candidateId: strin
   }
 }
 
-/**
- * Extract the job position/role from an email subject line.
- * Common patterns:
- *   "Application for Software Engineer"
- *   "Resume - React Developer position"
- *   "Applying for Senior Backend Engineer role"
- *   "Job Application: Full Stack Developer"
- *   "CV for the role of Product Manager"
- *   "Interest in Data Analyst opening"
- */
-function extractPositionFromSubject(subject: string): string {
+async function extractPositionFromSubject(subject: string): Promise<string> {
   if (!subject) return 'Unassigned'
 
-  const cleaned = subject.replace(/^(re|fwd?|fw):\s*/gi, '').trim()
+  const apiKey = process.env.OPENAI_API_KEY
+  if (!apiKey) return 'Unassigned'
 
-  const patterns = [
-    // "Application for <role>"  /  "Applying for <role>"
-    /appl(?:ication|ying)\s+for\s+(?:the\s+)?(?:position\s+of\s+|role\s+of\s+)?(.+)/i,
-    // "Resume for <role>" / "CV for <role>"
-    /(?:resume|cv)\s+(?:for|[-–—])\s+(?:the\s+)?(?:position\s+of\s+|role\s+of\s+)?(.+)/i,
-    // "Job Application: <role>" / "Job Application - <role>"
-    /job\s+application\s*[:–\-—]\s*(.+)/i,
-    // "Interest in <role>" / "Interested in <role>"
-    /interest(?:ed)?\s+in\s+(?:the\s+)?(?:position\s+of\s+|role\s+of\s+)?(.+)/i,
-    // "<role> position" / "<role> role" / "<role> opening"
-    /^(.+?)\s+(?:position|role|opening|vacancy|opportunity)\b/i,
-    // "for the role of <role>"
-    /for\s+the\s+(?:role|position)\s+of\s+(.+)/i,
-  ]
-
-  for (const pat of patterns) {
-    const m = cleaned.match(pat)
-    if (m && m[1]) {
-      // Clean up trailing noise like "at Company", "- John", etc.
-      let pos = m[1]
-        .replace(/\s+at\s+.+$/i, '')
-        .replace(/\s*[-–—]\s*.+$/, '')
-        .replace(/\s*[|(].+$/, '')
-        .trim()
-      // Remove trailing "position" / "role" if captured
-      pos = pos.replace(/\s+(?:position|role|opening|vacancy|opportunity)\s*$/i, '').trim()
-      if (pos.length > 2 && pos.length < 80) return pos
+  try {
+    const openai = new OpenAI({ apiKey })
+    const res = await openai.chat.completions.create({
+      model: 'gpt-4o-mini',
+      temperature: 0,
+      max_tokens: 50,
+      messages: [
+        {
+          role: 'system',
+          content: `Extract the job position/role title from the given email subject line. Return ONLY the clean job title (e.g. "Software Engineer", "React Developer", "Data Analyst"). Do NOT include words like "Application", "Resume", "for", "post of", "position", "role", "Apply" etc. Just the job title. If no job position can be identified, return exactly "Unassigned".`,
+        },
+        { role: 'user', content: subject },
+      ],
+    })
+    const result = (res.choices[0]?.message?.content || '').trim()
+    if (result && result.length > 1 && result.length < 80 && result !== 'Unassigned') {
+      return result
     }
+    return 'Unassigned'
+  } catch {
+    return 'Unassigned'
   }
-
-  return 'Unassigned'
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
