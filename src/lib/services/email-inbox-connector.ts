@@ -256,6 +256,9 @@ async function processMessage(
       parseResumeAndUpdate(supabase, existingCandidate.id, resumeBytes, att.filename).catch(() => {})
     }
 
+    // Ensure candidate is in default bank
+    await addToDefaultBank(supabase, orgId, existingCandidate.id)
+
     await logSync(supabase, orgId, messageId, msgRes.data.threadId, senderEmail, senderName, getHeader(headers, 'Subject'), existingCandidate.id, 'processed', 'Updated existing candidate resume', attachments.length)
     return 'updated'
   }
@@ -317,6 +320,9 @@ async function processMessage(
     updateFields.resume_parsed_data = parsedData
   }
   await supabase.from('candidates').update(updateFields).eq('id', newCandidate.id)
+
+  // Add to default bank
+  await addToDefaultBank(supabase, orgId, newCandidate.id)
 
   await logSync(supabase, orgId, messageId, msgRes.data.threadId, senderEmail, senderName, getHeader(headers, 'Subject'), newCandidate.id, 'processed', null, attachments.length)
   return 'created'
@@ -400,6 +406,36 @@ async function logSync(
     error_message: errorMessage,
     attachments_found: attachmentsFound,
   })
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function addToDefaultBank(supabase: any, orgId: string, candidateId: string) {
+  try {
+    // Get or create default bank
+    const { data: bank } = await supabase
+      .from('candidate_banks')
+      .select('id')
+      .eq('organization_id', orgId)
+      .eq('is_default', true)
+      .maybeSingle()
+
+    if (!bank) return
+
+    // Add candidate (ignore if already exists via unique constraint)
+    await supabase
+      .from('candidate_bank_members')
+      .upsert(
+        {
+          bank_id: bank.id,
+          candidate_id: candidateId,
+          organization_id: orgId,
+          added_by: null,
+        },
+        { onConflict: 'bank_id,candidate_id' }
+      )
+  } catch {
+    // Non-critical — candidate is still created even if bank add fails
+  }
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
