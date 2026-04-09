@@ -21,7 +21,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import {
   Building2, Mail, MessageSquare, Globe, ShieldCheck,
   CheckCircle2, XCircle, ExternalLink, ChevronDown, ChevronUp,
-  Sparkles, Clock,
+  Sparkles, Clock, Inbox,
 } from 'lucide-react'
 import type { OrganizationDomain, OrganizationSubdomain } from '@/types/database'
 
@@ -141,6 +141,15 @@ function OrganizationSettingsContent() {
   const [semanticWeight, setSemanticWeight] = useState(30)
   const [aiSaving, setAiSaving] = useState(false)
   const [aiSuccess, setAiSuccess] = useState(false)
+
+  // Inbox Sync state
+  const [inboxEnabled, setInboxEnabled] = useState(false)
+  const [inboxAutoParse, setInboxAutoParse] = useState(true)
+  const [inboxLabel, setInboxLabel] = useState('INBOX')
+  const [inboxLastSynced, setInboxLastSynced] = useState<string | null>(null)
+  const [inboxSaving, setInboxSaving] = useState(false)
+  const [inboxSuccess, setInboxSuccess] = useState(false)
+  const [inboxSyncing, setInboxSyncing] = useState(false)
 
   // White-Label state
   const [domains, setDomains] = useState<(OrganizationDomain & { dns_instructions?: { verification: { type: string; host: string; value: string }; cname: { type: string; host: string; value: string } } })[]>([])
@@ -296,6 +305,63 @@ function OrganizationSettingsContent() {
   useEffect(() => {
     loadAiConfig()
   }, [loadAiConfig])
+
+  // Load inbox sync config
+  const loadInboxConfig = useCallback(async () => {
+    if (!organization) return
+    try {
+      const res = await fetch('/api/settings/inbox-sync')
+      if (res.ok) {
+        const { config } = await res.json()
+        if (config) {
+          setInboxEnabled(config.enabled ?? false)
+          setInboxAutoParse(config.auto_parse_resume ?? true)
+          setInboxLabel(config.scan_label || 'INBOX')
+          setInboxLastSynced(config.last_synced_at || null)
+        }
+      }
+    } catch { /* use defaults */ }
+  }, [organization])
+
+  useEffect(() => {
+    loadInboxConfig()
+  }, [loadInboxConfig])
+
+  async function handleSaveInboxConfig() {
+    if (!organization) return
+    setInboxSaving(true)
+    try {
+      await fetch('/api/settings/inbox-sync', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          enabled: inboxEnabled,
+          auto_parse_resume: inboxAutoParse,
+          scan_label: inboxLabel,
+        }),
+      })
+      setInboxSuccess(true)
+      setTimeout(() => setInboxSuccess(false), 3000)
+    } catch { /* ignore */ }
+    setInboxSaving(false)
+  }
+
+  async function handleManualSync() {
+    setInboxSyncing(true)
+    try {
+      const res = await fetch('/api/cron/inbox-sync', {
+        headers: { Authorization: `Bearer ${window.location.origin}` },
+      })
+      const data = await res.json()
+      if (data.success) {
+        setInboxLastSynced(data.timestamp)
+        alert(`Sync complete: ${data.created} new candidates, ${data.processed} processed, ${data.skipped} skipped`)
+      }
+    } catch {
+      alert('Sync failed. Check console for details.')
+    }
+    setInboxSyncing(false)
+  }
 
   async function handleSaveAiConfig() {
     if (!organization) return
@@ -769,6 +835,99 @@ function OrganizationSettingsContent() {
           <Button size="sm" onClick={handleSaveAiConfig} disabled={aiSaving || weightTotal !== 100}>
             {aiSaving ? 'Saving...' : 'Save AI Settings'}
           </Button>
+        </div>
+      </SectionCard>
+
+      {/* Email Inbox Connector */}
+      <SectionCard
+        icon={Inbox}
+        iconColor="bg-orange-50 text-orange-600"
+        title="Email Inbox Connector"
+        description="Auto-import candidates from resume emails into Candidate Bank"
+        defaultOpen={false}
+      >
+        <div className="space-y-5 mt-3">
+          <SuccessMessage show={inboxSuccess} message="Inbox sync settings saved" />
+
+          {!gmailConnected && (
+            <div className="flex items-center gap-2 bg-amber-50 border border-amber-100 text-amber-700 text-[13px] px-3.5 py-2.5 rounded-lg">
+              <Mail className="w-4 h-4 shrink-0" />
+              Connect Gmail first (above) to enable inbox sync. After connecting, you may need to reconnect for the new &quot;read emails&quot; permission.
+            </div>
+          )}
+
+          <div className="space-y-3">
+            <div className="flex items-center justify-between py-1">
+              <div>
+                <p className="text-[13px] font-medium text-gray-700">Enable Inbox Sync</p>
+                <p className="text-[11px] text-gray-400">Automatically scan inbox for resume emails</p>
+              </div>
+              <Switch checked={inboxEnabled} onCheckedChange={setInboxEnabled} disabled={!gmailConnected} />
+            </div>
+            <div className="flex items-center justify-between py-1">
+              <div>
+                <p className="text-[13px] font-medium text-gray-700">Auto-Parse Resumes</p>
+                <p className="text-[11px] text-gray-400">Extract candidate details from resumes using AI</p>
+              </div>
+              <Switch checked={inboxAutoParse} onCheckedChange={setInboxAutoParse} />
+            </div>
+          </div>
+
+          <div className="border-t border-gray-100 pt-4 space-y-3">
+            <div>
+              <Label className="text-[13px] text-gray-700">Gmail Label to Scan</Label>
+              <Input
+                value={inboxLabel}
+                onChange={(e) => setInboxLabel(e.target.value)}
+                placeholder="INBOX"
+                className="mt-1.5 h-9 text-sm"
+              />
+              <p className="text-[11px] text-gray-400 mt-1">
+                Tip: Create a Gmail filter to auto-label resume emails, then scan only that label
+              </p>
+            </div>
+          </div>
+
+          <div className="border-t border-gray-100 pt-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-[13px] font-medium text-gray-700">Sync Schedule</p>
+                <p className="text-[11px] text-gray-400">
+                  Runs daily at 5:00 AM IST via cron
+                  {inboxLastSynced && (
+                    <span className="ml-2 text-gray-500">
+                      &middot; Last synced: {new Date(inboxLastSynced).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })}
+                    </span>
+                  )}
+                </p>
+              </div>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={handleManualSync}
+                disabled={inboxSyncing || !gmailConnected}
+                className="text-xs"
+              >
+                {inboxSyncing ? 'Syncing...' : 'Sync Now'}
+              </Button>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <Button size="sm" onClick={handleSaveInboxConfig} disabled={inboxSaving}>
+              {inboxSaving ? 'Saving...' : 'Save Inbox Settings'}
+            </Button>
+          </div>
+
+          <div className="rounded-lg bg-gray-50 border border-gray-100 px-4 py-3">
+            <p className="text-[12px] font-medium text-gray-600 mb-1.5">How it works</p>
+            <ul className="text-[11px] text-gray-500 space-y-1 list-disc pl-4">
+              <li>Scans your Gmail for emails with PDF/DOC resume attachments</li>
+              <li>Extracts candidate name, email, and details from the resume</li>
+              <li>Creates new candidates in Candidate Bank (skips if already exists with active application)</li>
+              <li>Your emails stay <strong>unread and untouched</strong> — read-only access</li>
+            </ul>
+          </div>
         </div>
       </SectionCard>
     </div>
