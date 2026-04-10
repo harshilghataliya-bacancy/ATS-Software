@@ -113,10 +113,13 @@ async function processOrgReminders(
   let sent = 0
   let errors = 0
 
-  // Window: interview is between (now + interval - 5min) and (now + interval + 5min)
-  // This 10-minute window catches interviews even if cron runs slightly off schedule
-  const windowStart = new Date(now.getTime() + (intervalMinutes - 5) * 60_000)
-  const windowEnd = new Date(now.getTime() + (intervalMinutes + 5) * 60_000)
+  // Cron runs every 1 minute. Use a forward-only window anchored at exactly
+  // `now + intervalMinutes` so reminders fire at T - interval (never earlier).
+  // Width must be >= cron cadence so no tick can skip a due interview; 90s
+  // gives a 30s safety buffer for slightly late ticks.
+  const WINDOW_SECONDS = 90
+  const windowStart = new Date(now.getTime() + intervalMinutes * 60_000)
+  const windowEnd = new Date(now.getTime() + intervalMinutes * 60_000 + WINDOW_SECONDS * 1000)
 
   // Find scheduled interviews in the window
   const { data: interviews } = await supabase
