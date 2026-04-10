@@ -3,6 +3,8 @@ import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createOfferTemplate } from '@/lib/services/offer-templates'
 import { parseDocx } from '@/lib/docx-parser'
+import { buildPreviewHtml } from '@/lib/docx-preview-html'
+import { generatePdfFromHtml } from '@/lib/docx-to-pdf'
 
 const DOCX_MIMES = new Set([
   'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
@@ -75,19 +77,56 @@ export async function POST(request: NextRequest) {
     )
   }
 
-  // Upload original .docx to private storage bucket for reference/re-download
-  const storagePath = `${membership.organization_id}/${Date.now()}-${file.name.replace(/[^a-zA-Z0-9._-]/g, '_')}`
   const admin = createAdminClient()
+  const timestamp = Date.now()
+  const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_')
+
+  // Upload original .docx to private storage bucket
+  const docxPath = `${membership.organization_id}/${timestamp}-${safeName}`
   const { error: uploadError } = await admin.storage
     .from('offer-templates')
-    .upload(storagePath, buffer, {
+    .upload(docxPath, buffer, {
       contentType: file.type,
       upsert: false,
     })
 
   if (uploadError) {
-    // Non-fatal — we still have the parsed HTML. Log and continue without a storage path.
     console.error('[upload-docx] storage upload failed:', uploadError)
+  }
+
+  // Generate PDF preview using Playwright
+  let pdfPath: string | null = null
+  try {
+    const previewHtml = buildPreviewHtml({
+      name,
+      header: parsed.header_html,
+      body: parsed.body_html,
+      footer: parsed.footer_html,
+      pageBackgroundUrl: parsed.page_background_url,
+      pageMargins: parsed.page_margins,
+      embedded: true,
+    })
+
+    const pdfBuffer = await generatePdfFromHtml(previewHtml)
+    pdfPath = `${membership.organization_id}/${timestamp}-preview.pdf`
+
+    const { error: pdfUploadError } = await admin.storage
+      .from('offer-templates')
+      .upload(pdfPath, pdfBuffer, {
+        contentType: 'application/pdf',
+        upsert: false,
+      })
+
+    if (pdfUploadError) {
+      console.error('[upload-docx] PDF upload failed:', pdfUploadError)
+      pdfPath = null
+    } else {
+      console.log('[upload-docx] PDF preview generated and uploaded:', pdfPath)
+    }
+  } catch (err) {
+    // PDF generation is non-fatal — fall back to HTML preview
+    console.error('[upload-docx] PDF generation failed:', err)
+    pdfPath = null
   }
 
   const { data, error } = await createOfferTemplate(
@@ -101,7 +140,8 @@ export async function POST(request: NextRequest) {
       docx_footer_html: parsed.footer_html,
       docx_page_background_url: parsed.page_background_url,
       docx_page_margins: parsed.page_margins,
-      docx_storage_path: uploadError ? null : storagePath,
+      docx_storage_path: uploadError ? null : docxPath,
+      docx_preview_pdf_path: pdfPath,
     },
     user.id
   )

@@ -373,6 +373,7 @@ export interface OfferTemplate {
   docx_page_background_url: string | null
   docx_page_margins: { top: number; bottom: number; left: number; right: number; header: number; footer: number } | null
   docx_storage_path: string | null
+  docx_preview_pdf_path: string | null
   created_by: string | null
   created_at: string
   updated_at: string

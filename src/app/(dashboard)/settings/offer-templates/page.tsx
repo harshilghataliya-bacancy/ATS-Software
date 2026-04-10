@@ -267,9 +267,11 @@ export default function OfferTemplatesPage() {
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
   const [previewLoading, setPreviewLoading] = useState(false)
 
-  // Word template inline preview (HTML) — auto-updates on content changes
+  // Word template inline preview (HTML fallback) — auto-updates on content changes
   const [wordPreviewHtml, setWordPreviewHtml] = useState<string | null>(null)
   const [wordPreviewLoading, setWordPreviewLoading] = useState(false)
+  // PDF preview path — when set, we show PDF in iframe instead of HTML
+  const [pdfPreviewPath, setPdfPreviewPath] = useState<string | null>(null)
   const wordPreviewTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // Placeholders sidebar toggle for Word editor
@@ -417,23 +419,27 @@ export default function OfferTemplatesPage() {
   function openCreate() {
     setEditingId('create')
     setForm({ ...emptyForm })
+    setPdfPreviewPath(null)
     setError(null)
   }
 
   function openCreateDefault() {
     setEditingId('create')
     setForm({ ...defaultTemplateForm })
+    setPdfPreviewPath(null)
     setError(null)
   }
 
   function openEdit(template: AnyData) {
     setEditingId(template.id)
     setForm(formFromTemplate(template))
+    setPdfPreviewPath(template.docx_preview_pdf_path || null)
     setError(null)
   }
 
   function closeEditor() {
     setEditingId(null)
+    setPdfPreviewPath(null)
     setError(null)
     if (previewUrl) URL.revokeObjectURL(previewUrl)
     setPreviewUrl(null)
@@ -768,7 +774,14 @@ export default function OfferTemplatesPage() {
               </Button>
             </div>
             <div className="flex-1 border border-gray-200 rounded-xl overflow-hidden shadow-sm bg-gray-100">
-              {wordPreviewHtml ? (
+              {pdfPreviewPath && editingId && editingId !== 'create' ? (
+                <iframe
+                  src={`/api/offer-templates/preview-pdf?templateId=${editingId}`}
+                  className="w-full h-full"
+                  style={{ minHeight: '85vh' }}
+                  title="Word Template PDF Preview"
+                />
+              ) : wordPreviewHtml ? (
                 <iframe
                   srcDoc={wordPreviewHtml}
                   className="w-full h-full"
@@ -780,7 +793,7 @@ export default function OfferTemplatesPage() {
                   <div className="text-center space-y-2">
                     <FileText className="h-10 w-10 mx-auto text-gray-300" />
                     <p className="text-sm">Preview will appear here</p>
-                    <p className="text-xs">Add content to the editor to see a live preview</p>
+                    <p className="text-xs">Upload a Word document to see the PDF preview</p>
                   </div>
                 </div>
               )}
