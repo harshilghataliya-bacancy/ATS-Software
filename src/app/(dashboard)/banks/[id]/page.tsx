@@ -12,6 +12,7 @@ import {
   getBanks,
 } from '@/lib/services/candidate-banks'
 import { createCandidate } from '@/lib/services/candidates'
+import { getJobs } from '@/lib/services/jobs'
 import { CANDIDATE_SOURCES, ITEMS_PER_PAGE, ALLOWED_RESUME_TYPES, MAX_FILE_SIZE } from '@/lib/constants'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -30,7 +31,7 @@ import {
 import {
   ArrowLeft, Search, MapPin, ArrowRightLeft, X, ChevronLeft, ChevronRight,
   Landmark, FolderOpen, Users, UserPlus, Upload, MoreHorizontal, Eye, Filter,
-  Trash2,
+  Trash2, Briefcase,
 } from 'lucide-react'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -98,6 +99,13 @@ export default function BankDetailPage() {
   const [targetBankId, setTargetBankId] = useState('')
   const [allBanks, setAllBanks] = useState<AnyData[]>([])
   const [moving, setMoving] = useState(false)
+
+  // Move to Job dialog
+  const [moveJobOpen, setMoveJobOpen] = useState(false)
+  const [targetJobId, setTargetJobId] = useState('')
+  const [allJobs, setAllJobs] = useState<AnyData[]>([])
+  const [movingToJob, setMovingToJob] = useState(false)
+  const [singleMoveCandidateId, setSingleMoveCandidateId] = useState<string | null>(null)
 
   // Remove dialog (for custom banks)
   const [removing, setRemoving] = useState(false)
@@ -245,6 +253,57 @@ export default function BankDetailPage() {
       setError('Failed to remove candidates')
     }
     setRemoving(false)
+  }
+
+  // Load active jobs for the move-to-job dialog
+  async function openMoveToJobDialog(candidateId?: string) {
+    if (!organization) return
+    setSingleMoveCandidateId(candidateId || null)
+    setTargetJobId('')
+    setMoveJobOpen(true)
+    const supabase = createClient()
+    const { data } = await getJobs(supabase, organization.id, { status: 'published', limit: 100 })
+    setAllJobs(data || [])
+  }
+
+  async function handleMoveToJob() {
+    if (!targetJobId) return
+    const candidateIds = singleMoveCandidateId ? [singleMoveCandidateId] : Array.from(selected)
+    if (candidateIds.length === 0) return
+    setMovingToJob(true)
+    setError(null)
+    try {
+      const res = await fetch('/api/banks', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'move_to_job',
+          jobId: targetJobId,
+          candidateIds,
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        setError(data.error || 'Failed to move candidates to job')
+      } else {
+        const msg: string[] = []
+        if (data.created) msg.push(`${data.created} application${data.created !== 1 ? 's' : ''} created`)
+        if (data.skipped) msg.push(`${data.skipped} already applied`)
+        if (data.errors?.length) msg.push(`${data.errors.length} failed`)
+        setMoveJobOpen(false)
+        setSingleMoveCandidateId(null)
+        if (!singleMoveCandidateId) setSelected(new Set())
+        await loadCandidates()
+        if (msg.length) {
+          // Non-blocking notification via error slot (success summary)
+          setError(msg.join(' • '))
+          setTimeout(() => setError(null), 4000)
+        }
+      }
+    } catch {
+      setError('Failed to move candidates to job')
+    }
+    setMovingToJob(false)
   }
 
   // New candidate form helpers
@@ -579,6 +638,10 @@ export default function BankDetailPage() {
             {selected.size} selected
           </span>
           <div className="flex-1" />
+          <button onClick={() => openMoveToJobDialog()} className="flex items-center gap-1.5 h-7 px-3 rounded-lg bg-blue-600 text-white text-[11px] font-medium hover:bg-blue-700 transition-colors shadow-sm">
+            <Briefcase className="w-3.5 h-3.5" />
+            Move to Job
+          </button>
           <button onClick={openMoveDialog} className="flex items-center gap-1.5 h-7 px-3 rounded-lg bg-gray-100 text-gray-700 text-[11px] font-medium hover:bg-gray-200 transition-colors">
             <ArrowRightLeft className="w-3.5 h-3.5" />
             Move to Bank
@@ -785,10 +848,14 @@ export default function BankDetailPage() {
                             <MoreHorizontal className="w-4 h-4" />
                           </button>
                         </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end" className="w-44">
+                        <DropdownMenuContent align="end" className="w-48">
                           <DropdownMenuItem onClick={() => router.push(`/candidates/${c.id}`)}>
                             <Eye className="w-3.5 h-3.5 mr-2 text-gray-400" />
                             <span className="text-[13px]">View Profile</span>
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => openMoveToJobDialog(c.id)}>
+                            <Briefcase className="w-3.5 h-3.5 mr-2 text-blue-500" />
+                            <span className="text-[13px]">Move to Job</span>
                           </DropdownMenuItem>
                         </DropdownMenuContent>
                       </DropdownMenu>
@@ -1038,6 +1105,51 @@ export default function BankDetailPage() {
               className="h-8 px-3 rounded-lg bg-gray-900 text-white text-[12px] font-medium hover:bg-gray-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {moving ? 'Moving...' : 'Move Candidates'}
+            </button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Move to Job Dialog ── */}
+      <Dialog open={moveJobOpen} onOpenChange={(open) => { setMoveJobOpen(open); if (!open) setSingleMoveCandidateId(null) }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-[15px]">
+              Move {singleMoveCandidateId ? '1 Candidate' : `${selected.size} Candidate${selected.size !== 1 ? 's' : ''}`} to Job
+            </DialogTitle>
+            <DialogDescription className="text-[12px]">
+              Select an active job to create applications for the selected candidate{singleMoveCandidateId || selected.size === 1 ? '' : 's'}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-2">
+            <label className="text-[12px] font-medium text-gray-700">Select Target Job</label>
+            <Select value={targetJobId} onValueChange={setTargetJobId}>
+              <SelectTrigger className="mt-1.5 text-[12px]">
+                <SelectValue placeholder="Choose a job..." />
+              </SelectTrigger>
+              <SelectContent>
+                {allJobs.map((j) => (
+                  <SelectItem key={j.id} value={j.id}>
+                    {j.title}{j.department ? ` — ${j.department}` : ''}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {allJobs.length === 0 && (
+              <p className="text-[11px] text-gray-400 mt-2">No active jobs available. Publish a job first.</p>
+            )}
+            <p className="text-[11px] text-gray-400 mt-3">
+              Each candidate will be added as a new application in the job&apos;s first pipeline stage. Candidates already applied to this job will be skipped.
+            </p>
+          </div>
+          <DialogFooter>
+            <button onClick={() => { setMoveJobOpen(false); setSingleMoveCandidateId(null) }} className="h-8 px-3 rounded-lg border border-gray-200 text-[12px] font-medium text-gray-600 hover:bg-gray-50 transition-colors">Cancel</button>
+            <button
+              onClick={handleMoveToJob}
+              disabled={movingToJob || !targetJobId}
+              className="h-8 px-3 rounded-lg bg-blue-600 text-white text-[12px] font-medium hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {movingToJob ? 'Moving...' : 'Move to Job'}
             </button>
           </DialogFooter>
         </DialogContent>

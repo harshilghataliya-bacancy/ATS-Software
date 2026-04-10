@@ -11,6 +11,7 @@ import {
   addCandidateToDefaultBank,
   isCandidateInDefaultBank,
 } from '@/lib/services/candidate-banks'
+import { createApplication } from '@/lib/services/applications'
 
 export async function GET() {
   const supabase = await createClient()
@@ -113,6 +114,39 @@ export async function POST(request: NextRequest) {
     const { error } = await moveCandidatesToBank(supabase, fromBankId || null, toBankId, orgId, candidateIds, user.id)
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
     return NextResponse.json({ success: true })
+  }
+
+  // Move candidates from a bank into a job (create applications)
+  if (action === 'move_to_job') {
+    const { jobId, candidateIds } = body
+    if (!jobId || !candidateIds?.length) {
+      return NextResponse.json({ error: 'jobId and candidateIds are required' }, { status: 400 })
+    }
+
+    const results = {
+      created: 0,
+      skipped: 0,
+      errors: [] as { candidateId: string; message: string }[],
+    }
+
+    for (const candidateId of candidateIds) {
+      const { data, error } = await createApplication(supabase, orgId, {
+        candidate_id: candidateId,
+        job_id: jobId,
+        created_by_user_id: user.id,
+      })
+      if (error) {
+        if (error.message?.includes('already has an active application')) {
+          results.skipped++
+        } else {
+          results.errors.push({ candidateId, message: error.message })
+        }
+      } else if (data) {
+        results.created++
+      }
+    }
+
+    return NextResponse.json({ success: true, ...results })
   }
 
   // Move candidate to default bank
