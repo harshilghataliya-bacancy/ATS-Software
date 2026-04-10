@@ -36,6 +36,14 @@ interface OfferTemplateData {
   company_email?: string | null
   company_website?: string | null
   company_address?: string | null
+  // Word-upload templates
+  template_source?: 'manual' | 'word'
+  docx_content_html?: string | null
+  docx_header_html?: string | null
+  docx_footer_html?: string | null
+  docx_page_background_url?: string | null
+  docx_page_margins?: { top: number; bottom: number; left: number; right: number; header: number; footer: number } | null
+  docx_storage_path?: string | null
 }
 
 export async function getOfferTemplates(

@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import { useUser, useRole } from '@/lib/hooks/use-user'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -17,7 +17,8 @@ import { OFFER_PDF_DEFAULTS, OFFER_TEMPLATE_VARIABLE_CATEGORIES } from '@/lib/co
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-import { ArrowLeft, Copy, Palette, FileText, PenTool, ToggleLeft, Mail, Eye, Loader2, X, MoreHorizontal, Trash2, Pencil, Plus } from 'lucide-react'
+import { RichTextEditor } from '@/components/ui/rich-text-editor'
+import { ArrowLeft, Copy, Palette, FileText, PenTool, ToggleLeft, Mail, Eye, Loader2, X, MoreHorizontal, Trash2, Pencil, Plus, Upload, FileUp, FileType } from 'lucide-react'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type AnyData = Record<string, any>
@@ -25,6 +26,13 @@ type AnyData = Record<string, any>
 interface TemplateForm {
   name: string
   is_active: boolean
+  // Source: 'manual' uses the form-based editor, 'word' stores an uploaded .docx as HTML
+  template_source: 'manual' | 'word'
+  docx_content_html: string
+  docx_header_html: string
+  docx_footer_html: string
+  docx_page_background_url: string
+  docx_page_margins: string
   // Basic
   company_name: string
   logo_url: string
@@ -60,6 +68,12 @@ interface TemplateForm {
 const emptyForm: TemplateForm = {
   name: '',
   is_active: false,
+  template_source: 'manual',
+  docx_content_html: '',
+  docx_header_html: '',
+  docx_footer_html: '',
+  docx_page_background_url: '',
+  docx_page_margins: '',
   company_name: '',
   logo_url: '',
   greeting_text: '',
@@ -89,6 +103,12 @@ const emptyForm: TemplateForm = {
 const defaultTemplateForm: TemplateForm = {
   name: 'Standard Offer Letter',
   is_active: true,
+  template_source: 'manual',
+  docx_content_html: '',
+  docx_header_html: '',
+  docx_footer_html: '',
+  docx_page_background_url: '',
+  docx_page_margins: '',
   company_name: 'HireFlow Technologies Pvt. Ltd.',
   logo_url: '',
   greeting_text: 'Dear {{candidate_name}},',
@@ -153,6 +173,12 @@ function formFromTemplate(t: AnyData): TemplateForm {
   return {
     name: t.name || '',
     is_active: t.is_active || false,
+    template_source: (t.template_source as 'manual' | 'word') || 'manual',
+    docx_content_html: t.docx_content_html || '',
+    docx_header_html: t.docx_header_html || '',
+    docx_footer_html: t.docx_footer_html || '',
+    docx_page_background_url: t.docx_page_background_url || '',
+    docx_page_margins: t.docx_page_margins ? JSON.stringify(t.docx_page_margins) : '',
     company_name: t.company_name || '',
     logo_url: t.logo_url || '',
     greeting_text: t.greeting_text || '',
@@ -184,6 +210,12 @@ function formToPayload(form: TemplateForm): AnyData {
   return {
     name: form.name.trim(),
     is_active: form.is_active,
+    template_source: form.template_source,
+    docx_content_html: form.template_source === 'word' ? (form.docx_content_html || null) : null,
+    docx_header_html: form.template_source === 'word' ? (form.docx_header_html || null) : null,
+    docx_footer_html: form.template_source === 'word' ? (form.docx_footer_html || null) : null,
+    docx_page_background_url: form.template_source === 'word' ? (form.docx_page_background_url || null) : null,
+    docx_page_margins: form.template_source === 'word' && form.docx_page_margins ? JSON.parse(form.docx_page_margins) : null,
     company_name: form.company_name.trim() || null,
     logo_url: form.logo_url.trim() || null,
     greeting_text: form.greeting_text.trim() || null,
@@ -235,6 +267,22 @@ export default function OfferTemplatesPage() {
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
   const [previewLoading, setPreviewLoading] = useState(false)
 
+  // Word template inline preview (HTML) — auto-updates on content changes
+  const [wordPreviewHtml, setWordPreviewHtml] = useState<string | null>(null)
+  const [wordPreviewLoading, setWordPreviewLoading] = useState(false)
+  const wordPreviewTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // Placeholders sidebar toggle for Word editor
+  const [showPlaceholders, setShowPlaceholders] = useState(false)
+
+  // Create choice (manual vs upload) + Word upload dialog state
+  const [createChoiceOpen, setCreateChoiceOpen] = useState(false)
+  const [uploadOpen, setUploadOpen] = useState(false)
+  const [uploadFile, setUploadFile] = useState<File | null>(null)
+  const [uploadName, setUploadName] = useState('')
+  const [uploading, setUploading] = useState(false)
+  const [uploadError, setUploadError] = useState<string | null>(null)
+
   const loadTemplates = useCallback(async () => {
     if (!organization) return
     try {
@@ -252,6 +300,119 @@ export default function OfferTemplatesPage() {
   useEffect(() => {
     if (organization) loadTemplates()
   }, [organization, loadTemplates])
+
+  // Auto-update Word preview whenever content changes (debounced 600ms).
+  // This replaces the old static "Live Preview" div with a proper paginated
+  // iframe preview that uses the same engine as "Preview PDF".
+  const fetchWordPreview = useCallback(async (f: TemplateForm) => {
+    if (f.template_source !== 'word') return
+    if (!f.docx_content_html && !f.docx_header_html && !f.docx_footer_html) {
+      setWordPreviewHtml(null)
+      return
+    }
+    setWordPreviewLoading(true)
+    try {
+      const res = await fetch('/api/offer-templates/preview-word', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: f.name || 'Preview',
+          docx_content_html: f.docx_content_html || '',
+          docx_header_html: f.docx_header_html || null,
+          docx_footer_html: f.docx_footer_html || null,
+          docx_page_background_url: f.docx_page_background_url || null,
+          docx_page_margins: f.docx_page_margins ? JSON.parse(f.docx_page_margins) : null,
+          embedded: true,
+        }),
+      })
+      if (res.ok) {
+        const html = await res.text()
+        setWordPreviewHtml(html)
+      }
+    } catch {
+      // ignore — preview is non-critical
+    } finally {
+      setWordPreviewLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (form.template_source !== 'word' || !editingId) return
+    if (wordPreviewTimerRef.current) clearTimeout(wordPreviewTimerRef.current)
+    wordPreviewTimerRef.current = setTimeout(() => {
+      fetchWordPreview(form)
+    }, 600)
+    return () => {
+      if (wordPreviewTimerRef.current) clearTimeout(wordPreviewTimerRef.current)
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    editingId,
+    form.template_source,
+    form.docx_content_html,
+    form.docx_header_html,
+    form.docx_footer_html,
+    form.docx_page_background_url,
+    form.name,
+    fetchWordPreview,
+  ])
+
+  function openCreateChoice() {
+    setCreateChoiceOpen(true)
+  }
+
+  function chooseManualCreate() {
+    setCreateChoiceOpen(false)
+    openCreate()
+  }
+
+  function chooseWordUpload() {
+    setCreateChoiceOpen(false)
+    setUploadFile(null)
+    setUploadName('')
+    setUploadError(null)
+    setUploadOpen(true)
+  }
+
+  async function handleUploadWord() {
+    if (!uploadFile) {
+      setUploadError('Please choose a .docx file to upload')
+      return
+    }
+    const name = uploadName.trim()
+    if (!name) {
+      setUploadError('Template name is required')
+      return
+    }
+
+    setUploading(true)
+    setUploadError(null)
+    try {
+      const fd = new FormData()
+      fd.append('file', uploadFile)
+      fd.append('name', name)
+      const res = await fetch('/api/offer-templates/upload-docx', {
+        method: 'POST',
+        body: fd,
+      })
+      const json = await res.json()
+      if (!res.ok) {
+        setUploadError(json.error || 'Failed to upload document')
+        setUploading(false)
+        return
+      }
+      // Close upload dialog and open the newly-created word template in the editor
+      setUploadOpen(false)
+      setUploading(false)
+      await loadTemplates()
+      if (json.data) {
+        openEdit(json.data)
+      }
+    } catch {
+      setUploadError('Failed to upload document')
+      setUploading(false)
+    }
+  }
 
   function openCreate() {
     setEditingId('create')
@@ -329,6 +490,10 @@ export default function OfferTemplatesPage() {
     setDeleting(false)
   }
 
+  function refreshWordPreview() {
+    fetchWordPreview(form)
+  }
+
   async function handlePreview() {
     setPreviewLoading(true)
     try {
@@ -379,6 +544,252 @@ export default function OfferTemplatesPage() {
       <div className="text-center py-12">
         <h2 className="text-lg font-semibold text-gray-900">Access Denied</h2>
         <p className="text-gray-500 mt-1">Only administrators and recruiters can manage offer templates.</p>
+      </div>
+    )
+  }
+
+  // =========================================================================
+  // Word Template Editor View (uploaded .docx parsed to HTML)
+  // =========================================================================
+  if (editingId && form.template_source === 'word') {
+    // Auto-detect placeholders across header/body/footer so we can surface
+    // the exact variable keys the user has in their original Word template.
+    const detectedPlaceholders = Array.from(
+      new Set(
+        [form.docx_header_html, form.docx_content_html, form.docx_footer_html]
+          .join('\n')
+          .match(/\{\{\s*[\w.]+\s*\}\}/g) || []
+      )
+    ).sort()
+
+    const hasPageBackground = Boolean(form.docx_page_background_url)
+
+    return (
+      <div className="space-y-4 max-w-full overflow-x-hidden">
+        {/* Header */}
+        <div className="flex items-center justify-between flex-wrap gap-3">
+          <div className="flex items-center gap-3 min-w-0">
+            <Button variant="ghost" size="sm" onClick={closeEditor}>
+              <ArrowLeft className="h-4 w-4 mr-1" /> Back
+            </Button>
+            <div className="min-w-0">
+              <h1 className="text-xl font-bold text-gray-900 flex items-center gap-2">
+                {editingId === 'create' ? 'Create Word Template' : 'Edit Word Template'}
+                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium bg-blue-50 text-blue-600 border border-blue-100">
+                  <FileUp className="w-3 h-3 mr-1" /> Word
+                </span>
+              </h1>
+              <p className="text-gray-500 text-sm mt-0.5">Edit the content imported from your .docx file</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2 border rounded-lg px-3 py-1.5 bg-gray-50">
+              <Label className="text-sm font-medium cursor-pointer" htmlFor="active-switch-word">Active</Label>
+              <Switch
+                id="active-switch-word"
+                checked={form.is_active}
+                onCheckedChange={(v) => updateForm('is_active', v)}
+              />
+            </div>
+            <Button variant="outline" onClick={closeEditor}>Cancel</Button>
+            <Button onClick={handleSave} disabled={saving || !form.name.trim()}>
+              {saving ? 'Saving...' : 'Save Template'}
+            </Button>
+          </div>
+        </div>
+
+        {error && (
+          <div className="bg-red-50 text-red-700 text-sm p-3 rounded-md">{error}</div>
+        )}
+
+        {/* Two-column layout: Editor left, Preview right */}
+        <div className="flex gap-5 min-w-0" style={{ minHeight: '85vh' }}>
+          {/* Left: Editor panel */}
+          <div className="w-[45%] shrink-0 min-w-0 space-y-4 overflow-y-auto" style={{ maxHeight: '90vh' }}>
+            <Card>
+              <CardHeader className="py-3">
+                <CardTitle className="text-sm">Template Details</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3 pb-4">
+                <div className="space-y-1.5">
+                  <Label className="text-xs">Template Name <span className="text-red-500">*</span></Label>
+                  <Input
+                    value={form.name}
+                    onChange={(e) => updateForm('name', e.target.value)}
+                    placeholder="e.g. Engineering Offer Letter"
+                    className="h-9"
+                  />
+                </div>
+              </CardContent>
+            </Card>
+
+            {hasPageBackground && (
+              <Card className="border-blue-200 bg-blue-50/40">
+                <CardContent className="py-3">
+                  <div className="flex items-start gap-2">
+                    <FileType className="h-4 w-4 text-blue-600 shrink-0 mt-0.5" />
+                    <div className="text-xs text-blue-900">
+                      <p className="font-semibold">Page background detected</p>
+                      <p className="text-blue-800/80 mt-0.5">
+                        Letterhead image will render behind content on every page.
+                      </p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between py-3">
+                <CardTitle className="text-sm flex items-center gap-2">
+                  Header
+                  <span className="text-[10px] font-normal text-gray-400 bg-gray-50 px-1.5 py-0.5 rounded">
+                    From .docx
+                  </span>
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="pb-4">
+                <RichTextEditor
+                  value={form.docx_header_html}
+                  onChange={(v) => updateForm('docx_header_html', v)}
+                  placeholder="Header content (company name, logo, address...)"
+                  rows={3}
+                />
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between py-3">
+                <CardTitle className="text-sm">Body</CardTitle>
+                <span className="text-[10px] text-gray-400">
+                  Use <code className="bg-gray-100 px-1 rounded">{'{{variable}}'}</code> for placeholders
+                </span>
+              </CardHeader>
+              <CardContent className="pb-4">
+                <RichTextEditor
+                  value={form.docx_content_html}
+                  onChange={(v) => updateForm('docx_content_html', v)}
+                  placeholder="Your offer letter content..."
+                  rows={18}
+                />
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between py-3">
+                <CardTitle className="text-sm flex items-center gap-2">
+                  Footer
+                  <span className="text-[10px] font-normal text-gray-400 bg-gray-50 px-1.5 py-0.5 rounded">
+                    From .docx
+                  </span>
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="pb-4">
+                <RichTextEditor
+                  value={form.docx_footer_html}
+                  onChange={(v) => updateForm('docx_footer_html', v)}
+                  placeholder="Footer content (contact info, page number...)"
+                  rows={2}
+                />
+              </CardContent>
+            </Card>
+
+            {/* Collapsible Placeholders section */}
+            <Card>
+              <CardHeader className="py-3 cursor-pointer" onClick={() => setShowPlaceholders(!showPlaceholders)}>
+                <CardTitle className="text-sm flex items-center justify-between">
+                  <span className="flex items-center gap-2">
+                    Placeholders
+                    {detectedPlaceholders.length > 0 && (
+                      <span className="text-[10px] font-normal bg-blue-50 text-blue-600 px-1.5 py-0.5 rounded">
+                        {detectedPlaceholders.length} detected
+                      </span>
+                    )}
+                  </span>
+                  <span className="text-gray-400 text-xs">{showPlaceholders ? '▲' : '▼'}</span>
+                </CardTitle>
+              </CardHeader>
+              {showPlaceholders && (
+                <CardContent className="space-y-4 pb-4">
+                  {detectedPlaceholders.length > 0 && (
+                    <div className="space-y-2">
+                      <p className="text-[11px] font-semibold uppercase tracking-wider text-blue-500">Detected in Template</p>
+                      <div className="flex flex-wrap gap-1.5">
+                        {detectedPlaceholders.map((v) => (
+                          <button
+                            key={v}
+                            type="button"
+                            onClick={() => copyVariable(v)}
+                            className="inline-flex items-center gap-1 px-2 py-1 rounded border border-blue-200 hover:border-blue-400 hover:bg-blue-50 text-[10px] font-mono text-blue-700 transition-colors"
+                            title="Click to copy"
+                          >
+                            {copiedVar === v ? 'Copied!' : v}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {OFFER_TEMPLATE_VARIABLE_CATEGORIES.map((cat) => (
+                    <div key={cat.category} className="space-y-1.5">
+                      <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">{cat.category}</p>
+                      <div className="flex flex-wrap gap-1">
+                        {cat.variables.map((v) => (
+                          <button
+                            key={v.key}
+                            type="button"
+                            onClick={() => copyVariable(v.key)}
+                            className="inline-flex items-center px-1.5 py-0.5 rounded border border-gray-200 hover:border-blue-400 hover:bg-blue-50 text-[10px] font-mono text-gray-600 transition-colors"
+                            title={v.label}
+                          >
+                            {copiedVar === v.key ? 'Copied!' : v.key}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </CardContent>
+              )}
+            </Card>
+          </div>
+
+          {/* Right: Always-visible live preview */}
+          <div className="flex-1 min-w-0 flex flex-col sticky top-0">
+            <div className="flex items-center justify-between mb-2 shrink-0">
+              <div className="flex items-center gap-2">
+                <Eye className="h-4 w-4 text-blue-600" />
+                <span className="font-semibold text-gray-900 text-sm">Live Preview</span>
+                <span className="text-xs text-gray-400">Auto-updates with sample data</span>
+                {wordPreviewLoading && (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin text-blue-500" />
+                )}
+              </div>
+              <Button variant="outline" size="sm" onClick={refreshWordPreview} disabled={wordPreviewLoading}>
+                Refresh
+              </Button>
+            </div>
+            <div className="flex-1 border border-gray-200 rounded-xl overflow-hidden shadow-sm bg-gray-100">
+              {wordPreviewHtml ? (
+                <iframe
+                  srcDoc={wordPreviewHtml}
+                  className="w-full h-full"
+                  style={{ minHeight: '85vh', backgroundColor: '#e5e7eb' }}
+                  title="Word Template Preview"
+                />
+              ) : (
+                <div className="flex items-center justify-center h-full min-h-[60vh] text-gray-400">
+                  <div className="text-center space-y-2">
+                    <FileText className="h-10 w-10 mx-auto text-gray-300" />
+                    <p className="text-sm">Preview will appear here</p>
+                    <p className="text-xs">Add content to the editor to see a live preview</p>
+                  </div>
+                </div>
+              )}
+            </div>
+            <p className="text-xs text-gray-400 mt-2 text-center">
+              Placeholders are replaced with sample data. Use browser print (Ctrl+P) from the preview to save as PDF.
+            </p>
+          </div>
+        </div>
       </div>
     )
   }
@@ -840,7 +1251,7 @@ export default function OfferTemplatesPage() {
           <Button variant="outline" size="sm" onClick={openCreateDefault} className="gap-1.5">
             <Copy className="w-4 h-4" /> Use Default
           </Button>
-          <Button size="sm" onClick={openCreate} className="gap-1.5">
+          <Button size="sm" onClick={openCreateChoice} className="gap-1.5">
             <Plus className="w-4 h-4" /> New Template
           </Button>
         </div>
@@ -854,8 +1265,8 @@ export default function OfferTemplatesPage() {
           <p className="text-gray-500 font-medium mb-1">No offer templates yet</p>
           <p className="text-sm text-gray-400 mb-4">Create a template to customize your offer letter PDFs, or start with our pre-filled default.</p>
           <div className="flex items-center justify-center gap-3">
-            <Button variant="outline" size="sm" onClick={openCreate} className="gap-1.5">
-              <Plus className="w-4 h-4" /> Blank Template
+            <Button variant="outline" size="sm" onClick={openCreateChoice} className="gap-1.5">
+              <Plus className="w-4 h-4" /> New Template
             </Button>
             <Button size="sm" onClick={openCreateDefault} className="gap-1.5">
               <Copy className="w-4 h-4" /> Use Default Template
@@ -885,6 +1296,11 @@ export default function OfferTemplatesPage() {
                     ) : (
                       <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-gray-50 text-gray-400 border border-gray-100">
                         Inactive
+                      </span>
+                    )}
+                    {t.template_source === 'word' && (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium bg-blue-50 text-blue-600 border border-blue-100">
+                        <FileUp className="w-3 h-3" /> Word
                       </span>
                     )}
                   </div>
@@ -967,6 +1383,114 @@ export default function OfferTemplatesPage() {
           })}
         </div>
       )}
+
+      {/* Create Choice Dialog: Upload Word vs Create Manually */}
+      <Dialog open={createChoiceOpen} onOpenChange={setCreateChoiceOpen}>
+        <DialogContent className="sm:max-w-xl">
+          <DialogHeader>
+            <DialogTitle>Create New Template</DialogTitle>
+            <DialogDescription>Choose how you&apos;d like to build your offer letter template.</DialogDescription>
+          </DialogHeader>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 py-2">
+            <button
+              type="button"
+              onClick={chooseWordUpload}
+              className="group text-left rounded-xl border-2 border-gray-200 hover:border-blue-400 hover:bg-blue-50/30 transition-all p-5"
+            >
+              <div className="w-10 h-10 rounded-lg bg-blue-50 flex items-center justify-center mb-3 group-hover:bg-blue-100 transition-colors">
+                <FileUp className="w-5 h-5 text-blue-600" />
+              </div>
+              <h3 className="text-[15px] font-semibold text-gray-900 mb-1">Upload Word Template</h3>
+              <p className="text-xs text-gray-500 leading-relaxed">
+                Upload an existing <span className="font-medium">.docx</span> file. We&apos;ll parse it into an editable rich-text template with placeholder support.
+              </p>
+            </button>
+            <button
+              type="button"
+              onClick={chooseManualCreate}
+              className="group text-left rounded-xl border-2 border-gray-200 hover:border-emerald-400 hover:bg-emerald-50/30 transition-all p-5"
+            >
+              <div className="w-10 h-10 rounded-lg bg-emerald-50 flex items-center justify-center mb-3 group-hover:bg-emerald-100 transition-colors">
+                <FileType className="w-5 h-5 text-emerald-600" />
+              </div>
+              <h3 className="text-[15px] font-semibold text-gray-900 mb-1">Create Manually</h3>
+              <p className="text-xs text-gray-500 leading-relaxed">
+                Build using our structured form with branding, content sections, signatures, and toggles. Best for standard PDF layouts.
+              </p>
+            </button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Upload Word Document Dialog */}
+      <Dialog open={uploadOpen} onOpenChange={(v) => { if (!uploading) setUploadOpen(v) }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Upload Word Template</DialogTitle>
+            <DialogDescription>
+              Upload a .docx file. We&apos;ll parse its contents into an editable rich-text template.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              <Label>Template Name <span className="text-red-500">*</span></Label>
+              <Input
+                value={uploadName}
+                onChange={(e) => setUploadName(e.target.value)}
+                placeholder="e.g. Engineering Offer Letter"
+                disabled={uploading}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Word Document (.docx) <span className="text-red-500">*</span></Label>
+              <label
+                htmlFor="docx-file-input"
+                className="flex flex-col items-center justify-center w-full rounded-lg border-2 border-dashed border-gray-200 hover:border-blue-400 hover:bg-blue-50/30 transition-colors cursor-pointer py-6 px-4"
+              >
+                <Upload className="w-6 h-6 text-gray-400 mb-2" />
+                {uploadFile ? (
+                  <>
+                    <span className="text-sm font-medium text-gray-900">{uploadFile.name}</span>
+                    <span className="text-xs text-gray-500 mt-0.5">{(uploadFile.size / 1024).toFixed(1)} KB — click to change</span>
+                  </>
+                ) : (
+                  <>
+                    <span className="text-sm font-medium text-gray-700">Click to select a .docx file</span>
+                    <span className="text-xs text-gray-500 mt-0.5">Only Microsoft Word .docx files are supported</span>
+                  </>
+                )}
+                <input
+                  id="docx-file-input"
+                  type="file"
+                  accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                  className="hidden"
+                  disabled={uploading}
+                  onChange={(e) => {
+                    const f = e.target.files?.[0] || null
+                    setUploadFile(f)
+                    if (f && !uploadName.trim()) {
+                      // Suggest a name from the file name (strip extension)
+                      setUploadName(f.name.replace(/\.docx$/i, ''))
+                    }
+                  }}
+                />
+              </label>
+            </div>
+            <div className="rounded-md bg-blue-50 border border-blue-100 p-3 text-xs text-blue-800">
+              <strong>Tip:</strong> Use placeholders like <code className="bg-white/60 px-1 rounded">{'{{candidate_name}}'}</code>, <code className="bg-white/60 px-1 rounded">{'{{job_title}}'}</code>, <code className="bg-white/60 px-1 rounded">{'{{salary}}'}</code> in your Word file. You can edit them after upload.
+            </div>
+            {uploadError && (
+              <div className="rounded-md bg-red-50 text-red-700 text-sm p-3">{uploadError}</div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setUploadOpen(false)} disabled={uploading}>Cancel</Button>
+            <Button onClick={handleUploadWord} disabled={uploading || !uploadFile || !uploadName.trim()}>
+              {uploading ? (<><Loader2 className="h-4 w-4 mr-1 animate-spin" /> Uploading...</>) : (<><Upload className="h-4 w-4 mr-1" /> Upload & Parse</>)}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Delete Confirmation Dialog */}
       <Dialog open={!!deleteId} onOpenChange={() => setDeleteId(null)}>
