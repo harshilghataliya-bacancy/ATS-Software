@@ -200,6 +200,24 @@ async function processOrgReminders(
   const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
 
   for (const interview of toRemind) {
+    // ---- Atomic claim: insert the sent record FIRST so the UNIQUE(interview_id, reminder_minutes)
+    // constraint prevents any duplicate email-send from concurrent cron runs or partial retries.
+    // If this insert fails (either conflict or any other error), we do NOT send emails.
+    const { error: claimError } = await supabase.from('interview_reminders_sent').insert({
+      interview_id: interview.id,
+      organization_id: orgId,
+      reminder_minutes: intervalMinutes,
+    })
+    if (claimError) {
+      // 23505 = unique_violation → another run already handled this reminder; silently skip.
+      // Any other error → log and skip (don't risk double-send).
+      if ((claimError as { code?: string }).code !== '23505') {
+        console.error(`[Reminders] Could not claim reminder for interview ${interview.id}:`, claimError)
+        errors++
+      }
+      continue
+    }
+
     try {
       const candidate = interview.candidates
       const job = interview.jobs
@@ -249,11 +267,14 @@ async function processOrgReminders(
         html: candidateEmail.html,
       })
 
-      // --- Send single email to all panelists (no CC) ---
-      const panelistEmails = interview.interview_panelists
+      // --- Send single email to all panelists (no CC, exclude the recruiter/creator who is already CC'd on the candidate email) ---
+      const panelistsExcludingCreator = interview.interview_panelists.filter(
+        (p) => p.user_id !== interview.created_by
+      )
+      const panelistEmails = panelistsExcludingCreator
         .map((p) => userMap.get(p.user_id)?.email || '')
         .filter(Boolean)
-      const panelistNames = interview.interview_panelists
+      const panelistNames = panelistsExcludingCreator
         .map((p) => userMap.get(p.user_id)?.name || '')
         .filter(Boolean)
         .join(', ')
@@ -290,16 +311,12 @@ async function processOrgReminders(
         })
       }
 
-      // Mark as sent
-      await supabase.from('interview_reminders_sent').insert({
-        interview_id: interview.id,
-        organization_id: orgId,
-        reminder_minutes: intervalMinutes,
-      })
-
       sent++
     } catch (err) {
-      console.error(`[Reminders] Failed to send reminder for interview ${interview.id}:`, err)
+      // Emails failed AFTER we already claimed the sent record. We intentionally do NOT roll back
+      // the claim — the user explicitly wants "no duplicate reminders ever" over "guaranteed delivery".
+      // The failure is logged so it can be investigated and resent manually if needed.
+      console.error(`[Reminders] Failed to send reminder for interview ${interview.id} (claim already recorded, will NOT retry):`, err)
       errors++
     }
   }
