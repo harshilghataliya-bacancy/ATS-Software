@@ -398,6 +398,36 @@ export async function getPublicJobs(
   return { data: { organization: org, jobs }, error: null }
 }
 
+/** Get published jobs by organization ID (for subdomain-based careers pages) */
+export async function getPublicJobsByOrgId(
+  supabase: SupabaseClient,
+  orgId: string
+) {
+  const { data: org, error: orgError } = await supabase
+    .from('organizations')
+    .select('id, name, slug, logo_url')
+    .eq('id', orgId)
+    .single()
+
+  if (orgError || !org) {
+    return { data: null, error: orgError }
+  }
+
+  const { data: jobs, error: jobsError } = await supabase
+    .from('jobs')
+    .select('id, title, department, location, employment_type, remote_policy, experience_level, salary_min, salary_max, salary_currency, skills, num_openings, application_deadline, education_level, experience_min, experience_max, priority, description, requirements, nice_to_have, benefits, created_at')
+    .eq('organization_id', orgId)
+    .eq('status', 'published')
+    .is('deleted_at', null)
+    .order('created_at', { ascending: false })
+
+  if (jobsError) {
+    return { data: null, error: jobsError }
+  }
+
+  return { data: { organization: org, jobs }, error: null }
+}
+
 // ---------------------------------------------------------------------------
 // Pipeline Stages
 // ---------------------------------------------------------------------------

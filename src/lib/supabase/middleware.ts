@@ -47,6 +47,39 @@ export async function updateSession(request: NextRequest) {
     supabaseResponse.headers.set('x-tenant-source', tenant.source)
   }
 
+  // Subdomain/custom-domain careers rewrite:
+  // When a tenant is resolved via subdomain or custom domain, rewrite
+  // the root and job-detail paths to the internal careers routes.
+  // e.g. acme.hireflow.com/ → /careers/s
+  //      acme.hireflow.com/abc-123 → /careers/s/abc-123
+  if (tenant) {
+    const pathname = request.nextUrl.pathname
+
+    // Skip static assets and API routes
+    if (!pathname.startsWith('/api/') && !pathname.startsWith('/_next/')) {
+      // Root page → careers listing
+      if (pathname === '/') {
+        const url = request.nextUrl.clone()
+        url.pathname = '/careers/s'
+        return NextResponse.rewrite(url, { headers: supabaseResponse.headers })
+      }
+
+      // Single-segment path (e.g., /uuid-job-id) → job detail
+      // But skip known dashboard routes
+      const dashboardPrefixes = ['/login', '/signup', '/forgot-password', '/set-password', '/dashboard', '/jobs', '/candidates', '/applications', '/interviews', '/offers', '/pipeline', '/reports', '/settings', '/email-templates', '/org', '/careers', '/callback']
+      const isKnownRoute = dashboardPrefixes.some(p => pathname === p || pathname.startsWith(p + '/'))
+      if (!isKnownRoute) {
+        // Treat as a job ID
+        const jobId = pathname.slice(1) // remove leading /
+        if (jobId && !jobId.includes('/')) {
+          const url = request.nextUrl.clone()
+          url.pathname = `/careers/s/${jobId}`
+          return NextResponse.rewrite(url, { headers: supabaseResponse.headers })
+        }
+      }
+    }
+  }
+
   const {
     data: { user },
   } = await supabase.auth.getUser()
