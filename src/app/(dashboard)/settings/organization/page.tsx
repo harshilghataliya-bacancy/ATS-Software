@@ -20,7 +20,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import {
   Building2, Mail, MessageSquare, ShieldCheck,
   CheckCircle2, XCircle, ExternalLink, ChevronDown, ChevronUp,
-  Sparkles, Clock, Inbox,
+  Sparkles, Clock, Inbox, MapPin, Plus, Pencil, Trash2, Check, X, Loader2,
 } from 'lucide-react'
 
 export default function OrganizationSettingsPage() {
@@ -102,6 +102,168 @@ function ErrorMessage({ message }: { message: string | null }) {
       <XCircle className="w-4 h-4 shrink-0" />
       {message}
     </div>
+  )
+}
+
+interface Location {
+  id: string
+  name: string
+  created_at: string
+}
+
+function InterviewLocationsSection() {
+  const [locations, setLocations] = useState<Location[]>([])
+  const [loading, setLoading] = useState(true)
+  const [newName, setNewName] = useState('')
+  const [adding, setAdding] = useState(false)
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [editingName, setEditingName] = useState('')
+  const [savingEdit, setSavingEdit] = useState(false)
+
+  async function loadLocations() {
+    const res = await fetch('/api/interview-locations')
+    const json = await res.json()
+    if (res.ok) setLocations(json.data || [])
+    setLoading(false)
+  }
+
+  useEffect(() => { loadLocations() }, [])
+
+  async function handleAdd() {
+    if (!newName.trim()) return
+    setAdding(true)
+    const res = await fetch('/api/interview-locations', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: newName.trim() }),
+    })
+    const json = await res.json()
+    if (res.ok) {
+      setLocations(prev => [...prev, json.data].sort((a, b) => a.name.localeCompare(b.name)))
+      setNewName('')
+    }
+    setAdding(false)
+  }
+
+  async function handleUpdate(id: string) {
+    if (!editingName.trim()) return
+    setSavingEdit(true)
+    const res = await fetch('/api/interview-locations', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id, name: editingName.trim() }),
+    })
+    if (res.ok) {
+      setLocations(prev => prev.map(l => l.id === id ? { ...l, name: editingName.trim() } : l).sort((a, b) => a.name.localeCompare(b.name)))
+      setEditingId(null)
+    }
+    setSavingEdit(false)
+  }
+
+  async function handleDelete(id: string) {
+    const res = await fetch('/api/interview-locations', {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id }),
+    })
+    if (res.ok) setLocations(prev => prev.filter(l => l.id !== id))
+  }
+
+  return (
+    <>
+      {/* Add new location */}
+      <div className="flex gap-2">
+        <Input
+          value={newName}
+          onChange={(e) => setNewName(e.target.value)}
+          placeholder="Enter location name..."
+          className="text-[13px]"
+          onKeyDown={(e) => e.key === 'Enter' && handleAdd()}
+        />
+        <Button
+          onClick={handleAdd}
+          disabled={adding || !newName.trim()}
+          size="sm"
+          className="bg-gray-900 hover:bg-gray-800 text-white shrink-0 gap-1.5"
+        >
+          {adding ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Plus className="w-3.5 h-3.5" />}
+          Add
+        </Button>
+      </div>
+
+      {/* Location list */}
+      {loading ? (
+        <div className="text-center py-8 text-gray-400 text-sm">Loading...</div>
+      ) : locations.length === 0 ? (
+        <div className="text-center py-8">
+          <MapPin className="w-8 h-8 text-gray-200 mx-auto mb-2" />
+          <p className="text-[13px] text-gray-400">No locations added yet</p>
+          <p className="text-[11px] text-gray-300 mt-1">Add your first office location above</p>
+        </div>
+      ) : (
+        <div className="divide-y divide-gray-50 mt-3">
+          {locations.map((loc) => (
+            <div key={loc.id} className="flex items-center gap-3 py-2.5 group">
+              {editingId === loc.id ? (
+                <>
+                  <MapPin className="w-4 h-4 text-gray-300 shrink-0" />
+                  <Input
+                    value={editingName}
+                    onChange={(e) => setEditingName(e.target.value)}
+                    className="text-[13px] h-8 flex-1"
+                    autoFocus
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') handleUpdate(loc.id)
+                      if (e.key === 'Escape') setEditingId(null)
+                    }}
+                  />
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="h-7 w-7 p-0 text-green-600 hover:text-green-700 hover:bg-green-50"
+                    onClick={() => handleUpdate(loc.id)}
+                    disabled={savingEdit}
+                  >
+                    {savingEdit ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="h-7 w-7 p-0 text-gray-400 hover:text-gray-600"
+                    onClick={() => setEditingId(null)}
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </Button>
+                </>
+              ) : (
+                <>
+                  <MapPin className="w-4 h-4 text-gray-300 shrink-0" />
+                  <span className="text-[13px] text-gray-700 flex-1">{loc.name}</span>
+                  <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-7 w-7 p-0 text-gray-400 hover:text-gray-600"
+                      onClick={() => { setEditingId(loc.id); setEditingName(loc.name) }}
+                    >
+                      <Pencil className="w-3.5 h-3.5" />
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-7 w-7 p-0 text-gray-400 hover:text-red-600 hover:bg-red-50"
+                      onClick={() => handleDelete(loc.id)}
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </Button>
+                  </div>
+                </>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </>
   )
 }
 
@@ -566,6 +728,19 @@ function OrganizationSettingsContent() {
           <Button size="sm" onClick={handleSaveReapply} disabled={reaplySaving}>
             {reaplySaving ? 'Saving...' : 'Save'}
           </Button>
+        </div>
+      </SectionCard>
+
+      {/* Interview Locations */}
+      <SectionCard
+        icon={MapPin}
+        iconColor="bg-rose-50 text-rose-500"
+        title="Interview Locations"
+        description="Manage office locations for face-to-face interviews"
+        defaultOpen={false}
+      >
+        <div className="mt-3">
+          <InterviewLocationsSection />
         </div>
       </SectionCard>
 

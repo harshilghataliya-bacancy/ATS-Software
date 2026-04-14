@@ -3,14 +3,13 @@
 import { useSearchParams, useRouter } from 'next/navigation'
 import { useRole } from '@/lib/hooks/use-user'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { Building2, Users, Calculator, ClipboardList, MapPin, Bell, Palette } from 'lucide-react'
+import { Building2, Users, Calculator, ClipboardList, Bell, Palette } from 'lucide-react'
 import { Suspense } from 'react'
 
 import OrganizationPage from './organization/page'
 import MembersPage from './members/page'
 import SalaryStructuresPage from './salary-structures/page'
 import ScorecardsPage from './scorecards/page'
-import InterviewLocationsPage from './interview-locations/page'
 import NotificationsPage from './notifications/page'
 import BrandingPage from './branding/page'
 
@@ -58,10 +57,6 @@ function SettingsContent() {
             <ClipboardList className="w-4 h-4" />
             Scorecards
           </TabsTrigger>
-          <TabsTrigger value="interview-locations" className="gap-2 text-sm data-[state=active]:bg-white data-[state=active]:shadow-sm">
-            <MapPin className="w-4 h-4" />
-            Locations
-          </TabsTrigger>
           <TabsTrigger value="branding" className="gap-2 text-sm data-[state=active]:bg-white data-[state=active]:shadow-sm">
             <Palette className="w-4 h-4" />
             Public Page
@@ -83,9 +78,6 @@ function SettingsContent() {
         </TabsContent>
         <TabsContent value="scorecards">
           <ScorecardsPage />
-        </TabsContent>
-        <TabsContent value="interview-locations">
-          <InterviewLocationsPage />
         </TabsContent>
         <TabsContent value="branding">
           <BrandingPage />

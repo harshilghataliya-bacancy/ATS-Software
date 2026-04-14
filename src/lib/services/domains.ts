@@ -162,6 +162,8 @@ export async function addSubdomain(
   subdomain: string
 ) {
   const normalizedSubdomain = subdomain.toLowerCase().trim()
+  const platformDomain = process.env.NEXT_PUBLIC_PLATFORM_DOMAIN || 'getroa.com'
+  const fullDomain = `${normalizedSubdomain}.${platformDomain}`
 
   const { data, error } = await supabase
     .from('organization_subdomains')
@@ -179,6 +181,13 @@ export async function addSubdomain(
       return { data: null, error: new Error('This subdomain is already taken') }
     }
     return { data: null, error }
+  }
+
+  // Auto-register with Vercel (best-effort — subdomain still works if Vercel API fails)
+  try {
+    await addDomainToProject(fullDomain)
+  } catch {
+    // Vercel API not configured or failed — subdomain is still saved
   }
 
   return { data, error: null }
