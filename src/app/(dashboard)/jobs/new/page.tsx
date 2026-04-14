@@ -26,7 +26,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { LocationInput } from '@/components/ui/location-input'
 import { useToast } from '@/hooks/use-toast'
 import { ScorecardEditorDialog, type ScorecardFormData } from '@/components/scorecards/scorecard-editor-dialog'
-import { ArrowLeft, Sparkles, Loader2, X, ClipboardList, Plus, Copy, Pencil, Trash2 } from 'lucide-react'
+import { ArrowLeft, Sparkles, Loader2, ClipboardList, Plus, Copy, Pencil, Trash2 } from 'lucide-react'
 import { getAssignableRecruiters } from '../actions'
 import type { ScorecardWithCriteria, ScorecardTemplateCriteria } from '@/types/database'
 

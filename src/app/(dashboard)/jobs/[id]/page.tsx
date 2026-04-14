@@ -30,7 +30,7 @@ import { ScorecardEditorDialog, type ScorecardFormData } from '@/components/scor
 import { useToast } from '@/hooks/use-toast'
 import { BulkResumeUploadDialog } from '@/components/bulk-upload/bulk-resume-upload-dialog'
 import {
-  Upload, UserPlus, ArrowLeft, X, Briefcase, FileText, Link2, Check,
+  Upload, UserPlus, ArrowLeft, Briefcase, FileText, Link2, Check,
   ClipboardList, Plus, Copy, Pencil, Trash2,
 } from 'lucide-react'
 import type { ScorecardWithCriteria, ScorecardTemplateCriteria } from '@/types/database'

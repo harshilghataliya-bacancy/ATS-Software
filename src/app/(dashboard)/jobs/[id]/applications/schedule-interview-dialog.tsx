@@ -73,7 +73,6 @@ export function ScheduleInterviewDialog({
   jobDescription,
   onSuccess,
 }: ScheduleInterviewDialogProps) {
-  const [title, setTitle] = useState('')
   const [type, setType] = useState('video')
   const [date, setDate] = useState('')
   const [duration, setDuration] = useState(60)
@@ -340,7 +339,6 @@ export function ScheduleInterviewDialog({
   }
 
   function resetForm() {
-    setTitle('')
     setType('video')
     setDate('')
     setDuration(60)
