@@ -398,27 +398,29 @@ export default function BrandingPage() {
               </div>
             )}
 
-            {/* Add new subdomain */}
-            <div className="flex items-center gap-2">
-              <div className="flex-1 flex items-center gap-0 rounded-lg border bg-white overflow-hidden focus-within:ring-2 focus-within:ring-blue-500 focus-within:border-blue-500">
-                <Input
-                  placeholder="yourcompany"
-                  value={newSubdomain}
-                  onChange={(e) => setNewSubdomain(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ''))}
-                  className="border-0 focus-visible:ring-0 text-sm"
-                  onKeyDown={(e) => e.key === 'Enter' && handleAddSubdomain()}
-                />
-                <span className="text-xs text-gray-400 pr-3 whitespace-nowrap">.{platformDomain}</span>
+            {/* Add new subdomain — only if none exists */}
+            {subdomains.length === 0 && (
+              <div className="flex items-center gap-2">
+                <div className="flex-1 flex items-center gap-0 rounded-lg border bg-white overflow-hidden focus-within:ring-2 focus-within:ring-blue-500 focus-within:border-blue-500">
+                  <Input
+                    placeholder="yourcompany"
+                    value={newSubdomain}
+                    onChange={(e) => setNewSubdomain(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ''))}
+                    className="border-0 focus-visible:ring-0 text-sm"
+                    onKeyDown={(e) => e.key === 'Enter' && handleAddSubdomain()}
+                  />
+                  <span className="text-xs text-gray-400 pr-3 whitespace-nowrap">.{platformDomain}</span>
+                </div>
+                <Button
+                  onClick={handleAddSubdomain}
+                  disabled={addingSub || !newSubdomain.trim()}
+                  size="sm"
+                  className="shrink-0"
+                >
+                  {addingSub ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : 'Add'}
+                </Button>
               </div>
-              <Button
-                onClick={handleAddSubdomain}
-                disabled={addingSub || !newSubdomain.trim()}
-                size="sm"
-                className="shrink-0"
-              >
-                {addingSub ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : 'Add'}
-              </Button>
-            </div>
+            )}
 
             <p className="text-[11px] text-gray-400">
               The old URL format (<code className="text-gray-500">/careers/org-slug</code>) still works as a fallback.

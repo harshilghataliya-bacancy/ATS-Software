@@ -47,6 +47,16 @@ export async function updateSession(request: NextRequest) {
     supabaseResponse.headers.set('x-tenant-source', tenant.source)
   }
 
+  // If host looks like a subdomain but tenant wasn't found → show 404
+  const platformDomain = process.env.NEXT_PUBLIC_PLATFORM_DOMAIN || 'getroa.com'
+  const normalizedHost = host.toLowerCase().replace(/:\d+$/, '')
+  const isSubdomainHost = normalizedHost.endsWith(`.${platformDomain}`) && !normalizedHost.startsWith('www.')
+  if (isSubdomainHost && !tenant) {
+    const url = request.nextUrl.clone()
+    url.pathname = '/not-found'
+    return NextResponse.rewrite(url)
+  }
+
   // Subdomain/custom-domain careers rewrite:
   // When a tenant is resolved via subdomain or custom domain, rewrite
   // the root and job-detail paths to the internal careers routes.
