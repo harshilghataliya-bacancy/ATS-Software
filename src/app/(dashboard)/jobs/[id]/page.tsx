@@ -9,7 +9,11 @@ import { updateJobSchema, type UpdateJobInput } from '@/lib/validators/job'
 import { useUser, useRole } from '@/lib/hooks/use-user'
 import { getAssignableRecruiters } from '../actions'
 import { createClient } from '@/lib/supabase/client'
-import { getJobById, updateJob, getScorecardCriteria, upsertScorecardCriteria, getJobRecruiters } from '@/lib/services/jobs'
+import { getJobById, updateJob, getJobRecruiters } from '@/lib/services/jobs'
+import {
+  getJobScorecards, getScorecards, cloneScorecardForJob,
+  createScorecardForJob, updateScorecard, deleteJobScorecard,
+} from '@/lib/services/scorecards'
 import {
   EMPLOYMENT_TYPES, CURRENCIES, JOB_STATUS_CONFIG, EXPERIENCE_LEVELS,
   REMOTE_POLICIES, JOB_PRIORITIES, JOB_EDUCATION_LEVELS,
@@ -22,11 +26,14 @@ import { Label } from '@/components/ui/label'
 import { RichTextEditor } from '@/components/ui/rich-text-editor'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Skeleton } from '@/components/ui/skeleton'
+import { ScorecardEditorDialog, type ScorecardFormData } from '@/components/scorecards/scorecard-editor-dialog'
 import { useToast } from '@/hooks/use-toast'
 import { BulkResumeUploadDialog } from '@/components/bulk-upload/bulk-resume-upload-dialog'
 import {
   Upload, UserPlus, ArrowLeft, X, Briefcase, FileText, Link2, Check,
+  ClipboardList, Plus, Copy, Pencil, Trash2,
 } from 'lucide-react'
+import type { ScorecardWithCriteria, ScorecardTemplateCriteria } from '@/types/database'
 
 interface Recruiter {
   id: string
@@ -45,8 +52,32 @@ export default function JobDetailPage() {
   const [recruiters, setRecruiters] = useState<Recruiter[]>([])
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
-  const [criteria, setCriteria] = useState<Array<{ name: string; description: string; weight: number }>>([])
-  const [criteriaLoaded, setCriteriaLoaded] = useState(false)
+  // Scorecard state for job edit
+  type EditScorecard = {
+    id?: string // existing scorecard id (for update/delete)
+    mode: 'existing' | 'clone' | 'new'
+    sourceId?: string
+    title: string
+    label: string
+    description: string
+    criteria: Array<{
+      name: string
+      description: string
+      weight: number
+      rating_type: 'rating' | 'yes_no' | 'text'
+      display_order: number
+      category: string
+    }>
+  }
+  const [jobScorecards, setJobScorecards] = useState<EditScorecard[]>([])
+  const [orgScorecards, setOrgScorecards] = useState<ScorecardWithCriteria[]>([])
+  const [scorecardsLoaded, setScorecardsLoaded] = useState(false)
+  const [scorecardDialogOpen, setScorecardDialogOpen] = useState(false)
+  const [editingScorecardIdx, setEditingScorecardIdx] = useState<number | null>(null)
+  const [editForm, setEditForm] = useState<EditScorecard>({
+    mode: 'new', title: '', label: '', description: '',
+    criteria: [{ name: '', description: '', weight: 5, rating_type: 'rating', display_order: 0, category: 'General' }],
+  })
   const [skills, setSkills] = useState<string[]>([])
   const [skillInput, setSkillInput] = useState('')
   const [selectedRecruiterIds, setSelectedRecruiterIds] = useState<string[]>([])
@@ -55,7 +86,7 @@ export default function JobDetailPage() {
   const [bulkUploadOpen, setBulkUploadOpen] = useState(false)
   const [linkCopied, setLinkCopied] = useState(false)
 
-  const initialCriteriaRef = useRef<string>('')
+  const initialScorecardsRef = useRef<string>('')
   const initialSkillsRef = useRef<string>('')
   const initialRecruiterIdsRef = useRef<string>('')
 
@@ -65,12 +96,12 @@ export default function JobDetailPage() {
   })
 
   useEffect(() => {
-    const criteriaDirty = JSON.stringify(criteria) !== initialCriteriaRef.current
+    const scorecardsDirty = JSON.stringify(jobScorecards) !== initialScorecardsRef.current
     const skillsDirty = JSON.stringify(skills) !== initialSkillsRef.current
     const recruitersDirty = JSON.stringify(selectedRecruiterIds) !== initialRecruiterIdsRef.current
     const ownerDirty = jobOwnerId !== (job?.assigned_to as string | null)
-    setHasChanges(isDirty || criteriaDirty || skillsDirty || recruitersDirty || ownerDirty)
-  }, [isDirty, criteria, skills, selectedRecruiterIds, jobOwnerId, job])
+    setHasChanges(isDirty || scorecardsDirty || skillsDirty || recruitersDirty || ownerDirty)
+  }, [isDirty, jobScorecards, skills, selectedRecruiterIds, jobOwnerId, job])
 
   useEffect(() => {
     if (organization && isAdmin) {
@@ -121,29 +152,42 @@ export default function JobDetailPage() {
         assigned_to: data.assigned_to ?? null,
       })
 
-      // Load job recruiters and scorecard criteria in parallel
-      const [recruiterIds, scorecardResult] = await Promise.all([
+      // Load job recruiters, job scorecards, and org scorecard templates in parallel
+      const [recruiterIds, jobScResult, orgScResult] = await Promise.all([
         getJobRecruiters(supabase, params.id as string),
-        !criteriaLoaded ? getScorecardCriteria(supabase, params.id as string, organization.id) : Promise.resolve({ data: null }),
+        !scorecardsLoaded ? getJobScorecards(supabase, params.id as string, organization.id) : Promise.resolve({ data: null }),
+        !scorecardsLoaded ? getScorecards(supabase, organization.id, true) : Promise.resolve({ data: null }),
       ])
       setSelectedRecruiterIds(recruiterIds)
       setJobOwnerId((data.assigned_to as string) ?? (recruiterIds.length > 0 ? recruiterIds[0] : null))
       initialRecruiterIdsRef.current = JSON.stringify(recruiterIds)
 
-      if (!criteriaLoaded) {
-        const criteriaData = scorecardResult.data
-        if (criteriaData && criteriaData.length > 0) {
-          const loaded = criteriaData.map((c: Record<string, unknown>) => ({
-            name: c.name as string,
-            description: (c.description as string) ?? '',
-            weight: c.weight as number,
+      if (!scorecardsLoaded) {
+        if (orgScResult.data) setOrgScorecards(orgScResult.data as ScorecardWithCriteria[])
+        const scData = jobScResult.data as ScorecardWithCriteria[] | null
+        if (scData && scData.length > 0) {
+          const loaded: EditScorecard[] = scData.map((sc) => ({
+            id: sc.id,
+            mode: 'existing' as const,
+            sourceId: sc.source_scorecard_id || undefined,
+            title: sc.title,
+            label: sc.label || '',
+            description: sc.description || '',
+            criteria: (sc.scorecard_template_criteria || []).map((c: ScorecardTemplateCriteria) => ({
+              name: c.name,
+              description: c.description || '',
+              weight: c.weight,
+              rating_type: c.rating_type,
+              display_order: c.display_order,
+              category: c.category || 'General',
+            })),
           }))
-          setCriteria(loaded)
-          initialCriteriaRef.current = JSON.stringify(loaded)
+          setJobScorecards(loaded)
+          initialScorecardsRef.current = JSON.stringify(loaded)
         } else {
-          initialCriteriaRef.current = JSON.stringify([])
+          initialScorecardsRef.current = JSON.stringify([])
         }
-        setCriteriaLoaded(true)
+        setScorecardsLoaded(true)
       }
     }
     setLoading(false)
@@ -203,10 +247,65 @@ export default function JobDetailPage() {
         }).catch((err) => console.error('[Auto reject on job close]', err))
       }
 
-      const validCriteria = criteria.filter((c) => c.name.trim())
-      await upsertScorecardCriteria(supabase, params.id as string, organization.id, validCriteria)
+      // Sync job scorecards: update existing, create new, delete removed
+      const existingIds = jobScorecards.filter((s) => s.id).map((s) => s.id!)
+      const originalIds = (JSON.parse(initialScorecardsRef.current || '[]') as EditScorecard[])
+        .filter((s) => s.id).map((s) => s.id!)
+      // Delete removed scorecards
+      for (const oldId of originalIds) {
+        if (!existingIds.includes(oldId)) {
+          await deleteJobScorecard(supabase, oldId, organization.id)
+        }
+      }
+      // Update existing and create new scorecards
+      for (const sc of jobScorecards) {
+        const validCriteria = sc.criteria.filter((c) => c.name.trim())
+        if (sc.id && sc.mode === 'existing') {
+          // Update existing job scorecard
+          await updateScorecard(supabase, sc.id, organization.id, {
+            title: sc.title,
+            description: sc.description || undefined,
+            label: sc.label || undefined,
+            criteria: validCriteria,
+          })
+        } else if (sc.mode === 'clone' && sc.sourceId) {
+          await cloneScorecardForJob(supabase, sc.sourceId, params.id as string, organization.id, (job as Record<string, unknown>).created_by as string, {
+            label: sc.label || undefined,
+            title: sc.title || undefined,
+          })
+        } else if (sc.mode === 'new' && (validCriteria.length > 0 || sc.title.trim())) {
+          await createScorecardForJob(supabase, params.id as string, organization.id, (job as Record<string, unknown>).created_by as string, {
+            title: sc.title,
+            description: sc.description || undefined,
+            label: sc.label || undefined,
+            criteria: validCriteria,
+          })
+        }
+      }
 
-      initialCriteriaRef.current = JSON.stringify(criteria)
+      // Reload scorecards to get fresh IDs
+      const { data: freshScorecards } = await getJobScorecards(supabase, params.id as string, organization.id)
+      if (freshScorecards) {
+        const reloaded: EditScorecard[] = (freshScorecards as ScorecardWithCriteria[]).map((sc) => ({
+          id: sc.id,
+          mode: 'existing' as const,
+          sourceId: sc.source_scorecard_id || undefined,
+          title: sc.title,
+          label: sc.label || '',
+          description: sc.description || '',
+          criteria: (sc.scorecard_template_criteria || []).map((c: ScorecardTemplateCriteria) => ({
+            name: c.name,
+            description: c.description || '',
+            weight: c.weight,
+            rating_type: c.rating_type,
+            display_order: c.display_order,
+            category: c.category || 'General',
+          })),
+        }))
+        setJobScorecards(reloaded)
+        initialScorecardsRef.current = JSON.stringify(reloaded)
+      }
+
       initialSkillsRef.current = JSON.stringify(skills)
       initialRecruiterIdsRef.current = JSON.stringify(selectedRecruiterIds)
 
@@ -667,74 +766,159 @@ export default function JobDetailPage() {
               </CardContent>
             </Card>
 
-            {/* Evaluation Criteria */}
+            {/* Evaluation Scorecards */}
             <Card>
               <CardHeader>
-                <CardTitle className="text-lg">Evaluation Criteria</CardTitle>
-                <p className="text-sm text-gray-500">Criteria interviewers will rate candidates on</p>
+                <CardTitle className="text-lg flex items-center gap-2">
+                  <ClipboardList className="w-5 h-5 text-gray-400" />
+                  Evaluation Scorecards
+                </CardTitle>
+                <p className="text-sm text-gray-500">
+                  Scorecards for evaluating candidates. Each is job-specific — editing won&apos;t affect other jobs.
+                </p>
               </CardHeader>
               <CardContent className="space-y-3">
-                {criteria.map((c, idx) => (
-                  <div key={idx} className="space-y-1.5 p-2.5 bg-gray-50 rounded-lg">
-                    <div className="flex items-center gap-2">
-                      <Input
-                        placeholder="Criteria name"
-                        value={c.name}
-                        className="text-sm"
-                        onChange={(e) => {
-                          const updated = [...criteria]
-                          updated[idx] = { ...updated[idx], name: e.target.value }
-                          setCriteria(updated)
-                        }}
-                      />
-                      <div className="w-16 flex-shrink-0">
-                        <Input
-                          type="number"
-                          min={1}
-                          max={10}
-                          value={c.weight}
-                          className="text-sm text-center"
-                          title="Weight (1-10)"
-                          onChange={(e) => {
-                            const updated = [...criteria]
-                            updated[idx] = { ...updated[idx], weight: Number(e.target.value) }
-                            setCriteria(updated)
-                          }}
-                        />
+                {jobScorecards.map((sc, idx) => (
+                  <div key={idx} className="p-3 bg-gray-50 rounded-lg border border-gray-100">
+                    <div className="flex items-center justify-between mb-1.5">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span className="text-sm font-medium text-gray-800 truncate">{sc.title}</span>
+                        {sc.label && (
+                          <Badge variant="secondary" className="text-[10px] shrink-0">{sc.label}</Badge>
+                        )}
+                        {sc.mode === 'existing' && (
+                          <Badge variant="outline" className="text-[10px] text-green-600 border-green-200 shrink-0">Saved</Badge>
+                        )}
+                        {sc.mode === 'clone' && (
+                          <Badge variant="outline" className="text-[10px] text-blue-600 border-blue-200 shrink-0">
+                            <Copy className="w-2.5 h-2.5 mr-0.5" /> From Template
+                          </Badge>
+                        )}
+                        {sc.mode === 'new' && !sc.id && (
+                          <Badge variant="outline" className="text-[10px] text-amber-600 border-amber-200 shrink-0">New</Badge>
+                        )}
                       </div>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        className="text-red-500 hover:text-red-700 px-1.5 h-8"
-                        onClick={() => setCriteria(criteria.filter((_, i) => i !== idx))}
-                      >
-                        <X className="w-4 h-4" />
-                      </Button>
+                      <div className="flex items-center gap-1 shrink-0">
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 w-7 p-0 text-gray-400 hover:text-blue-600"
+                          onClick={() => {
+                            setEditingScorecardIdx(idx)
+                            setEditForm({ ...sc, criteria: sc.criteria.map((c) => ({ ...c })) })
+                            setScorecardDialogOpen(true)
+                          }}
+                        >
+                          <Pencil className="w-3.5 h-3.5" />
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 w-7 p-0 text-gray-400 hover:text-red-600"
+                          onClick={() => setJobScorecards(jobScorecards.filter((_, i) => i !== idx))}
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </Button>
+                      </div>
                     </div>
-                    <Input
-                      placeholder="Description (optional)"
-                      value={c.description}
-                      className="text-xs"
-                      onChange={(e) => {
-                        const updated = [...criteria]
-                        updated[idx] = { ...updated[idx], description: e.target.value }
-                        setCriteria(updated)
-                      }}
-                    />
+                    <div className="flex flex-wrap gap-1">
+                      {sc.criteria.filter((c) => c.name.trim()).map((c, ci) => (
+                        <span key={ci} className="text-[10px] font-medium text-gray-600 bg-white px-2 py-0.5 rounded-full border border-gray-200">
+                          {c.name} <span className="text-gray-400">(w{c.weight})</span>
+                        </span>
+                      ))}
+                    </div>
                   </div>
                 ))}
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className="w-full"
-                  onClick={() => setCriteria([...criteria, { name: '', description: '', weight: 5 }])}
-                >
-                  + Add Criteria
-                </Button>
+
+                {jobScorecards.length === 0 && (
+                  <div className="text-center py-4 text-sm text-gray-400">
+                    No scorecards assigned yet.
+                  </div>
+                )}
+
+                <div className="flex gap-2">
+                  {orgScorecards.length > 0 && (
+                    <Select
+                      value=""
+                      onValueChange={(scorecardId) => {
+                        const source = orgScorecards.find((s) => s.id === scorecardId)
+                        if (!source) return
+                        setJobScorecards([...jobScorecards, {
+                          mode: 'clone',
+                          sourceId: source.id,
+                          title: source.title,
+                          label: source.label || '',
+                          description: source.description || '',
+                          criteria: (source.scorecard_template_criteria || []).map((c: ScorecardTemplateCriteria) => ({
+                            name: c.name,
+                            description: c.description || '',
+                            weight: c.weight,
+                            rating_type: c.rating_type,
+                            display_order: c.display_order,
+                            category: c.category || 'General',
+                          })),
+                        }])
+                      }}
+                    >
+                      <SelectTrigger className="flex-1 text-sm">
+                        <SelectValue placeholder="Select from templates…" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {orgScorecards.map((sc) => (
+                          <SelectItem key={sc.id} value={sc.id}>
+                            {sc.title}
+                            <span className="text-gray-400 ml-1">
+                              ({sc.scorecard_template_criteria?.length || 0} criteria)
+                            </span>
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="gap-1 shrink-0"
+                    onClick={() => {
+                      setEditingScorecardIdx(null)
+                      setEditForm({
+                        mode: 'new', title: '', label: '', description: '',
+                        criteria: [{ name: '', description: '', weight: 5, rating_type: 'rating', display_order: 0, category: 'General' }],
+                      })
+                      setScorecardDialogOpen(true)
+                    }}
+                  >
+                    <Plus className="w-3.5 h-3.5" /> Create New
+                  </Button>
+                </div>
               </CardContent>
             </Card>
+
+            {/* Scorecard Editor Dialog */}
+            <ScorecardEditorDialog
+              open={scorecardDialogOpen}
+              onOpenChange={setScorecardDialogOpen}
+              initial={editForm}
+              isEditing={editingScorecardIdx !== null}
+              onSave={(data: ScorecardFormData) => {
+                const entry: EditScorecard = {
+                  ...editForm,
+                  ...data,
+                  criteria: data.criteria.map((c, i) => ({ ...c, display_order: i })),
+                }
+                if (editingScorecardIdx !== null) {
+                  const updated = [...jobScorecards]
+                  updated[editingScorecardIdx] = entry
+                  setJobScorecards(updated)
+                } else {
+                  setJobScorecards([...jobScorecards, entry])
+                }
+              }}
+            />
           </div>
         </div>
 

@@ -94,8 +94,8 @@ export default function InterviewDetailPage() {
   const [cancelReason, setCancelReason] = useState('')
 
   const [showFeedback, setShowFeedback] = useState(false)
-  const [fbRating, setFbRating] = useState(3)
-  const [fbRecommendation, setFbRecommendation] = useState('hold')
+  const [fbRating, setFbRating] = useState(0)
+  const [fbRecommendation, setFbRecommendation] = useState('')
   const [fbStrengths, setFbStrengths] = useState('')
   const [fbWeaknesses, setFbWeaknesses] = useState('')
   const [fbNotes, setFbNotes] = useState('')
@@ -337,6 +337,8 @@ export default function InterviewDetailPage() {
 
   async function handleSubmitFeedback() {
     if (!organization || !user || !interview) return
+    if (fbRating === 0) { setError('Overall rating is required'); return }
+    if (!fbRecommendation) { setError('Recommendation is required'); return }
     if (!fbStrengths.trim()) { setError('Strengths is required'); return }
     if (!fbWeaknesses.trim()) { setError('Weaknesses is required'); return }
     if (!fbNotes.trim()) { setError('Notes is required'); return }
@@ -367,7 +369,7 @@ export default function InterviewDetailPage() {
         setError(fbError.message)
       } else {
         setShowFeedback(false); setEditingFeedbackId(null)
-        setFbRating(3); setFbRecommendation('hold')
+        setFbRating(0); setFbRecommendation('')
         setFbStrengths(''); setFbWeaknesses(''); setFbNotes(''); setCriteriaRatings({}); setCriteriaTextValues({})
         loadInterview()
       }
@@ -394,7 +396,7 @@ export default function InterviewDetailPage() {
           recommendation: fbRecommendation,
           overall_rating: fbRating,
         }).catch(() => {})
-        setShowFeedback(false); setFbRating(3); setFbRecommendation('hold')
+        setShowFeedback(false); setFbRating(0); setFbRecommendation('')
         setFbStrengths(''); setFbWeaknesses(''); setFbNotes(''); setCriteriaRatings({}); setCriteriaTextValues({})
         loadInterview()
       }
@@ -722,13 +724,13 @@ export default function InterviewDetailPage() {
                             className={`text-2xl leading-none transition-transform hover:scale-110 ${star <= fbRating ? 'text-amber-400' : 'text-gray-200'}`}
                           >★</button>
                         ))}
-                        <span className="text-xs text-gray-400 ml-1">{RATING_LABELS[fbRating]}</span>
+                        <span className="text-xs text-gray-400 ml-1">{fbRating > 0 ? RATING_LABELS[fbRating] : 'Select rating'}</span>
                       </div>
                     </div>
                     <div className="space-y-1.5">
                       <Label className="text-xs text-gray-500">Recommendation <span className="text-red-400">*</span></Label>
                       <Select value={fbRecommendation} onValueChange={setFbRecommendation}>
-                        <SelectTrigger className="h-9 text-sm"><SelectValue /></SelectTrigger>
+                        <SelectTrigger className="h-9 text-sm"><SelectValue placeholder="Select recommendation" /></SelectTrigger>
                         <SelectContent>
                           {RECOMMENDATION_OPTIONS.map((r) => (
                             <SelectItem key={r.value} value={r.value}>{r.label}</SelectItem>

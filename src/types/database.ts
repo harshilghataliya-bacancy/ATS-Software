@@ -522,9 +522,16 @@ export interface Scorecard {
   title: string
   description: string | null
   is_active: boolean
+  job_id: string | null
+  source_scorecard_id: string | null
+  label: string | null
   created_by: string | null
   created_at: string
   updated_at: string
+}
+
+export interface ScorecardWithCriteria extends Scorecard {
+  scorecard_template_criteria: ScorecardTemplateCriteria[]
 }
 
 export interface ScorecardTemplateCriteria {

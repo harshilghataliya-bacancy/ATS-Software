@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useUser, useRole } from '@/lib/hooks/use-user'
 import { createClient } from '@/lib/supabase/client'
-import { getScorecards, createScorecard, updateScorecard, deleteScorecard } from '@/lib/services/scorecards'
+import { getAllScorecards, createScorecard, updateScorecard, deleteScorecard } from '@/lib/services/scorecards'
 import { SCORECARD_RATING_TYPES } from '@/lib/constants'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -38,8 +38,11 @@ interface ScorecardWithCriteria {
   title: string
   description: string | null
   is_active: boolean
+  job_id: string | null
+  label: string | null
   created_at: string
   scorecard_template_criteria: CriteriaRow[]
+  jobs: { id: string; title: string } | null
 }
 
 const RATING_TYPE_CONFIG: Record<string, { icon: typeof Star; label: string; shortLabel: string; color: string; bgColor: string }> = {
@@ -85,7 +88,6 @@ export default function ScorecardsPage() {
 
   // Expanded card
   const [expandedId, setExpandedId] = useState<string | null>(null)
-  const [seeding, setSeeding] = useState(false)
 
   // Collapsed categories in expanded view
   const [collapsedCats, setCollapsedCats] = useState<Set<string>>(new Set())
@@ -93,7 +95,7 @@ export default function ScorecardsPage() {
   const loadScorecards = useCallback(async () => {
     if (!organization) return
     const supabase = createClient()
-    const { data, error: fetchError } = await getScorecards(supabase, organization.id)
+    const { data, error: fetchError } = await getAllScorecards(supabase, organization.id)
     if (fetchError) setError(fetchError.message)
     else setScorecards((data ?? []) as ScorecardWithCriteria[])
     setLoading(false)
@@ -247,17 +249,6 @@ export default function ScorecardsPage() {
     setSaving(false)
   }
 
-  async function handleSeedDefaults() {
-    setSeeding(true)
-    try {
-      const res = await fetch('/api/scorecards/seed', { method: 'POST' })
-      if (res.ok) loadScorecards()
-    } catch (err) {
-      console.error('[Seed error]', err)
-    }
-    setSeeding(false)
-  }
-
   async function handleDelete() {
     if (!organization || !deleteId) return
     setDeleting(true)
@@ -292,14 +283,9 @@ export default function ScorecardsPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <p className="text-sm text-gray-500">Create evaluation scorecards for standardized interview assessments</p>
-        <div className="flex items-center gap-2">
-          <Button size="sm" variant="outline" onClick={handleSeedDefaults} disabled={seeding} className="gap-1.5 h-8 text-xs">
-            {seeding ? 'Seeding...' : 'Seed Defaults'}
-          </Button>
-          <Button size="sm" onClick={openCreate} className="gap-1.5 h-8 text-xs">
-            <Plus className="w-3.5 h-3.5" /> New Scorecard
-          </Button>
-        </div>
+        <Button size="sm" onClick={openCreate} className="gap-1.5 h-8 text-xs">
+          <Plus className="w-3.5 h-3.5" /> New Scorecard
+        </Button>
       </div>
 
       {loading ? (
@@ -359,7 +345,18 @@ export default function ScorecardsPage() {
                     <ChevronDown className={`w-3.5 h-3.5 text-gray-400 shrink-0 transition-transform duration-200 ${isExpanded ? '' : '-rotate-90'}`} />
                     <div className="min-w-0">
                       <div className="flex items-center gap-2">
-                        <span className="text-[13px] font-semibold text-gray-900 truncate">{sc.title}</span>
+                        <span className="text-[13px] font-semibold text-gray-900 truncate">
+                          {sc.title}{sc.label ? ` - ${sc.label}` : ''}
+                        </span>
+                        {sc.job_id ? (
+                          <span className="inline-flex items-center px-1.5 py-px rounded text-[9px] font-medium bg-purple-50 text-purple-600 border border-purple-200/60 shrink-0">
+                            {sc.jobs?.title || 'Job'}
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center px-1.5 py-px rounded text-[9px] font-medium bg-gray-50 text-gray-500 border border-gray-200/60 shrink-0">
+                            Template
+                          </span>
+                        )}
                         <div className="hidden sm:flex items-center gap-1">
                           {Object.entries(typeCounts).map(([type, count]) => {
                             const config = RATING_TYPE_CONFIG[type]

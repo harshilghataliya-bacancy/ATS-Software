@@ -234,12 +234,51 @@ export default function ApplicationDetailPage() {
       return
     }
 
+    // Resolve criteria names for scorecard_ratings before setting state
+    const interviews = data.interviews ?? []
+    const allCriteriaIds = new Set<string>()
+    interviews.forEach((iv: AnyData) => {
+      ;(iv.interview_feedback ?? []).forEach((f: AnyData) => {
+        ;(f.scorecard_ratings ?? []).forEach((sr: AnyData) => {
+          if (sr.criteria_id) allCriteriaIds.add(sr.criteria_id)
+        })
+      })
+    })
+    if (allCriteriaIds.size > 0) {
+      const ids = Array.from(allCriteriaIds)
+      const criteriaLookup: Record<string, string> = {}
+      // Look up from scorecard_template_criteria (new system)
+      const { data: tplCriteria } = await supabase
+        .from('scorecard_template_criteria')
+        .select('id, name')
+        .in('id', ids)
+      tplCriteria?.forEach((c: { id: string; name: string }) => { criteriaLookup[c.id] = c.name })
+      // Also check scorecard_criteria (legacy)
+      const missingIds = ids.filter((id) => !criteriaLookup[id])
+      if (missingIds.length > 0) {
+        const { data: legacyCriteria } = await supabase
+          .from('scorecard_criteria')
+          .select('id, name')
+          .in('id', missingIds)
+        legacyCriteria?.forEach((c: { id: string; name: string }) => { criteriaLookup[c.id] = c.name })
+      }
+      // Patch scorecard_ratings with criteria name
+      interviews.forEach((iv: AnyData) => {
+        ;(iv.interview_feedback ?? []).forEach((f: AnyData) => {
+          ;(f.scorecard_ratings ?? []).forEach((sr: AnyData) => {
+            if (sr.criteria_id && criteriaLookup[sr.criteria_id]) {
+              sr.criteria = { name: criteriaLookup[sr.criteria_id] }
+            }
+          })
+        })
+      })
+    }
+
     setApplication(data)
     setActivityLoading(true)
     setEmailLogsLoading(true)
 
     // Collect all user IDs upfront for a single resolveUserNames call
-    const interviews = data.interviews ?? []
     const allUserIds = new Set<string>()
     if (data.candidate?.created_by) allUserIds.add(data.candidate.created_by)
     interviews.forEach((iv: AnyData) => {
@@ -1976,6 +2015,7 @@ export default function ApplicationDetailPage() {
           candidateName={`${candidate?.first_name} ${candidate?.last_name}`}
           candidateEmail={candidate?.email}
           jobTitle={job?.title || ''}
+          jobId={job?.id}
           jobDescription={job?.description || ''}
           onSuccess={handleInterviewScheduled}
         />
