@@ -460,6 +460,10 @@ export default function NewOfferWizardPage() {
       pfApplicable: form.pfApplicable,
       // Pass selected offer template data directly so PDF API uses it
       ...(tpl ? {
+        // New template system (body_html + letterhead)
+        bodyHtml: tpl.body_html || undefined,
+        letterheadId: tpl.letterhead_id || undefined,
+        // Legacy template fields
         templateLogoUrl: tpl.logo_url || undefined,
         templateCompanyName: tpl.company_name || undefined,
         templateTerms: tpl.terms_and_conditions || undefined,

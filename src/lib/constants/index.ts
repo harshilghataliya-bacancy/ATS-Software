@@ -297,11 +297,19 @@ export const OFFER_TEMPLATE_VARIABLE_CATEGORIES = [
     category: 'Offer',
     variables: [
       { key: '{{salary}}', label: 'Salary (formatted)' },
+      { key: '{{salary_currency}}', label: 'Salary Currency' },
+      { key: '{{remuneration_type}}', label: 'Remuneration Type (Annual/Monthly)' },
       { key: '{{start_date}}', label: 'Start Date' },
       { key: '{{expiry_date}}', label: 'Expiry Date' },
       { key: '{{employment_type}}', label: 'Employment Type' },
       { key: '{{work_type}}', label: 'Work Type' },
       { key: '{{reporting_manager}}', label: 'Reporting Manager' },
+    ],
+  },
+  {
+    category: 'Compensation',
+    variables: [
+      { key: '{{salary_structure}}', label: 'Salary Structure (Table)' },
     ],
   },
   {
