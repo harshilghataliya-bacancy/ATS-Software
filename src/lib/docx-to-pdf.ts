@@ -1,19 +1,22 @@
 /**
- * Render an HTML string to a PDF buffer using Playwright's headless Chromium.
- * Uses eval('require') to prevent Next.js webpack from bundling playwright-core.
+ * Render an HTML string to a PDF buffer using headless Chromium.
  *
- * Browser Singleton: A single Chromium instance is reused across requests.
- * This cuts PDF generation from ~1-2s (cold launch) to ~200-400ms (reuse).
- * The browser auto-closes after 5 minutes of inactivity to free memory.
+ * On Vercel/serverless: Uses puppeteer-core + @sparticuz/chromium
+ * Locally: Falls back to playwright-core if available
+ *
+ * Browser Singleton: Reuses a single browser instance across requests.
+ * Auto-closes after 5 minutes of inactivity to free memory.
  */
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-let _browser: any = null
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-let _browserPromise: Promise<any> | null = null
+import puppeteer from 'puppeteer-core'
+import type { Browser } from 'puppeteer-core'
+
+let _browser: Browser | null = null
+let _browserPromise: Promise<Browser> | null = null
 let _idleTimer: ReturnType<typeof setTimeout> | null = null
 
 const IDLE_TIMEOUT = 5 * 60 * 1000 // 5 minutes
+const IS_VERCEL = !!process.env.VERCEL || !!process.env.AWS_LAMBDA_FUNCTION_NAME
 
 function resetIdleTimer() {
   if (_idleTimer) clearTimeout(_idleTimer)
@@ -26,9 +29,9 @@ function resetIdleTimer() {
   }, IDLE_TIMEOUT)
 }
 
-async function getBrowser() {
+async function getBrowser(): Promise<Browser> {
   // Return existing browser if still connected
-  if (_browser && _browser.isConnected()) {
+  if (_browser && _browser.connected) {
     resetIdleTimer()
     return _browser
   }
@@ -36,16 +39,49 @@ async function getBrowser() {
   // If a launch is already in progress, wait for it
   if (_browserPromise) {
     _browser = await _browserPromise
-    if (_browser && _browser.isConnected()) {
+    if (_browser && _browser.connected) {
       resetIdleTimer()
       return _browser
     }
   }
 
   // Launch new browser
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const pw = eval('require')('playwright-core') as any
-  _browserPromise = pw.chromium.launch({ headless: true })
+  if (IS_VERCEL) {
+    // Serverless: use @sparticuz/chromium (optimized for Lambda/Vercel)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const chromium = (await import('@sparticuz/chromium')).default as any
+    _browserPromise = puppeteer.launch({
+      args: chromium.args,
+      defaultViewport: { width: 794, height: 1123 },
+      executablePath: await chromium.executablePath(),
+      headless: chromium.headless ?? true,
+    })
+  } else {
+    // Local dev: use system Chrome or playwright's chromium
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let execPath: string | undefined
+    try {
+      // Try to find playwright's chromium
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const pw = eval('require')('playwright-core') as any
+      execPath = pw.chromium.executablePath()
+    } catch {
+      // Fallback to common Chrome locations on macOS
+      const { existsSync } = await import('fs')
+      const paths = [
+        '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+        '/Applications/Chromium.app/Contents/MacOS/Chromium',
+      ]
+      execPath = paths.find(p => existsSync(p))
+    }
+    _browserPromise = puppeteer.launch({
+      args: ['--no-sandbox', '--disable-setuid-sandbox'],
+      defaultViewport: { width: 794, height: 1123 },
+      executablePath: execPath,
+      headless: true,
+    })
+  }
+
   _browser = await _browserPromise
   resetIdleTimer()
   return _browser
@@ -53,15 +89,13 @@ async function getBrowser() {
 
 export async function generatePdfFromHtml(html: string): Promise<Buffer> {
   const browser = await getBrowser()
-  const context = await browser.newContext()
+  const page = await browser.newPage()
   try {
-    const page = await context.newPage()
-    // A4 at 96 DPI = 794 x 1123 px
-    await page.setViewportSize({ width: 794, height: 1123 })
-    await page.setContent(html, { waitUntil: 'networkidle' })
+    await page.setViewport({ width: 794, height: 1123 })
+    await page.setContent(html, { waitUntil: 'networkidle0' })
     // Wait for Google Fonts (Dancing Script etc.) to fully load
     await page.evaluate(() => document.fonts.ready)
-    await page.waitForTimeout(500)
+    await new Promise(r => setTimeout(r, 500))
     const pdfBuffer = await page.pdf({
       format: 'A4',
       printBackground: true,
@@ -69,6 +103,6 @@ export async function generatePdfFromHtml(html: string): Promise<Buffer> {
     })
     return Buffer.from(pdfBuffer)
   } finally {
-    await context.close()
+    await page.close()
   }
 }
