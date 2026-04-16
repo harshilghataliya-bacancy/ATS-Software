@@ -10,9 +10,10 @@ export async function generatePdfFromHtml(html: string): Promise<Buffer> {
     const page = await browser.newPage()
     // A4 at 96 DPI = 794 x 1123 px
     await page.setViewportSize({ width: 794, height: 1123 })
-    await page.setContent(html, { waitUntil: 'load' })
-    // Allow pagination JS and font loading to finish
-    await page.waitForTimeout(1500)
+    await page.setContent(html, { waitUntil: 'networkidle' })
+    // Wait for Google Fonts (Dancing Script etc.) to fully load
+    await page.evaluate(() => document.fonts.ready)
+    await page.waitForTimeout(500)
     const pdfBuffer = await page.pdf({
       format: 'A4',
       printBackground: true,

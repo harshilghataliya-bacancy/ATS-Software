@@ -13,6 +13,128 @@ import { renderToBuffer } from '@react-pdf/renderer'
 import { OfferPDFDocument } from '@/components/offers/offer-pdf-document'
 import React from 'react'
 import { resolveLogoForPdf } from '@/lib/utils/logo-converter'
+import { generatePdfFromHtml } from '@/lib/docx-to-pdf'
+
+// ─── Helpers for body_html template rendering (mirrors preview-pdf route) ───
+
+const PAGE_DELIMITER = '<!--PAGE_BREAK-->'
+
+interface SalaryComp { name: string; monthly: number; annual: number; section?: string }
+
+function fmtINR(n: number): string {
+  return n.toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 0 })
+}
+
+function buildSalaryTable(components: SalaryComp[]): string {
+  if (!components?.length) return ''
+  const earnings = components.filter(c => c.section === 'earnings')
+  const employer = components.filter(c => c.section === 'employer')
+  const deductions = components.filter(c => c.section === 'deduction')
+  const grossAnnual = earnings.reduce((s, c) => s + c.annual, 0)
+  const employerAnnual = employer.reduce((s, c) => s + c.annual, 0)
+  const totalCtc = grossAnnual + employerAnnual
+
+  const row = (name: string, m: number, a: number, bold = false) => {
+    const s = bold ? 'font-weight:600;background:#f0fdf4;' : 'border-bottom:1px solid #f3f4f6;'
+    return `<tr style="${s}"><td style="padding:4px 10px">${name}</td><td style="text-align:right;padding:4px 10px">${fmtINR(m)}</td><td style="text-align:right;padding:4px 10px">${fmtINR(a)}</td></tr>`
+  }
+
+  let rows = ''
+  earnings.forEach(c => { rows += row(c.name, c.monthly, c.annual) })
+  rows += row('Sub Total (Gross)', Math.round(grossAnnual / 12), grossAnnual, true)
+  employer.forEach(c => { rows += row(c.name, c.monthly, c.annual) })
+  rows += row('Total CTC', Math.round(totalCtc / 12), totalCtc, true)
+  if (deductions.length) {
+    deductions.forEach(c => { rows += row(c.name, c.monthly, c.annual) })
+    const netAnnual = grossAnnual - deductions.reduce((s, c) => s + c.annual, 0)
+    rows += row('Net Take Home', Math.round(netAnnual / 12), netAnnual, true)
+  }
+
+  return `<table style="width:100%;border-collapse:collapse;font-size:10px;border:1px solid #e5e7eb">
+<thead><tr style="background:#f9fafb;border-bottom:1px solid #e5e7eb">
+<th style="text-align:left;padding:6px 10px;font-weight:600">Component</th>
+<th style="text-align:right;padding:6px 10px;font-weight:600">Monthly (₹)</th>
+<th style="text-align:right;padding:6px 10px;font-weight:600">Annual (₹)</th>
+</tr></thead><tbody>${rows}</tbody></table>`
+}
+
+function substituteVars(html: string, vars: Record<string, string>): string {
+  let result = html
+  for (const [key, val] of Object.entries(vars)) {
+    result = result.replace(new RegExp(key.replace(/[{}]/g, '\\$&'), 'g'), val)
+  }
+  return result
+}
+
+function buildHtmlForPages(
+  bodyHtml: string,
+  vars: Record<string, string>,
+  lhData: { page1Url: string | null; contUrl: string | null; margins: { top: number; bottom: number; left: number; right: number } } | null,
+): string {
+  const pages = bodyHtml.split(PAGE_DELIMITER)
+  const A4_W = 794
+  const A4_H = 1123
+  const mmToPx96 = (mm: number) => Math.round(mm * A4_W / 210)
+  const m = lhData?.margins || { top: 35, bottom: 25, left: 20, right: 20 }
+  const marginTop = mmToPx96(m.top)
+  const marginBottom = mmToPx96(m.bottom)
+  const marginLeft = mmToPx96(m.left)
+  const marginRight = mmToPx96(m.right)
+
+  const pagesHtml = pages.map((pageContent, idx) => {
+    const bgUrl = idx === 0 ? lhData?.page1Url : (lhData?.contUrl || lhData?.page1Url)
+    const substituted = substituteVars(pageContent, vars)
+    const bgStyle = bgUrl
+      ? `background: url('${bgUrl}') 0 0 / 100% 100% no-repeat;`
+      : 'background: white;'
+    const isLast = idx === pages.length - 1
+
+    return `<div class="page" style="
+      width: ${A4_W}px; height: ${A4_H}px; position: relative; overflow: hidden;
+      ${bgStyle}
+      ${isLast ? '' : 'page-break-after: always;'}
+    ">
+      <div style="
+        position: absolute;
+        top: ${marginTop}px; left: ${marginLeft}px;
+        right: ${marginRight}px; bottom: ${marginBottom}px;
+        overflow: hidden;
+        font-family: Georgia, serif;
+        font-size: 13px;
+        line-height: 1.6;
+        color: #1a1a1a;
+      ">
+        <div class="prose">${substituted}</div>
+      </div>
+    </div>`
+  }).join('\n')
+
+  return `<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<link href="https://fonts.googleapis.com/css2?family=Dancing+Script:wght@400;700&display=swap" rel="stylesheet">
+<style>
+  @page { size: A4; margin: 0; }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; width: ${A4_W}px; }
+  .page { width: ${A4_W}px; height: ${A4_H}px; }
+  .prose { max-width: none; }
+  .prose p { margin-bottom: 0.4em; }
+  .prose p:empty { min-height: 1.2em; }
+  .prose strong { font-weight: 700; }
+  .prose u { text-decoration: underline; }
+  .prose h1 { font-size: 22px; font-weight: 700; margin-bottom: 0.5em; }
+  .prose h2 { font-size: 18px; font-weight: 700; margin-bottom: 0.4em; }
+  .prose ul, .prose ol { padding-left: 1.5em; margin-bottom: 0.5em; }
+  .prose li { margin-bottom: 0.2em; }
+  .prose table { width: 100%; border-collapse: collapse; }
+  .prose hr { border: none; border-top: 1px solid #e5e7eb; margin: 0.8em 0; }
+</style>
+</head>
+<body>${pagesHtml}</body>
+</html>`
+}
 
 export async function POST(
   _request: NextRequest,
@@ -179,52 +301,123 @@ export async function POST(
     const salaryComponents = Array.isArray(offer.salary_components) ? offer.salary_components : []
     const bonusComponents = Array.isArray(offer.bonus_components) ? offer.bonus_components : []
 
-    // Resolve logo URL (converts SVG to PNG if needed)
-    const resolvedLogo = activeTemplate?.logo_url ? await resolveLogoForPdf(activeTemplate.logo_url) : undefined
+    let pdfBuffer: Buffer | Uint8Array
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const pdfElement = React.createElement(OfferPDFDocument, {
-      companyName: activeTemplate?.company_name || org?.name || 'Company',
-      candidateName,
-      candidateEmail: candidate.email,
-      jobTitle: job?.title || '',
-      department: job?.department || '',
-      businessUnit: offer.business_unit || undefined,
-      employmentType: empLabel,
-      workType: workLabel,
-      location: offer.location || job?.location || undefined,
-      reportingManager: offer.reporting_manager || undefined,
-      salary: salaryFormatted,
-      salaryCurrency: offer.salary_currency || 'INR',
-      startDate,
-      expiryDate,
-      createdDate: new Date(offer.created_at).toLocaleDateString('en-US', { dateStyle: 'long' }),
-      salaryComponents: salaryComponents.length > 0 ? salaryComponents : undefined,
-      bonusComponents: bonusComponents.length > 0 ? bonusComponents : undefined,
-      pfApplicable: offer.pf_applicable ?? false,
-      templateLogoUrl: resolvedLogo,
-      templateCompanyName: activeTemplate?.company_name || undefined,
-      templateTerms: activeTemplate?.terms_and_conditions || undefined,
-      // Full template customization
-      primaryColor: activeTemplate?.primary_color || undefined,
-      accentColor: activeTemplate?.accent_color || undefined,
-      greetingText: activeTemplate?.greeting_text || undefined,
-      introText: activeTemplate?.intro_text || undefined,
-      closingText: activeTemplate?.closing_text || undefined,
-      validityText: activeTemplate?.validity_text || undefined,
-      acceptanceText: activeTemplate?.acceptance_text || undefined,
-      signatoryName: activeTemplate?.signatory_name || undefined,
-      signatoryTitle: activeTemplate?.signatory_title || undefined,
-      signatoryLabel: activeTemplate?.signatory_label || undefined,
-      candidateSigLabel: activeTemplate?.candidate_sig_label || undefined,
-      showSalaryBreakdown: activeTemplate?.show_salary_breakdown ?? true,
-      showBonusSection: activeTemplate?.show_bonus_section ?? true,
-      showTermsSection: activeTemplate?.show_terms_section ?? true,
-      showAcceptanceSection: activeTemplate?.show_acceptance_section ?? true,
-      showSignatureBlock: activeTemplate?.show_signature_block ?? true,
-      footerText: activeTemplate?.footer_text || undefined,
-    }) as any
-    const pdfBuffer = await renderToBuffer(pdfElement)
+    // ─── New body_html template system (Playwright PDF with letterhead) ───
+    if (activeTemplate?.body_html) {
+      const vars: Record<string, string> = {
+        '{{candidate_name}}': candidateName,
+        '{{candidate_email}}': candidate.email,
+        '{{job_title}}': job?.title || '',
+        '{{department}}': job?.department || '',
+        '{{business_unit}}': offer.business_unit || '',
+        '{{location}}': offer.location || job?.location || '',
+        '{{salary}}': salaryFormatted,
+        '{{salary_currency}}': offer.salary_currency || 'INR',
+        '{{remuneration_type}}': 'Annual',
+        '{{start_date}}': startDate,
+        '{{expiry_date}}': expiryDate,
+        '{{employment_type}}': empLabel,
+        '{{work_type}}': workLabel,
+        '{{reporting_manager}}': offer.reporting_manager || '',
+        '{{company_name}}': org?.name || '',
+        '{{signatory_name}}': activeTemplate.signatory_name
+          ? `<span style="font-family:'Dancing Script',cursive;font-size:18px">${activeTemplate.signatory_name}</span>`
+          : '',
+        '{{signatory_title}}': activeTemplate.signatory_title || '',
+        '{{salary_structure}}': buildSalaryTable(salaryComponents as SalaryComp[]),
+      }
+
+      // Fetch letterhead data if available
+      let lhData: { page1Url: string | null; contUrl: string | null; margins: { top: number; bottom: number; left: number; right: number } } | null = null
+      if (activeTemplate.letterhead_id) {
+        const { data: lh } = await supabase
+          .from('letterheads')
+          .select('*')
+          .eq('id', activeTemplate.letterhead_id)
+          .eq('organization_id', orgId)
+          .is('deleted_at', null)
+          .single()
+
+        if (lh) {
+          let page1Url = lh.page1_url
+          let contUrl = lh.continuation_url
+          if (lh.page1_storage_path) {
+            const { data: sig } = await supabase.storage
+              .from('letterheads')
+              .createSignedUrl(lh.page1_storage_path, 60 * 5)
+            if (sig?.signedUrl) page1Url = sig.signedUrl
+          }
+          if (lh.continuation_storage_path) {
+            const { data: sig } = await supabase.storage
+              .from('letterheads')
+              .createSignedUrl(lh.continuation_storage_path, 60 * 5)
+            if (sig?.signedUrl) contUrl = sig.signedUrl
+          }
+          lhData = {
+            page1Url,
+            contUrl,
+            margins: {
+              top: lh.margin_top || 35,
+              bottom: lh.margin_bottom || 25,
+              left: lh.margin_left || 20,
+              right: lh.margin_right || 20,
+            },
+          }
+        }
+      }
+
+      const html = buildHtmlForPages(activeTemplate.body_html, vars, lhData)
+      pdfBuffer = await generatePdfFromHtml(html)
+    } else {
+      // ─── Legacy template system (React-PDF) ───────────────────────────
+      // Resolve logo URL (converts SVG to PNG if needed)
+      const resolvedLogo = activeTemplate?.logo_url ? await resolveLogoForPdf(activeTemplate.logo_url) : undefined
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const pdfElement = React.createElement(OfferPDFDocument, {
+        companyName: activeTemplate?.company_name || org?.name || 'Company',
+        candidateName,
+        candidateEmail: candidate.email,
+        jobTitle: job?.title || '',
+        department: job?.department || '',
+        businessUnit: offer.business_unit || undefined,
+        employmentType: empLabel,
+        workType: workLabel,
+        location: offer.location || job?.location || undefined,
+        reportingManager: offer.reporting_manager || undefined,
+        salary: salaryFormatted,
+        salaryCurrency: offer.salary_currency || 'INR',
+        startDate,
+        expiryDate,
+        createdDate: new Date(offer.created_at).toLocaleDateString('en-US', { dateStyle: 'long' }),
+        salaryComponents: salaryComponents.length > 0 ? salaryComponents : undefined,
+        bonusComponents: bonusComponents.length > 0 ? bonusComponents : undefined,
+        pfApplicable: offer.pf_applicable ?? false,
+        templateLogoUrl: resolvedLogo,
+        templateCompanyName: activeTemplate?.company_name || undefined,
+        templateTerms: activeTemplate?.terms_and_conditions || undefined,
+        primaryColor: activeTemplate?.primary_color || undefined,
+        accentColor: activeTemplate?.accent_color || undefined,
+        greetingText: activeTemplate?.greeting_text || undefined,
+        introText: activeTemplate?.intro_text || undefined,
+        closingText: activeTemplate?.closing_text || undefined,
+        validityText: activeTemplate?.validity_text || undefined,
+        acceptanceText: activeTemplate?.acceptance_text || undefined,
+        signatoryName: activeTemplate?.signatory_name || undefined,
+        signatoryTitle: activeTemplate?.signatory_title || undefined,
+        signatoryLabel: activeTemplate?.signatory_label || undefined,
+        candidateSigLabel: activeTemplate?.candidate_sig_label || undefined,
+        showSalaryBreakdown: activeTemplate?.show_salary_breakdown ?? true,
+        showBonusSection: activeTemplate?.show_bonus_section ?? true,
+        showTermsSection: activeTemplate?.show_terms_section ?? true,
+        showAcceptanceSection: activeTemplate?.show_acceptance_section ?? true,
+        showSignatureBlock: activeTemplate?.show_signature_block ?? true,
+        footerText: activeTemplate?.footer_text || undefined,
+      }) as any
+      pdfBuffer = await renderToBuffer(pdfElement)
+    }
+
     const pdfFilename = `offer-${candidate.last_name.toLowerCase()}-${job?.title?.toLowerCase().replace(/\s+/g, '-') || 'position'}.pdf`
 
     // Mark as sent in DB first

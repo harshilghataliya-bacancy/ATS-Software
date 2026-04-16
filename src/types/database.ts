@@ -374,6 +374,24 @@ export interface OfferTemplate {
   docx_page_margins: { top: number; bottom: number; left: number; right: number; header: number; footer: number } | null
   docx_storage_path: string | null
   docx_preview_pdf_path: string | null
+  // Simplified template fields
+  description: string | null
+  letterhead_id: string | null
+  body_html: string | null
+  created_by: string | null
+  created_at: string
+  updated_at: string
+  deleted_at: string | null
+}
+
+export interface Letterhead {
+  id: string
+  organization_id: string
+  name: string
+  file_type: 'docx' | 'pdf'
+  storage_path: string
+  file_url: string | null
+  preview_url: string | null
   created_by: string | null
   created_at: string
   updated_at: string
