@@ -83,6 +83,12 @@ interface OfferTemplate {
 
 // ─── Form State ─────────────────────────────────────────────────────────
 
+interface CustomVariable {
+  key: string
+  label: string
+  defaultValue: string
+}
+
 interface TemplateFormState {
   name: string
   description: string
@@ -98,6 +104,7 @@ interface TemplateFormState {
   show_signature_block: boolean
   email_subject: string
   email_body: string
+  custom_variables: CustomVariable[]
 }
 
 function makeDefaultBodyHtml(): string {
@@ -215,6 +222,7 @@ function makeEmptyForm(): TemplateFormState {
     show_signature_block: true,
     email_subject: 'Offer Letter - {{job_title}} at {{company_name}}',
     email_body: `<p>Dear {{candidate_name}},</p><p>Please find your offer letter attached.</p><p>Regards,<br/>{{company_name}} HR Team</p>`,
+    custom_variables: [],
   }
 }
 
@@ -247,6 +255,8 @@ function formFromTemplate(t: OfferTemplate): TemplateFormState {
     show_signature_block: t.show_signature_block,
     email_subject: t.email_subject || '',
     email_body: t.email_body || '',
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    custom_variables: Array.isArray((t as any).custom_variables) ? (t as any).custom_variables : [],
   }
 }
 
@@ -513,8 +523,17 @@ function LetterheadManager({ letterheads, onRefresh, loading }: {
 
 // ─── Variables Panel ────────────────────────────────────────────────────
 
-function VariablesPanel({ onInsert }: { onInsert?: (key: string) => void }) {
+function VariablesPanel({ onInsert, customVariables, onAddCustom, onRemoveCustom, onUpdateCustom }: {
+  onInsert?: (key: string) => void
+  customVariables: CustomVariable[]
+  onAddCustom: (label: string) => void
+  onRemoveCustom: (idx: number) => void
+  onUpdateCustom: (idx: number, field: keyof CustomVariable, value: string) => void
+}) {
   const [copied, setCopied] = useState<string | null>(null)
+  const [addingNew, setAddingNew] = useState(false)
+  const [newLabel, setNewLabel] = useState('')
+  const [editingIdx, setEditingIdx] = useState<number | null>(null)
 
   const handleCopy = (key: string, e: React.MouseEvent) => {
     e.stopPropagation()
@@ -523,42 +542,133 @@ function VariablesPanel({ onInsert }: { onInsert?: (key: string) => void }) {
     setTimeout(() => setCopied(null), 1500)
   }
 
+  const handleAddCustom = () => {
+    if (!newLabel.trim()) return
+    onAddCustom(newLabel.trim())
+    setNewLabel('')
+    setAddingNew(false)
+  }
+
+  const VariableRow = ({ varKey, label, onClickInsert, onClickCopy, isCustom, customIdx }: {
+    varKey: string; label: string; onClickInsert: () => void; onClickCopy: (e: React.MouseEvent) => void; isCustom?: boolean; customIdx?: number
+  }) => (
+    <div className="flex items-center justify-between w-full px-2 py-1 rounded-md hover:bg-blue-50/80 group transition-colors">
+      <button onClick={onClickInsert} className="flex-1 text-left min-w-0">
+        <span className="text-[11px] text-gray-700 group-hover:text-blue-700 truncate block">{label}</span>
+      </button>
+      <div className="flex items-center gap-1 shrink-0">
+        <button onClick={onClickCopy} title="Copy"
+          className="p-0.5 rounded hover:bg-blue-100 text-gray-300 hover:text-blue-600 transition-colors opacity-0 group-hover:opacity-100">
+          {copied === varKey ? (
+            <svg className="w-2.5 h-2.5 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
+          ) : (
+            <Copy className="w-2.5 h-2.5" />
+          )}
+        </button>
+        {isCustom && customIdx !== undefined && (
+          <button onClick={() => onRemoveCustom(customIdx)} title="Remove"
+            className="p-0.5 rounded hover:bg-red-100 text-gray-300 hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100">
+            <X className="w-2.5 h-2.5" />
+          </button>
+        )}
+      </div>
+    </div>
+  )
+
   return (
-    <div className="space-y-3">
+    <div className="space-y-2.5">
+      <p className="text-[10px] text-gray-400 px-2">Click to insert at cursor</p>
       {OFFER_TEMPLATE_VARIABLE_CATEGORIES.map(cat => (
         <div key={cat.category}>
-          <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1.5">{cat.category}</p>
-          <div className="space-y-0.5">
+          <p className="text-[9px] font-semibold text-gray-400 uppercase tracking-wider mb-1 px-2">{cat.category}</p>
+          <div className="space-y-0">
             {cat.variables.map(v => (
-              <div
-                key={v.key}
-                className="flex items-center justify-between w-full px-2.5 py-1.5 rounded-md hover:bg-blue-50 group transition-colors"
-              >
-                <button
-                  onClick={() => onInsert?.(v.key)}
-                  className="flex-1 text-left"
-                >
-                  <span className="text-xs text-gray-700 group-hover:text-blue-700">{v.label}</span>
-                </button>
-                <div className="flex items-center gap-1.5">
-                  <code className="text-[10px] font-mono text-gray-400 group-hover:text-blue-500">{v.key}</code>
-                  <button
-                    onClick={(e) => handleCopy(v.key, e)}
-                    title="Copy variable"
-                    className="p-0.5 rounded hover:bg-blue-100 text-gray-300 hover:text-blue-600 transition-colors opacity-0 group-hover:opacity-100"
-                  >
-                    {copied === v.key ? (
-                      <svg className="w-3 h-3 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
-                    ) : (
-                      <Copy className="w-3 h-3" />
-                    )}
-                  </button>
-                </div>
-              </div>
+              <VariableRow key={v.key} varKey={v.key} label={v.label}
+                onClickInsert={() => onInsert?.(v.key)}
+                onClickCopy={(e) => handleCopy(v.key, e)} />
             ))}
           </div>
         </div>
       ))}
+
+      {/* Custom Variables */}
+      <div className="border-t border-gray-100 pt-2">
+        <div className="flex items-center justify-between px-2 mb-1">
+          <p className="text-[9px] font-semibold text-gray-400 uppercase tracking-wider">Custom</p>
+          <button onClick={() => setAddingNew(true)}
+            className="text-[10px] text-blue-500 hover:text-blue-700 font-medium flex items-center gap-0.5">
+            <Plus className="w-3 h-3" /> Add
+          </button>
+        </div>
+        {customVariables.map((cv, idx) => (
+          <div key={idx}>
+            <div className="flex items-center justify-between w-full px-2 py-1 rounded-md hover:bg-blue-50/80 group transition-colors">
+              <button onClick={() => onInsert?.(cv.key)} className="flex-1 text-left min-w-0">
+                <span className="text-[11px] text-gray-700 group-hover:text-blue-700 truncate block">{cv.label || cv.key}</span>
+              </button>
+              <div className="flex items-center gap-1 shrink-0">
+                <button onClick={() => setEditingIdx(editingIdx === idx ? null : idx)} title="Set value"
+                  className={`p-0.5 rounded transition-colors ${editingIdx === idx ? 'bg-blue-100 text-blue-600' : 'text-gray-300 hover:text-blue-500 hover:bg-blue-50 opacity-0 group-hover:opacity-100'}`}>
+                  <Pencil className="w-2.5 h-2.5" />
+                </button>
+                <button onClick={(e) => handleCopy(cv.key, e)} title="Copy"
+                  className="p-0.5 rounded hover:bg-blue-100 text-gray-300 hover:text-blue-600 transition-colors opacity-0 group-hover:opacity-100">
+                  {copied === cv.key ? (
+                    <svg className="w-2.5 h-2.5 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
+                  ) : (
+                    <Copy className="w-2.5 h-2.5" />
+                  )}
+                </button>
+                <button onClick={() => onRemoveCustom(idx)} title="Remove"
+                  className="p-0.5 rounded hover:bg-red-100 text-gray-300 hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100">
+                  <X className="w-2.5 h-2.5" />
+                </button>
+              </div>
+            </div>
+            {editingIdx === idx && (
+              <div className="px-2 pb-1.5 flex items-center gap-1">
+                <input
+                  value={cv.defaultValue}
+                  onChange={e => onUpdateCustom(idx, 'defaultValue', e.target.value)}
+                  placeholder="Default value..."
+                  autoFocus
+                  onKeyDown={e => { if (e.key === 'Enter' || e.key === 'Escape') setEditingIdx(null) }}
+                  className="flex-1 text-[10px] px-2 py-1 border border-blue-200 rounded bg-white text-gray-600 placeholder:text-gray-300 focus:outline-none focus:border-blue-400"
+                />
+                <button onClick={() => setEditingIdx(null)}
+                  className="p-1 rounded bg-blue-500 hover:bg-blue-600 text-white transition-colors" title="Done">
+                  <svg className="w-2.5 h-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
+                </button>
+              </div>
+            )}
+          </div>
+        ))}
+        {customVariables.length === 0 && !addingNew && (
+          <p className="text-[10px] text-gray-300 px-2 italic">No custom variables</p>
+        )}
+        {addingNew && (
+          <div className="px-2 space-y-1.5 pb-1">
+            <input
+              value={newLabel}
+              onChange={e => setNewLabel(e.target.value)}
+              placeholder="Variable name (e.g. probation_period)"
+              className="w-full text-[11px] px-2 py-1.5 border border-blue-200 rounded bg-white text-gray-700 placeholder:text-gray-300 focus:outline-none focus:border-blue-400"
+              autoFocus
+              onKeyDown={e => { if (e.key === 'Enter') handleAddCustom(); if (e.key === 'Escape') { setAddingNew(false); setNewLabel('') } }}
+            />
+            <div className="flex gap-1.5">
+              <button onClick={handleAddCustom} disabled={!newLabel.trim()}
+                className="flex-1 text-[10px] font-medium py-1 rounded bg-blue-500 text-white hover:bg-blue-600 disabled:opacity-40 transition-colors">
+                Add
+              </button>
+              <button onClick={() => { setAddingNew(false); setNewLabel('') }}
+                className="text-[10px] text-gray-400 hover:text-gray-600 px-2">
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   )
 }
@@ -620,6 +730,10 @@ function A4Preview({ form, letterhead }: { form: TemplateFormState; letterhead: 
           }
           if (form.signatory_title) {
             formOverrides['{{signatory_title}}'] = form.signatory_title
+          }
+          // Add custom variable defaults for preview
+          for (const cv of form.custom_variables) {
+            if (cv.defaultValue) formOverrides[cv.key] = cv.defaultValue
           }
           const pageHtml = substituteVars(pageContent || '', formOverrides)
 
@@ -958,7 +1072,7 @@ function TemplateBuilder({ template, letterheads, onSave, onCancel }: {
 }) {
   const [form, setForm] = useState<TemplateFormState>(template ? formFromTemplate(template) : makeEmptyForm())
   const [saving, setSaving] = useState(false)
-  const [activePanel, setActivePanel] = useState<'editor' | 'variables' | 'settings'>('editor')
+  const [activePanel, setActivePanel] = useState<'editor' | 'settings'>('editor')
   const [zoom, setZoom] = useState(1.25)
   const [previewOpen, setPreviewOpen] = useState(false)
   const editorRef = useRef<RichTextEditorHandle>(null)
@@ -978,8 +1092,31 @@ function TemplateBuilder({ template, letterheads, onSave, onCancel }: {
   }
 
   const insertVariable = (key: string) => {
-    if (editorRef.current) {
+    // Insert into the active page editor
+    const activeEditor = pageEditorRefs.current.get(activePageRef.current)
+    if (activeEditor) {
+      activeEditor.insertText(key)
+    } else if (editorRef.current) {
       editorRef.current.insertText(key)
+    }
+  }
+
+  const handleAddCustomFromPanel = (label: string) => {
+    const key = `{{${label.trim().toLowerCase().replace(/\s+/g, '_')}}}`
+    const exists = form.custom_variables.some(cv => cv.key === key)
+    if (exists) return
+    update('custom_variables', [...form.custom_variables, { key, label: label.trim(), defaultValue: '' }])
+  }
+
+  const removeCustomVariable = (idx: number) => {
+    update('custom_variables', form.custom_variables.filter((_, i) => i !== idx))
+  }
+
+  const updateCustomVariable = (idx: number, field: keyof CustomVariable, value: string) => {
+    const updated = [...form.custom_variables]
+    if (idx >= 0 && idx < updated.length) {
+      updated[idx] = { ...updated[idx], [field]: value }
+      update('custom_variables', updated)
     }
   }
 
@@ -1027,79 +1164,85 @@ function TemplateBuilder({ template, letterheads, onSave, onCancel }: {
         </div>
       </div>
 
-      {/* Main Layout — full width editor */}
-      <div className="flex-1 flex flex-col overflow-hidden">
-        {/* Formatting Toolbar + Tabs + Zoom */}
-        <div className="sticky top-0 z-10 bg-white border-b border-gray-200 shrink-0">
-          {/* Tab row */}
-          <div className="px-4 py-1.5 flex items-center justify-between border-b border-gray-100">
-            <div className="flex items-center gap-1">
-              {(['editor', 'variables', 'settings'] as const).map(tab => (
-                <button key={tab} onClick={() => setActivePanel(tab)}
-                  className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors capitalize ${
-                    activePanel === tab ? 'text-blue-600 bg-blue-50' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
-                  }`}>
-                  {tab === 'editor' ? 'Content' : tab === 'variables' ? 'Variables' : 'Settings'}
-                </button>
-              ))}
-            </div>
-            {/* Zoom controls */}
-            <div className="flex items-center gap-1.5">
-              <button onClick={() => setZoom(z => Math.max(0.4, z - 0.1))}
-                className="p-1 rounded hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors"
-                title="Zoom out">
-                <ZoomOut className="w-3.5 h-3.5" />
-              </button>
-              <span className="text-[10px] text-gray-400 font-medium w-10 text-center">{Math.round(zoom * 100)}%</span>
-              <button onClick={() => setZoom(z => Math.min(1.5, z + 0.1))}
-                className="p-1 rounded hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors"
-                title="Zoom in">
-                <ZoomIn className="w-3.5 h-3.5" />
-              </button>
-              <button onClick={() => setZoom(1.25)}
-                className="text-[10px] text-gray-400 hover:text-gray-600 px-1.5 py-0.5 rounded hover:bg-gray-100 transition-colors"
-                title="Reset zoom">
-                Reset
-              </button>
-            </div>
+      {/* Main Layout — left sidebar (variables) + editor */}
+      <div className="flex-1 flex overflow-hidden">
+        {/* Left Sidebar — Variables */}
+        <div className="w-56 shrink-0 border-r border-gray-200 bg-white overflow-y-auto">
+          <div className="p-2">
+            <VariablesPanel
+              onInsert={insertVariable}
+              customVariables={form.custom_variables}
+              onAddCustom={handleAddCustomFromPanel}
+              onRemoveCustom={removeCustomVariable}
+              onUpdateCustom={updateCustomVariable}
+            />
           </div>
-          {/* Editor toolbar row — matches screenshot style */}
-          {activePanel === 'editor' && (
-            <div className="px-6 py-2 flex justify-center">
-              <div className="bg-gray-50/80 border border-gray-200 rounded-lg px-3 py-1.5">
-                <EditorToolbar editorRefs={pageEditorRefs} activePageRef={activePageRef} />
-              </div>
-            </div>
-          )}
         </div>
 
-        {/* Scrollable content */}
-        <div className="flex-1 overflow-y-auto bg-gray-100">
-          {activePanel === 'editor' && (
-            <div className="p-4 flex justify-center">
-              <div style={{ transform: `scale(${zoom})`, transformOrigin: 'top center' }}>
-                <PageEditor
-                  form={form}
-                  letterhead={selectedLetterhead}
-                  editorRef={editorRef}
-                  onChange={val => update('body_html', val)}
-                  pageEditorRefs={pageEditorRefs}
-                  activePageRef={activePageRef}
-                />
+        {/* Right side — toolbar + content */}
+        <div className="flex-1 flex flex-col overflow-hidden">
+          {/* Toolbar + Tabs + Zoom */}
+          <div className="sticky top-0 z-10 bg-white border-b border-gray-200 shrink-0">
+            {/* Tab row */}
+            <div className="px-4 py-1.5 flex items-center justify-between border-b border-gray-100">
+              <div className="flex items-center gap-1">
+                {(['editor', 'settings'] as const).map(tab => (
+                  <button key={tab} onClick={() => setActivePanel(tab)}
+                    className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors capitalize ${
+                      activePanel === tab ? 'text-blue-600 bg-blue-50' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
+                    }`}>
+                    {tab === 'editor' ? 'Content' : 'Settings'}
+                  </button>
+                ))}
+              </div>
+              {/* Zoom controls */}
+              <div className="flex items-center gap-1.5">
+                <button onClick={() => setZoom(z => Math.max(0.4, z - 0.1))}
+                  className="p-1 rounded hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors"
+                  title="Zoom out">
+                  <ZoomOut className="w-3.5 h-3.5" />
+                </button>
+                <span className="text-[10px] text-gray-400 font-medium w-10 text-center">{Math.round(zoom * 100)}%</span>
+                <button onClick={() => setZoom(z => Math.min(1.5, z + 0.1))}
+                  className="p-1 rounded hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors"
+                  title="Zoom in">
+                  <ZoomIn className="w-3.5 h-3.5" />
+                </button>
+                <button onClick={() => setZoom(1.25)}
+                  className="text-[10px] text-gray-400 hover:text-gray-600 px-1.5 py-0.5 rounded hover:bg-gray-100 transition-colors"
+                  title="Reset zoom">
+                  Reset
+                </button>
               </div>
             </div>
-          )}
-
-          {activePanel === 'variables' && (
-            <div className="p-6 max-w-lg mx-auto">
-              <div className="bg-white rounded-lg border border-gray-200 p-4">
-                <p className="text-xs text-gray-500 mb-3">Click a variable to insert it at the cursor position in the editor.</p>
-                <VariablesPanel onInsert={key => { insertVariable(key); setActivePanel('editor') }} />
+            {/* Editor toolbar row */}
+            {activePanel === 'editor' && (
+              <div className="px-6 py-2 flex justify-center">
+                <div className="bg-gray-50/80 border border-gray-200 rounded-lg px-3 py-1.5">
+                  <EditorToolbar editorRefs={pageEditorRefs} activePageRef={activePageRef} />
+                </div>
               </div>
-            </div>
-          )}
+            )}
+          </div>
 
-          {activePanel === 'settings' && (
+          {/* Scrollable content */}
+          <div className="flex-1 overflow-y-auto bg-gray-100">
+            {activePanel === 'editor' && (
+              <div className="p-4 flex justify-center">
+                <div style={{ transform: `scale(${zoom})`, transformOrigin: 'top center' }}>
+                  <PageEditor
+                    form={form}
+                    letterhead={selectedLetterhead}
+                    editorRef={editorRef}
+                    onChange={val => update('body_html', val)}
+                    pageEditorRefs={pageEditorRefs}
+                    activePageRef={activePageRef}
+                  />
+                </div>
+              </div>
+            )}
+
+            {activePanel === 'settings' && (
             <div className="p-6 max-w-lg mx-auto">
               <div className="bg-white rounded-lg border border-gray-200 p-4 space-y-4">
                 {/* Description */}
@@ -1173,6 +1316,7 @@ function TemplateBuilder({ template, letterheads, onSave, onCancel }: {
               </div>
             </div>
           )}
+        </div>
         </div>
       </div>
 
@@ -1307,6 +1451,7 @@ export default function OfferTemplatesPage() {
       show_signature_block: form.show_signature_block,
       email_subject: form.email_subject || null,
       email_body: form.email_body || null,
+      custom_variables: form.custom_variables.length > 0 ? form.custom_variables : null,
       template_source: 'manual',
     }
     const url = editingTemplate ? `/api/offer-templates/${editingTemplate.id}` : '/api/offer-templates'

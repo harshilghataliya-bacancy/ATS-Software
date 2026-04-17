@@ -54,6 +54,13 @@ export async function POST(request: NextRequest) {
         '{{salary_structure}}': buildSalaryTable(body.salaryComponents || []),
       }
 
+      // Add custom variables from template
+      if (Array.isArray(body.customVariables)) {
+        for (const cv of body.customVariables) {
+          if (cv.key && cv.defaultValue) vars[cv.key] = cv.defaultValue
+        }
+      }
+
       // Fetch letterhead data if letterhead_id is provided
       let lhData: LetterheadData | null = null
       if (body.letterheadId && membership) {

@@ -208,6 +208,13 @@ export async function POST(
         '{{salary_structure}}': buildSalaryTable(salaryComponents as SalaryComp[]),
       }
 
+      // Add custom variables from template
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const customVars = Array.isArray((activeTemplate as any).custom_variables) ? (activeTemplate as any).custom_variables : []
+      for (const cv of customVars) {
+        if (cv.key && cv.defaultValue) vars[cv.key] = cv.defaultValue
+      }
+
       // Fetch letterhead data if available
       let lhData: LetterheadData | null = null
       if (activeTemplate.letterhead_id) {
